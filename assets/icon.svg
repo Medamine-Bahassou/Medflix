@@ -1,0 +1,35 @@
+<!-- MedAnime app icon, foreground layer (from assets/icon-svg.svg, background removed). 108x108 = Android adaptive icon canvas; keep content inside the r=33 safe circle. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">
+  <defs>
+    <filter id="ribbon-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.85"/>
+    </filter>
+    <linearGradient id="pillar-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#B1060F"/>
+      <stop offset="50%" stop-color="#83050C"/>
+      <stop offset="100%" stop-color="#5A0207"/>
+    </linearGradient>
+    <linearGradient id="diag-left" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E50914"/>
+      <stop offset="70%" stop-color="#E50914"/>
+      <stop offset="100%" stop-color="#B1060F"/>
+    </linearGradient>
+    <linearGradient id="diag-right" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#E50914"/>
+      <stop offset="60%" stop-color="#C80711"/>
+      <stop offset="100%" stop-color="#83050C"/>
+    </linearGradient>
+    <clipPath id="netflix-arc">
+      <path d="M 60,70 H 440 V 430 Q 250,405 60,430 Z"/>
+    </clipPath>
+  </defs>
+  <!-- the 500x500 artwork, its mark (x 90-410, y 70-430) scaled to 44 units tall and centered -->
+  <g transform="translate(54 54) scale(0.122) translate(-250 -250)">
+    <g clip-path="url(#netflix-arc)">
+      <rect x="90" y="60" width="70" height="380" fill="url(#pillar-grad)"/>
+      <rect x="340" y="60" width="70" height="380" fill="url(#pillar-grad)"/>
+      <polygon points="340,60 410,60 285,360 215,360" fill="url(#diag-right)" filter="url(#ribbon-shadow)"/>
+      <polygon points="90,60 160,60 285,360 215,360" fill="url(#diag-left)" filter="url(#ribbon-shadow)"/>
+    </g>
+  </g>
+</svg>

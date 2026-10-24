@@ -1,0 +1,8 @@
+{
+  "appId": "com.medanime.app",
+  "appName": "Medflix",
+  "webDir": "www",
+  "plugins": {
+    "CapacitorCookies": { "enabled": true }
+  }
+}

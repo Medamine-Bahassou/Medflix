@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Medflix</string>
+    <string name="title_activity_main">Medflix</string>
+    <string name="package_name">com.medanime.app</string>
+    <string name="custom_url_scheme">com.medanime.app</string>
+</resources>

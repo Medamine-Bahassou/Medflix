@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <!-- images.witanime.site rejects hotlinks: the Android app's https://localhost referer gets a 403 -->
+  <meta name="referrer" content="no-referrer">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https: data: medimg: file:; style-src 'self' 'unsafe-inline'; frame-src https:; media-src 'self' file: blob:">
+  <title>Medflix</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <nav id="nav">
+    <button type="button" class="nav-menu" id="dockMore" data-icon="menu" data-ta="more"></button>
+    <a href="#/" class="logo" data-icon="logo"></a>
+    <div class="links" id="links"></div>
+    <form id="search" class="search" data-icon="search">
+      <input name="q" type="search" enterkeyhint="search" data-tp="searchPh" placeholder=" " autocomplete="off">
+      <button type="button" class="search-clr" data-ta="clear" data-icon="x"></button>
+      <a href="#/filter/1" class="search-flt" data-ta="filter" data-icon="filter"></a>
+      <button type="button" class="search-x" data-t="cancel"></button>
+    </form>
+    <button type="button" class="search-btn" id="searchBtn" data-ta="searchPh" data-icon="search"></button>
+    <a href="#/settings" class="nav-gear" data-ta="settings" data-icon="settings"></a>
+    <div class="lang" id="lang"><button data-l="ar">ع</button><button data-l="en">EN</button></div>
+  </nav>
+  <main id="view"></main>
+  <div id="drawer-bg"></div>
+  <aside id="drawer"></aside>
+  <div id="toast"></div>
+  <script src="icons.js"></script>
+  <script src="mobile.js"></script>
+  <script src="scraper.js"></script>
+  <script src="filter.js"></script>
+  <script src="manga.js"></script>
+  <script src="cinema.js"></script>
+  <script src="build.js"></script> <!-- phones: when this APK was built (written by npm run build:web) -->
+  <script src="app.js"></script>
+</body>
+</html>

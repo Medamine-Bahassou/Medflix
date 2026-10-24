@@ -1,0 +1,20 @@
+{
+  "name": "medanime",
+  "productName": "MedAnime",
+  "version": "1.0.0",
+  "description": "Netflix-style desktop client for witanime.site",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron . 2>&1 | grep --line-buffered -v '^Fontconfig warning'",
+    "build:web": "rm -rf www && mkdir www && cp index.html icons.js app.js scraper.js mobile.js filter.js manga.js cinema.js style.css www/ && echo \"window.BUILD = '$(date '+%Y-%m-%d %H:%M')';\" > www/build.js",
+    "apk": "npm run build:web && cap sync android && cd android && ./gradlew assembleDebug && cp app/build/outputs/apk/debug/app-debug.apk ../MEDFLIX.apk"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/cli": "^8.5.3",
+    "electron": "^38.8.6"
+  },
+  "dependencies": {
+    "@capacitor/core": "^8.5.3"
+  }
+}
