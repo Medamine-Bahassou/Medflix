@@ -348,7 +348,8 @@ input:focus-visible, select:focus-visible { outline: none; }
 }
 
 /* ---------- pull to refresh ---------- */
-*, html, body { overscroll-behavior: none; } /* no stretch / glow at a scroll's ends, page and inner lists alike (nor a browser reload competing with pull to refresh) */
+html, body { overscroll-behavior: none; } /* no stretch / glow at the page's ends (nor a browser reload competing with pull to refresh) */
+* { overscroll-behavior-x: none; } /* nor at a row's ends; sideways only: up / down on a row of cards must still pass on to scroll the page */
 #ptr { position: fixed; z-index: 49; top: calc(env(safe-area-inset-top, 0px) + 16px); left: 50%; margin-left: -20px; width: 40px; height: 40px; border-radius: 50%; background: #242424; box-shadow: 0 4px 14px #000a; display: grid; place-items: center; opacity: 0; pointer-events: none; transition: transform .25s var(--ease), opacity .25s; } /* under the top bar (z 50), sliding out of it */
 #ptr.drag { transition: none; } /* follows the finger */
 #ptr svg { width: 24px; height: 24px; fill: none; stroke: #9a9a9a; stroke-width: 2.5; stroke-linecap: round; transform: rotate(-90deg); }
