@@ -242,6 +242,16 @@ if (!window.api && window.Capacitor) (() => {
     playerSnapshot: async () => '',
     onPlayerBack() {}, // Android's back button walks the hash history on its own
     openExternal: url => /^https:\/\//.test(url) && Downloader.openUrl({ url }), // window.open is refused (MainActivity)
+    // a newer APK on GitHub's latest release (npm run release tags it b + this build's stamp digits): its download link
+    async checkUpdate() {
+      const res = await Http.request({ url: 'https://api.github.com/repos/Medamine-Bahassou/Medflix/releases/latest', method: 'GET',
+        responseType: 'text', connectTimeout: 15e3, readTimeout: 15e3, headers: { 'User-Agent': UA, Accept: 'application/vnd.github+json' } });
+      if (res.status !== 200 || !window.BUILD) return null;
+      const r = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+      const url = r.assets?.find(a => a.name.endsWith('.apk'))?.browser_download_url;
+      // both 12 digits (yyyymmddhhmm): compared as strings
+      return url && r.tag_name.replace(/\D/g, '') > BUILD.replace(/\D/g, '') ? { tag: r.tag_name, url } : null;
+    },
     titleBar() {},
   };
 })();

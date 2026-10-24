@@ -21,7 +21,7 @@ const STR = {
     added: n => `تمت إضافة «\u2068${n}\u2069» إلى قائمتي`, hiddenN: n => `أُخفي «\u2068${n}\u2069»`, hiddenTitle: 'العناصر المخفية', hiddenHint: 'اضغط مطولاً على أي بطاقة لإخفائها من كل الصفحات. اضغط ✕ على العنصر هنا لإظهاره مجددًا.', unhide: 'إظهار مجددًا', noHidden: 'لا توجد عناصر مخفية', shown: 'سيظهر مجددًا',
     hideAnime: 'إخفاء هذا الأنمي', hideManga: 'إخفاء هذه المانجا', hideMovie: 'إخفاء هذا الفيلم', hideSeries: 'إخفاء هذا المسلسل', listAdd: 'إضافة إلى قائمتي', listRemove: 'إزالة من قائمتي', openHidden: n => `العناصر المخفية (${n})`, removed: 'تمت الإزالة من قائمتي', ep: 'الحلقة', epShort: 'ح', episode: 'الحلقة',
     nothing: 'لا يوجد شيء هنا', tryElse: 'جرّب شيئًا آخر.', unreachable: 'تعذّر الوصول إلى الموقع', retry: 'إعادة المحاولة',
-    continueWatching: 'تابع المشاهدة', refreshSite: 'تحديث من الموقع', refresh: 'تحديث', updated: 'تم التحديث',
+    continueWatching: 'تابع المشاهدة', refreshSite: 'تحديث من الموقع', refresh: 'تحديث', updated: 'تم التحديث', updateTitle: 'تحديث متوفر', updateText: 'يوجد إصدار أحدث من التطبيق. نزّله ثم افتح الملف لتثبيته فوق الإصدار الحالي، ستبقى بياناتك كما هي.', updateGo: 'تنزيل التحديث',
     play: 'تشغيل', moreInfo: 'المزيد', prev: 'السابق', next: 'التالي',
     results: q => `نتائج البحث عن «${q}»`, listEmpty: 'قائمتك فارغة', listHint: 'مرّر على أي عنوان واضغط + لحفظه هنا.',
     resume: e => `متابعة الحلقة ${e}`, inList: 'في قائمتي', trailer: 'الإعلان', episodes: 'الحلقات', jump: 'انتقل إلى حلقة…', moreLike: 'أعمال مشابهة',
@@ -54,7 +54,7 @@ const STR = {
     added: n => `Added “\u2068${n}\u2069” to My List`, hiddenN: n => `Hid “\u2068${n}\u2069”`, hiddenTitle: 'Hidden items', hiddenHint: 'Long-press any card to hide it from every page. Press ✕ on an item here to show it again.', unhide: 'Show again', noHidden: 'Nothing hidden', shown: 'It will show again',
     hideAnime: 'Hide this anime', hideManga: 'Hide this manga', hideMovie: 'Hide this movie', hideSeries: 'Hide this series', listAdd: 'Add to My List', listRemove: 'Remove from My List', openHidden: n => `Hidden items (${n})`, removed: 'Removed from My List', ep: 'EP', epShort: 'Ep', episode: 'Episode',
     nothing: 'Nothing here', tryElse: 'Try something else.', unreachable: "Couldn't reach the site", retry: 'Retry',
-    continueWatching: 'Continue Watching', refreshSite: 'Refresh from site', refresh: 'Refresh', updated: 'Updated',
+    continueWatching: 'Continue Watching', refreshSite: 'Refresh from site', refresh: 'Refresh', updated: 'Updated', updateTitle: 'Update available', updateText: 'A newer version of the app is out. Download it, then open the file to install it over this one; your data stays.', updateGo: 'Download update',
     play: 'Play', moreInfo: 'More Info', prev: 'Prev', next: 'Next',
     results: q => `Results for “${q}”`, listEmpty: 'Your list is empty', listHint: 'Hover any title and press + to save it here.',
     resume: e => `Resume Ep ${e}`, inList: 'In My List', trailer: 'Trailer', episodes: 'Episodes', jump: 'Jump to ep…', moreLike: 'More Like This',
@@ -215,6 +215,21 @@ function storageSheet() {
     const a = e.target.closest('[data-a]')?.dataset.a;
     if (a === 'allow') api.requestStorage();
     if (a || e.target === w || e.target.closest('.sheet-x')) { store.prefs.storageAsked = 1; persist('prefs'); closeSheet(); }
+  };
+}
+// phones: a newer APK on GitHub (api.checkUpdate) — the system browser downloads it, tapping it installs over this one
+function updateSheet(u) {
+  const w = document.createElement('div');
+  w.className = 'sheet-wrap';
+  w.innerHTML = `<div class="sheet"><div class="sheet-head"><b>${t('updateTitle')}</b><button class="sheet-x" type="button" aria-label="${t('close')}">${ICON.x}</button></div>
+    <p class="sheet-text">${t('updateText')} <span dir="ltr">(${esc(u.tag)})</span></p>
+    <div class="sheet-foot"><button class="btn ghost" type="button" data-a="later">${t('later')}</button><button class="btn red" type="button" data-a="go">${t('updateGo')}</button></div></div>`;
+  document.body.append(w);
+  requestAnimationFrame(() => w.classList.add('open'));
+  w.onclick = e => {
+    const a = e.target.closest('[data-a]')?.dataset.a;
+    if (a === 'go') api.openExternal(u.url);
+    if (a || e.target === w || e.target.closest('.sheet-x')) closeSheet();
   };
 }
 
@@ -503,9 +518,11 @@ function heroPage(hero, rows, refresh) {
   if (!hero.length) $('.hero').style.height = '120px';
   let cur = 0;
   const show = i => {
+    const was = cur;
     cur = (i + hero.length) % hero.length;
     const h = hero[cur];
-    document.querySelectorAll('.hero .slide').forEach((s, j) => s.classList.toggle('on', j === cur));
+    // the one leaving keeps its zoom going while it fades (dropping it snapped the picture back mid-fade: a flicker)
+    document.querySelectorAll('.hero .slide').forEach((s, j) => { s.classList.toggle('on', j === cur); s.classList.toggle('out', j === was && j !== cur); });
     document.querySelectorAll('.dots i').forEach((s, j) => s.classList.toggle('on', j === cur));
     $('.hero .info').innerHTML = `<h2>${esc(h.title)}</h2><p dir="auto">${esc(h.desc)}</p>
       <div class="actions">${h.play ? `<a class="btn play" href="${esc(h.play)}">${ICON.play} ${t('play')}</a>` : ''}
@@ -1515,5 +1532,7 @@ addEventListener('hashchange', () => route()); // not `route` directly: the even
   route(); // saved copies show instantly; scraper re-checks the site and redraws on changes
   pumpDownloads(); // what was still queued from last time
   const s = await checkStorage();
-  if (s && !s.granted && !store.prefs.storageAsked) storageSheet();
+  if (s && !s.granted && !store.prefs.storageAsked) return storageSheet(); // one sheet at a time: the update asks next launch
+  const u = await api.checkUpdate?.().catch(() => null);
+  if (u) updateSheet(u);
 })();
