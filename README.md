@@ -1,4 +1,8 @@
-# Medflix
+<p align="center">
+  <img src="assets/icon-svg.svg" alt="Medflix logo" width="160">
+</p>
+
+<h1 align="center">Medflix</h1>
 
 Netflix-style client for Arabic anime, manga and movies, as an Electron desktop app and a Capacitor Android app.
 
