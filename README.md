@@ -2,10 +2,8 @@
 
 Netflix-style client for Arabic anime, manga and movies, as an Electron desktop app and a Capacitor Android app.
 
-- **Anime** — witanime.site, with backup servers from animerco
-- **Manga** — MeshManga (appswat.com) and MangaTek
-- **Movies & series** — ArabSeed / MySeed, with MyCima and WeCima as backups
-- Airing schedule (animeschedule.net), filters, search with title suggestions, offline cache
+- Anime, manga, and movies & series sections
+- Airing schedule, filters, search with title suggestions, offline cache
 
 ## Run (desktop)
 
@@ -29,7 +27,7 @@ npm run apk   # outputs MEDFLIX.apk
 | `main.js`, `preload.js` | Electron main process and preload API |
 | `mobile.js` | Capacitor stand-in for the preload API on Android |
 | `index.html`, `app.js`, `style.css`, `icons.js` | UI and routing |
-| `scraper.js` | witanime HTML parser |
+| `scraper.js` | HTML parser |
 | `filter.js`, `manga.js`, `cinema.js` | Filter page, manga and movies sections |
 | `selftest.js` | Live scraper check: `npx electron selftest.js` |
 | `assets/` | App icons |
