@@ -252,6 +252,11 @@ if (!window.api && window.Capacitor) (() => {
       // both 12 digits (yyyymmddhhmm): compared as strings
       return url && r.tag_name.replace(/\D/g, '') > BUILD.replace(/\D/g, '') ? { tag: r.tag_name, url } : null;
     },
+    // that APK, downloaded by the app (onPct: 0-100, or -1 when the size is unknown), then Android's installer on it
+    async installUpdate(url, onPct) {
+      const l = await Downloader.addListener('updateProgress', e => onPct(e.pct));
+      try { await Downloader.installUpdate({ url }); } finally { l.remove(); }
+    },
     titleBar() {},
   };
 })();

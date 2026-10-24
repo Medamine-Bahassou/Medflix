@@ -535,9 +535,9 @@ html, body { overscroll-behavior-y: none; } /* no WebView stretch / glow (or bro
 .reader.locked .rd-unlock { display: grid; }
 .rd-unlock:active { opacity: 1; }
 .rd-unlock svg { width: 22px; height: 22px; }
-/* scrollbar (vertical mode, phones): a thumb to drag through the chapter, between the bars */
-.rd-scroll { position: fixed; z-index: 11; right: 0; top: calc(env(safe-area-inset-top, 0px) + 64px); bottom: calc(env(safe-area-inset-bottom, 0px) + 76px); width: 26px; touch-action: none; }
-.rd-scroll i { position: absolute; right: 4px; top: calc(var(--sp, 0) * (100% - 44px)); width: 5px; height: 44px; border-radius: 3px; background: var(--red); opacity: 0; transition: width .15s, opacity .3s; }
+/* scrollbar (vertical mode, phones): a thumb to drag through the chapter, between the bars, on the left edge */
+.rd-scroll { position: fixed; z-index: 11; left: 0; top: calc(env(safe-area-inset-top, 0px) + 64px); bottom: calc(env(safe-area-inset-bottom, 0px) + 76px); width: 26px; touch-action: none; }
+.rd-scroll i { position: absolute; left: 4px; top: calc(var(--sp, 0) * (100% - 44px)); width: 5px; height: 44px; border-radius: 3px; background: var(--red); opacity: 0; transition: width .15s, opacity .3s; }
 .reader.scrolling .rd-scroll i { opacity: .75; }
 .reader:not(.scrolling) .rd-scroll { pointer-events: none; } /* hidden: a tap at the edge doesn't jump the chapter */
 .reader .rd-scroll:active i { width: 8px; opacity: 1; }

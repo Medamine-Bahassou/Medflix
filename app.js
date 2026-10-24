@@ -21,7 +21,7 @@ const STR = {
     added: n => `تمت إضافة «\u2068${n}\u2069» إلى قائمتي`, hiddenN: n => `أُخفي «\u2068${n}\u2069»`, hiddenTitle: 'العناصر المخفية', hiddenHint: 'اضغط مطولاً على أي بطاقة لإخفائها من كل الصفحات. اضغط ✕ على العنصر هنا لإظهاره مجددًا.', unhide: 'إظهار مجددًا', noHidden: 'لا توجد عناصر مخفية', shown: 'سيظهر مجددًا',
     hideAnime: 'إخفاء هذا الأنمي', hideManga: 'إخفاء هذه المانجا', hideMovie: 'إخفاء هذا الفيلم', hideSeries: 'إخفاء هذا المسلسل', listAdd: 'إضافة إلى قائمتي', listRemove: 'إزالة من قائمتي', openHidden: n => `العناصر المخفية (${n})`, removed: 'تمت الإزالة من قائمتي', ep: 'الحلقة', epShort: 'ح', episode: 'الحلقة',
     nothing: 'لا يوجد شيء هنا', tryElse: 'جرّب شيئًا آخر.', unreachable: 'تعذّر الوصول إلى الموقع', retry: 'إعادة المحاولة',
-    continueWatching: 'تابع المشاهدة', refreshSite: 'تحديث من الموقع', refresh: 'تحديث', updated: 'تم التحديث', updateTitle: 'تحديث متوفر', updateText: 'يوجد إصدار أحدث من التطبيق. نزّله ثم افتح الملف لتثبيته فوق الإصدار الحالي، ستبقى بياناتك كما هي.', updateGo: 'تنزيل التحديث',
+    continueWatching: 'تابع المشاهدة', refreshSite: 'تحديث من الموقع', refresh: 'تحديث', updated: 'تم التحديث', updateTitle: 'تحديث متوفر', updateText: 'يوجد إصدار أحدث من التطبيق. حدّثه الآن، ستبقى بياناتك كما هي.', updateGo: 'تحديث الآن', updateGetting: 'جارٍ التنزيل', updateAllow: 'اسمح للتطبيق بتثبيت التحديثات، ثم اضغط تحديث الآن مرة أخرى', updateFailed: 'تعذّر التحديث، يتم التنزيل من المتصفح',
     play: 'تشغيل', moreInfo: 'المزيد', prev: 'السابق', next: 'التالي',
     results: q => `نتائج البحث عن «${q}»`, listEmpty: 'قائمتك فارغة', listHint: 'مرّر على أي عنوان واضغط + لحفظه هنا.',
     resume: e => `متابعة الحلقة ${e}`, inList: 'في قائمتي', trailer: 'الإعلان', episodes: 'الحلقات', jump: 'انتقل إلى حلقة…', moreLike: 'أعمال مشابهة',
@@ -54,7 +54,7 @@ const STR = {
     added: n => `Added “\u2068${n}\u2069” to My List`, hiddenN: n => `Hid “\u2068${n}\u2069”`, hiddenTitle: 'Hidden items', hiddenHint: 'Long-press any card to hide it from every page. Press ✕ on an item here to show it again.', unhide: 'Show again', noHidden: 'Nothing hidden', shown: 'It will show again',
     hideAnime: 'Hide this anime', hideManga: 'Hide this manga', hideMovie: 'Hide this movie', hideSeries: 'Hide this series', listAdd: 'Add to My List', listRemove: 'Remove from My List', openHidden: n => `Hidden items (${n})`, removed: 'Removed from My List', ep: 'EP', epShort: 'Ep', episode: 'Episode',
     nothing: 'Nothing here', tryElse: 'Try something else.', unreachable: "Couldn't reach the site", retry: 'Retry',
-    continueWatching: 'Continue Watching', refreshSite: 'Refresh from site', refresh: 'Refresh', updated: 'Updated', updateTitle: 'Update available', updateText: 'A newer version of the app is out. Download it, then open the file to install it over this one; your data stays.', updateGo: 'Download update',
+    continueWatching: 'Continue Watching', refreshSite: 'Refresh from site', refresh: 'Refresh', updated: 'Updated', updateTitle: 'Update available', updateText: 'A newer version of the app is out. Update now; your data stays.', updateGo: 'Update now', updateGetting: 'Downloading', updateAllow: 'Allow the app to install updates, then tap Update now again', updateFailed: 'Update failed, downloading in the browser instead',
     play: 'Play', moreInfo: 'More Info', prev: 'Prev', next: 'Next',
     results: q => `Results for “${q}”`, listEmpty: 'Your list is empty', listHint: 'Hover any title and press + to save it here.',
     resume: e => `Resume Ep ${e}`, inList: 'In My List', trailer: 'Trailer', episodes: 'Episodes', jump: 'Jump to ep…', moreLike: 'More Like This',
@@ -227,9 +227,17 @@ function updateSheet(u) {
   document.body.append(w);
   requestAnimationFrame(() => w.classList.add('open'));
   w.onclick = e => {
-    const a = e.target.closest('[data-a]')?.dataset.a;
-    if (a === 'go') api.openExternal(u.url);
-    if (a || e.target === w || e.target.closest('.sheet-x')) closeSheet();
+    const a = e.target.closest('[data-a]')?.dataset.a, go = w.querySelector('[data-a="go"]');
+    if (a === 'go' && !go.disabled) {
+      go.disabled = true;
+      api.installUpdate(u.url, pct => { go.textContent = t('updateGetting') + (pct >= 0 ? ` ${pct}%` : '…'); })
+        .then(closeSheet, err => {
+          go.disabled = false; go.textContent = t('updateGo');
+          if (/allow installs/.test(err.message)) return toast(t('updateAllow')); // Android's settings page opened for it
+          toast(t('updateFailed'), true); api.openExternal(u.url); // the browser downloads it instead
+        });
+    }
+    if (a !== 'go' && (a || e.target === w || e.target.closest('.sheet-x'))) closeSheet(); // closing mid-download: Android's installer still opens
   };
 }
 

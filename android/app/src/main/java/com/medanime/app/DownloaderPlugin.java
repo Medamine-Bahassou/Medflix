@@ -21,6 +21,7 @@ import android.os.Build;
 import android.os.Environment;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -478,6 +479,55 @@ public class DownloaderPlugin extends Plugin {
         } catch (Exception e) {
             call.reject("no browser");
         }
+    }
+
+    /** the app's own update (api.checkUpdate, mobile.js): the release's APK into the cache, then Android's installer on it */
+    @PluginMethod
+    public void installUpdate(PluginCall call) {
+        String url = call.getString("url", "");
+        if (!url.startsWith("https://github.com/Medamine-Bahassou/Medflix/releases/download/")) { // only ever our own releases
+            call.reject("bad url");
+            return;
+        }
+        // Android asks once to allow installs from this app: its settings page opens, then the update is tapped again
+        if (Build.VERSION.SDK_INT >= 26 && !getContext().getPackageManager().canRequestPackageInstalls()) {
+            getActivity().startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getContext().getPackageName())));
+            call.reject("allow installs");
+            return;
+        }
+        new Thread(() -> {
+            File apk = new File(getContext().getCacheDir(), "update.apk");
+            try {
+                HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection(); // follows GitHub's redirect to its file host
+                c.setRequestProperty("User-Agent", UA);
+                c.setConnectTimeout(15000);
+                c.setReadTimeout(30000);
+                if (c.getResponseCode() != 200) throw new IOException("HTTP " + c.getResponseCode());
+                long size = c.getContentLengthLong(), got = 0;
+                int pct = -2;
+                try (InputStream in = c.getInputStream(); OutputStream out = new FileOutputStream(apk)) {
+                    byte[] buf = new byte[64 * 1024];
+                    for (int n; (n = in.read(buf)) > 0; ) {
+                        out.write(buf, 0, n);
+                        got += n;
+                        int p = size > 0 ? (int) (got * 100 / size) : -1;
+                        if (p == pct) continue;
+                        pct = p;
+                        JSObject e = new JSObject();
+                        e.put("pct", p);
+                        notifyListeners("updateProgress", e);
+                    }
+                }
+                if (size > 0 && got != size) throw new IOException("cut off");
+                Uri uri = FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", apk);
+                getActivity().startActivity(new Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK));
+                call.resolve();
+            } catch (Exception e) {
+                apk.delete();
+                call.reject("update failed: " + e.getMessage());
+            }
+        }).start();
     }
 
     /** the WebView's own scrollbar on or off (the manga reader draws its own; CSS can't hide this one) */
