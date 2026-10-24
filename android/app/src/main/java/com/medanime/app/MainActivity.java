@@ -39,6 +39,7 @@ public class MainActivity extends BridgeActivity {
         } catch (Exception ignored) {}
 
         webView.getSettings().setSupportMultipleWindows(true); // window.open goes to onCreateWindow (refused), never this page
+        webView.setOverScrollMode(View.OVER_SCROLL_NEVER); // no Android stretch at a scroll's ends (see overscroll-behavior in style.css)
 
         // A player in another site's frame can't be reached from the page. This script, in every frame, plays / pauses its
         // video when the app's play button asks (a message passed down the frames), and tells the app when it plays or
