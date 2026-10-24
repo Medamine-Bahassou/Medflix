@@ -6,21 +6,28 @@
 // Routes: #/cinema, #/cinema/browse/<cat>, #/cinema/<slug>, #/cinema/<slug>/watch (an episode slug plays straight away)
 const ED = 'https://m.myseed.pics';
 const ECATS = [ // [id, listing path, ar, en]
-  ['all', '/movies/', 'أحدث الأفلام', 'Latest movies'],
+  ['all', '/recently/', 'أحدث الأفلام', 'Latest movies'], // everything just added, newest first: its films (see edList); /movies/ is a hub that opens on Arabic films
   ['english', '/category/foreign-movies/', 'أفلام أجنبية', 'Foreign movies'],
   ['arabic', '/category/arabic-movies/', 'أفلام عربية', 'Arabic movies'],
+  ['netflix', '/category/netflix/netflix-movies/', 'أفلام نتفليكس', 'Netflix movies'],
   ['asian', '/category/asian-movies/', 'أفلام آسيوية', 'Asian movies'],
   ['hindi', '/category/indian-movies/', 'أفلام هندية', 'Indian movies'],
   ['turkish', '/category/turkish-movies/', 'أفلام تركية', 'Turkish movies'],
   ['cartoon', '/category/animation-movies/', 'أفلام كرتون', 'Cartoon movies'],
   ['dubbed', '/category/dubbed-movies/', 'أفلام مدبلجة', 'Dubbed movies'],
-  ['docs', '/category/افلام-كلاسيكيه/', 'أفلام وثائقية', 'Documentaries'],
-  // series: category pages mix series, seasons and episodes (collapsed to one card per show, see edCards)
+  ['classic', '/category/افلام-كلاسيكيه/', 'أفلام كلاسيكية', 'Classic movies'],
+  // series: category pages list episodes, shown as their show (one card per show, opening its season; see edCards)
   ['series', '/series/', 'أحدث المسلسلات', 'Latest series'],
   ['english-series', '/category/foreign-series/', 'مسلسلات أجنبية', 'Foreign series'],
   ['arabic-series', '/category/arabic-series/', 'مسلسلات عربية', 'Arabic series'],
+  ['egyptian-series', '/category/مسلسلات-مصريه/', 'مسلسلات مصرية', 'Egyptian series'],
+  ['netflix-series', '/category/netflix/netflix-series/', 'مسلسلات نتفليكس', 'Netflix series'],
   ['turkish-series', '/category/turkish-series/', 'مسلسلات تركية', 'Turkish series'],
-  ['asian-series', '/category/مسلسلات-كوريه/', 'مسلسلات آسيوية', 'Asian series'],
+  ['asian-series', '/category/مسلسلات-كوريه/', 'مسلسلات كورية', 'Korean series'],
+  ['hindi-series', '/category/مسلسلات-هندية/', 'مسلسلات هندية', 'Indian series'],
+  ['cartoon-series', '/category/cartoon-series/', 'مسلسلات كرتون', 'Cartoon series'],
+  ['dubbed-series', '/category/dubbed-series/', 'مسلسلات مدبلجة', 'Dubbed series'],
+  ['ramadan', '/category/مسلسلات-رمضان/', 'مسلسلات رمضان', 'Ramadan series'],
   ['tv-shows', '/category/برامج-تلفزيونية/', 'برامج تلفزيونية', 'TV shows'],
 ];
 const eCat = id => ECATS.find(c => c[0] === id);
@@ -65,6 +72,8 @@ const edCards = root => {
     return !stem || !animeStems.has(stem);
   }).map(({ slug, cat, name, t, a }) => ({
     path: '/cinema/' + slug, type: 'cinema', ...t,
+    // an episode stands for its show: named as it, with the episode as a badge, and opening the show (see cinemaRoute)
+    ...(slug.startsWith('episode/') && { title: t.title.replace(/\s*الحلقة\s.*$/, '') || t.title, badge: name.match(/الحلقة\s+\d+/)?.[0] || '', href: edHref(slug) + '/show' }),
     poster: imgSrc(a.querySelector('img')),
     desc: txt(a.querySelector('.post__info p, .story')),
     rating: txt(a.querySelector('.post__ratings')).match(/^\d+(\.\d+)?$/)?.[0] || '',
@@ -81,7 +90,7 @@ const dubbed = items => items?.map(c => c.dub ? { ...c, badge: t('dubbed') } : c
 
 Object.assign(parsers, {
   edList: (doc, url) => ({ items: edCards(doc), // every block: some categories open with a (often empty) pinned one
-    pages: Math.max(/\/movies\/$/.test(url) ? 100 : 1, ...[...doc.querySelectorAll('a[href*="/page/"]')].map(a => +a.getAttribute('href').match(/\/page\/(\d+)/)?.[1] || 0)) }),
+    pages: Math.max(1, ...[...doc.querySelectorAll('a[href*="/page/"]')].map(a => +a.getAttribute('href').match(/\/page\/(\d+)/)?.[1] || 0)) }),
   edMovie(doc, url) {
     const selfSlug = url ? edSlug(url) : '';
     const field = (...labels) => [...doc.querySelectorAll('.LeftBox li, .info__area__ul > li')].find(l => labels.some(k => txt(l.querySelector('.title__kit span, span')).startsWith(k)));
@@ -92,7 +101,8 @@ Object.assign(parsers, {
       const s = edSlug(el.getAttribute('href') || el.dataset.url);
       return s && { path: '/cinema/' + s, type: 'cinema', title: txt(el), poster };
     }).filter((s, i, a) => s && a.findIndex(o => o?.path === s.path) === i);
-    const h1 = txt(doc.querySelector('h1.post__name, .singleTitle, h1'));
+    const h1 = txt(doc.querySelector('h1.post__name, .singleTitle'));
+    if (!h1) throw new Error('not a title page'); // an error page, or another site's (egydead's, whose menu once showed as the name): never cached
     return {
       ...edTitle(h1), dub: /مدبلج/.test(h1),
       origin: new URL(doc.querySelector('.bread__crumbs a[href^="http"], .breadcrumbs-single a[href^="http"]')?.getAttribute('href') || ED).origin, // the site's current domain
@@ -114,6 +124,7 @@ Object.assign(parsers, {
 // MegaMax and ArabSeed's redirectors (/vid/?id=, /vids.php?t=) wrap video hosts: unwrap to the direct embed URLs
 // and order known fast hosts first.
 const GOOD_HOSTS = ['myseed', 'vidmoly', 'vidara', 'earnvids', 'voe', 'dsvplay'];
+const DEAD_HOSTS = /(^|\.)(openload|oload|verystream|gounlimited|clipwatching|watchvideo|mystream|uptostream|streamango|rapidvideo|vidlox|vidoza)\./; // old films still list these long-gone hosts first
 const LAST_HOST = 'uqload'; // plays, but with ads: listed last and never picked by default
 const hostRank = h => h === LAST_HOST ? 100 : (r => r < 0 ? 99 : r)(GOOD_HOSTS.indexOf(h));
 const hostName = u => { try { return new URL(u).hostname.replace(/^www\./, '').split('.')[0]; } catch { return ''; } };
@@ -161,7 +172,7 @@ async function seedWatch(m, slug) {
     label: txt(li) || t('server'),
     quality: li.closest('[data-quality]')?.dataset.quality || li.dataset.quality || '',
     url: li.dataset.link || '',
-  })).filter(s => s.url);
+  })).filter(s => s.url && !DEAD_HOSTS.test(new URL(s.url, m.origin).hostname)); // gone hosts: not offered, nor unwrapped (MegaMax's lookup of one hangs till it times out)
   const servers = (await Promise.all(raw.map(s => unwrapServer(s, m.origin)))).flat().sort((a, b) => hostRank(a.label) - hostRank(b.label));
   const downloads = [
     ...[...doc.querySelectorAll('.donwload-servers-list li')].map(li => ({ label: txt(li.querySelector('.ser-name')), quality: txt(li.querySelector('.server-info')), url: li.querySelector('a.ser-link')?.getAttribute('href') || '' })),
@@ -178,9 +189,12 @@ async function seedWatch(m, slug) {
 // searched there and its servers and download links are offered after ArabSeed's, as backups.
 const MC = 'https://cima.my-cima.net';
 const mcKey = s => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+// the same name, or with the year matching, one name's words all in the other's (egydead's "Undisputed 4 Boyka" for "Boyka Undisputed")
 const sameFilm = (m, name) => {
-  const t = edTitle(name);
-  return /^(مشاهدة\s+)?فيلم\s/.test(name) && mcKey(t.title) === mcKey(m.title) && (!t.year || !m.year || t.year === m.year) && /مدبلج/.test(name) === !!m.dub;
+  const t = edTitle(name), a = mcKey(t.title).split(' '), b = mcKey(m.title).split(' ');
+  const [few, all] = a.length < b.length ? [a, new Set(b)] : [b, new Set(a)];
+  return /^(مشاهدة\s+)?فيلم\s/.test(name) && (!t.year || !m.year || t.year === m.year) && /مدبلج/.test(name) === !!m.dub
+    && (a.join(' ') === b.join(' ') || !!(t.year && m.year) && few.every(w => all.has(w)));
 };
 const backupServer = ref => url => ({ label: hostName(url), quality: '', url, ref, backup: true });
 async function mcWatch(m) {
@@ -204,9 +218,23 @@ async function wcWatch(m) {
     downloads: l.downloads.map(url => ({ label: hostName(url), quality: '', url })) };
 }
 
-// all three sites' links (remembered by edWatchSoon): a host already listed is not offered again by a later site
-async function edWatch(m, slug) {
-  const [a, ...b] = await Promise.allSettled([seedWatch(m, slug), ...(slug.includes('/') ? [] : [mcWatch(m), wcWatch(m)])]);
+// EgyDead (behind Cloudflare's check, which is shown when it asks): its watch page is laid out like ArabSeed's.
+// It hops domains: egydead.space sends on to the current one, where its links point
+const EGY = 'https://egydead.space';
+async function egyWatch(m) {
+  const hit = [...parse(await api.fetch(`${EGY}/?s=${encodeURIComponent(mcKey(m.title))}`)).querySelectorAll('.posts-list .movieItem a[href]')]
+    .find(a => sameFilm(m, a.getAttribute('title') || txt(a.querySelector('.BottomTitle'))));
+  if (!hit) return { servers: [], downloads: [] };
+  const u = new URL(hit.getAttribute('href')), w = await seedWatch({ origin: u.origin }, decodeURIComponent(u.pathname.replace(/^\/|\/$/g, '')));
+  return { servers: w.servers.map(s => ({ ...s, ref: u.origin + '/', backup: true })), downloads: w.downloads }; // its hosts want its page as the referrer
+}
+
+// all four sites' links (remembered by edWatchSoon): a host already listed is not offered again by a later site
+// early: handed the site's own links first, which the player shows while the other sites are still being asked
+async function edWatch(m, slug, early) {
+  const mine = seedWatch(m, slug);
+  early?.(mine);
+  const [a, ...b] = await Promise.allSettled([mine, ...(slug.includes('/') ? [] : [egyWatch(m), mcWatch(m), wcWatch(m)])]);
   b.forEach(r => r.reason && console.error(r.reason));
   const own = a.value || { servers: [], downloads: [] }, more = b.map(r => r.value).filter(Boolean);
   if (a.reason && !more.some(x => x.servers.length)) throw a.reason;
@@ -221,23 +249,29 @@ const watches = new Map(); // slug -> { at, promise }: one ask per few minutes
 const edWatchSoon = (m, slug) => {
   const key = '/cinema/' + slug, saved = store.streams[key], w = watches.get(slug);
   if (!(w && Date.now() - w.at < 10 * 60e3)) {
-    const promise = edWatch(m, slug).then(r => {
+    let early;
+    const promise = edWatch(m, slug, p => early = p).then(r => {
       if (r.servers.length) { store.streams[key] = { at: Date.now(), w: r }; persist('streams'); }
       return r;
     });
-    watches.set(slug, { at: Date.now(), promise });
+    watches.set(slug, { at: Date.now(), promise, early });
     promise.catch(() => watches.get(slug)?.promise === promise && watches.delete(slug));
   }
   return saved ? Promise.resolve(saved.w) : watches.get(slug).promise;
 };
 
-const edList = (id, page = 1, force) => load('edList', ED + (id === 'all' && page > 1 ? eCat('english')[1] : eCat(id)[1]) + (page > 1 ? `page/${page}/` : ''), force);
+const edList = (id, page = 1, force) => load('edList', ED + eCat(id)[1] + (page > 1 ? `page/${page}/` : ''), force)
+  .then(d => id === 'all' ? { ...d, items: d.items.filter(c => /^\/cinema\/فيلم-/.test(c.path)) } : d); // latest additions: the films only (not episodes, shows, wrestling)
 const edSearch = q => load('edList', `${ED}/find/?word=${encodeURIComponent(q)}`).then(d => dubbed(d.items));
 
 async function cinemaRoute(rest, force) {
   if (/^(serie|season|episode)$/.test(rest[0])) rest = [rest[0] + '/' + rest[1], ...rest.slice(2)];
   const [a, b] = rest;
   if (a === 'browse' && eCat(b)) return cinemaBrowse(b, force);
+  if (a?.startsWith('episode/') && b === 'show') { // an episode's card: its season (or show), where it was listed as the show
+    const m = await load('edMovie', edUrl(a), force);
+    return location.replace(edHref(m.up || a));
+  }
   if (a && (b === 'watch' || a.startsWith('episode/'))) return cinemaPlay(a);
   if (a) return cinemaTitle(a, force);
   return cinemaHome(force);
@@ -360,9 +394,22 @@ async function cinemaPlay(slug) {
 
   const here = () => [`#/cinema/${slug}/watch`, ep && `#/cinema/${slug}`].includes(decodeURIComponent(location.hash));
   let w = { servers: [], downloads: [] }, why = ''; // why: what refused it, shown under "no servers"
-  try { w = await watch; } catch (e) { console.error(e); why = noNames(e.message); }
+  // the saved answer, else the site's own servers once they're in (if any), else everything: the other sites (egydead's
+  // Cloudflare check can take a minute the first time) join the menu when they answer
+  const { promise: fresh, early } = watches.get(slug) || {};
+  try { w = await (early ? Promise.race([watch, early.then(r => r.servers.length ? r : watch, () => watch)]) : watch); } catch (e) { console.error(e); why = noNames(e.message); }
   if (next) edWatchSoon(m, next.slug).catch(() => {});
   if (!here()) return;
+  // the menu takes the full answer when it comes (servers gone, or the other sites'), the video playing on
+  let more = !!fresh; // still asking: said at the end of the menu
+  fresh?.then(f => {
+    const urls = l => l.servers.map(s => s.url).join(' ');
+    if (!here() || !f.servers.length || urls(f) === urls(w)) return;
+    const had = w.servers.length;
+    w = f; cur = w.servers.find(s => s.url === cur?.url) || cur;
+    had ? draw() : route(); // "no servers" showing: drawn again with them
+    drawDl();
+  }, () => {}).finally(() => { more = false; here() && w.servers.length && draw(); });
   const draw = () => {
     srv.className = 'dd ' + (cur ? 'live' : 'idle') + (srv.classList.contains('open') ? ' open' : '');
     srv.querySelector('.lbl').innerHTML = cur ? `${esc(cur.label)}${cur.quality ? `<small>${esc(cur.quality)}</small>` : ''}` : t('chooseServer');
@@ -373,7 +420,7 @@ async function cinemaPlay(slug) {
       const g = w.servers.map((s, i) => [s, i]).filter(([s]) => grp(s) === q);
       return `<div class="dd-group">${esc(q)}<small>${g.length}</small></div>`
         + g.map(([s, i]) => `<button class="dd-item ${s === cur ? 'on' : ''}" data-i="${i}"><span class="host">${esc(s.label)}</span>${s.quality ? `<span class="q" data-q="${esc(s.quality)}">${esc(s.quality)}</span>` : ''}${CHECK}</button>`).join('');
-    }).join('');
+    }).join('') + (more ? `<div class="dd-group">${t('searchingServers')}</div>` : '');
   };
   const pick = async i => {
     const s = cur = w.servers[i]; draw();
@@ -386,9 +433,10 @@ async function cinemaPlay(slug) {
   srv.querySelector('.dd-btn').onclick = () => srv.classList.contains('open') ? closeMenu(srv) : openMenu(srv);
   srv.querySelector('.dd-menu').onclick = e => { const b = e.target.closest('.dd-item'); if (b) { closeMenu(); pick(+b.dataset.i); } };
   // downloads are on third-party hosts: they open in the browser
-  dlm.querySelector('.dd-menu').innerHTML = w.downloads.length
+  const drawDl = () => dlm.querySelector('.dd-menu').innerHTML = w.downloads.length
     ? w.downloads.map((d, i) => `<button class="dd-item" data-i="${i}"><span class="host">${esc(d.label)}</span>${d.quality ? `<span class="q">${esc(d.quality)}</span>` : ''}<span class="tag">${ICON.external} ${t('browser')}</span></button>`).join('')
     : `<div class="dd-group">${t('dlNone')}</div>`;
+  drawDl();
   dlm.querySelector('.dd-btn').onclick = () => dlm.classList.contains('open') ? closeMenu(dlm) : openMenu(dlm);
   dlm.querySelector('.dd-menu').onclick = e => { const b = e.target.closest('.dd-item'); if (b) { closeMenu(); api.openExternal(w.downloads[b.dataset.i].url); toast(t('openedBrowser')); } };
   if (!w.servers.length) {

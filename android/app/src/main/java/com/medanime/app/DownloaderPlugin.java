@@ -170,6 +170,11 @@ public class DownloaderPlugin extends Plugin {
             if (Build.VERSION.SDK_INT >= 26) view.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false);
             view.getSettings().setJavaScriptEnabled(true);
             view.getSettings().setDomStorageEnabled(true);
+            // lay the check out like Chrome does (its viewport meta, fit to width) and ignore the phone's font size: the page
+            // loads while the view is 1px, and without these it came up zoomed in once shown full screen
+            view.getSettings().setUseWideViewPort(true);
+            view.getSettings().setLoadWithOverviewMode(true);
+            view.getSettings().setTextZoom(100);
             CookieManager.getInstance().setAcceptThirdPartyCookies(view, true); // Cloudflare's checkbox is a challenges.cloudflare.com frame
             view.setBackgroundColor(Color.BLACK);
             view.setWebViewClient(

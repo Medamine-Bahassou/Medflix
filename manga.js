@@ -509,15 +509,16 @@ function readerZoom(box, horiz) {
   zbox.addEventListener('touchend', e => { if (e.touches.length < 2) d0 = 0; });
   // desktop
   zbox.addEventListener('wheel', e => { if (e.ctrlKey) { e.preventDefault(); set(z * (e.deltaY < 0 ? 1.15 : 1 / 1.15), e.clientX, e.clientY); } }, { passive: false });
-  // taps: double = zoom, single = bars
+  // taps: double = zoom, single in the middle 70% = bars (taps on the edges are left alone so reading isn't interrupted)
   let last = 0, tapT;
+  const inMid = (v, max) => v > max * .15 && v < max * .85;
   box.onclick = e => {
     if (Date.now() - last < 300) {
       clearTimeout(tapT); last = 0;
       return set(z > 1 ? 1 : 2.5, e.clientX, e.clientY);
     }
     last = Date.now();
-    tapT = setTimeout(() => reader.classList.toggle('hide-ui'), 300);
+    if (inMid(e.clientX, innerWidth) && inMid(e.clientY, innerHeight)) tapT = setTimeout(() => reader.classList.toggle('hide-ui'), 300);
   };
 }
 
@@ -533,11 +534,11 @@ const lockedBack = () => {
   return true;
 };
 
-// reading: the header slides away while scrolling down and comes back on any scroll up
+// reading: the bars slide away on any scroll past the top and come back only on a center tap
 let readerY = 0, readerSave, readerPos, rdLocked = false, sbIdle;
 addEventListener('scroll', () => {
   const r = document.querySelector('.reader');
-  if (r) r.classList.toggle('hide-ui', scrollY > readerY && scrollY > 80);
+  if (r && scrollY !== readerY) r.classList.toggle('hide-ui', scrollY > 80);
   r?.style.setProperty('--sp', scrollY / Math.max(1, document.documentElement.scrollHeight - innerHeight)); // scrollbar thumb
   if (r) { r.classList.add('scrolling'); clearTimeout(sbIdle); sbIdle = setTimeout(() => r.classList.remove('scrolling'), 1500); } // the thumb fades once scrolling stops
   readerY = scrollY;

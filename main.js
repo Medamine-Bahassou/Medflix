@@ -42,10 +42,10 @@ ipcMain.handle('db:set', (_, key, value) => { db[key] = value; save(); });
 // rather than failing the page or skipping a server that would have worked.
 // Refused by Cloudflare's check (egydead puts its whole site behind it): pass it once (passCheck), then ask again.
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-async function retry429(send, origin = SITE) {
+async function retry429(send, origin = SITE, page = origin + '/') {
   for (let i = 0, checked = false; ; i++) {
     const res = await send();
-    if (res.headers.get('cf-mitigated') === 'challenge' && !checked && !refused.has(siteKey(origin))) { checked = true; i--; await passCheck(origin).catch(() => {}); continue; }
+    if (res.headers.get('cf-mitigated') === 'challenge' && !checked && !refused.has(siteKey(origin))) { checked = true; i--; await passCheck(origin, page).catch(() => {}); continue; }
     if (res.status !== 429 || i === 3) return res;
     await sleep((+res.headers.get('retry-after') || 2 ** i) * 1000);
   }
@@ -53,25 +53,27 @@ async function retry429(send, origin = SITE) {
 // Cloudflare's check runs only in a page: the site's home opens in a window of the app's own session (same user agent,
 // same cookies), shown if the check doesn't clear by itself so its box can be ticked. Its clearance cookie then lets
 // the app's requests through. Resolves once the site's own page loads.
-// Cloudflare may refuse this browser outright (egydead's check does: it reloads itself with a 403 over and over, ticked
-// or not): after the check itself and 2 such reloads, or the window closed, that site isn't checked again this run and its requests just fail.
-// egydead's check is run unseen (a window there was never any use, and it sat on screen as long as the check looped), and
-// given up after 20s; any other one after 2 minutes, so no check window stays up for good.
+// It stays up until passed, closed, or 2 minutes go by, whatever it reloads meanwhile: egydead's re-asks its box every
+// ~30s until it's ticked. Not passed: that site isn't checked again this run and its requests just fail.
 const siteKey = origin => EGYDEAD.test(origin) ? 'egydead' : origin; // egydead hops between domains: one check for all
-const UNSEEN = new Set(['egydead']);
 const checks = {}, refused = new Set([WC]);
-const passCheck = origin => checks[siteKey(origin)] ||= new Promise((ok, fail) => {
+// page: the refused page itself (egydead's home isn't behind the check, so passing there clears nothing)
+const passCheck = (origin, page) => checks[siteKey(origin)] ||= new Promise((ok, fail) => {
   const key = siteKey(origin);
   const w = new BrowserWindow({ width: 560, height: 680, show: false, title: 'Cloudflare', autoHideMenuBar: true, backgroundColor: '#000000',
     parent: BrowserWindow.getAllWindows().find(b => !b.getParentWindow()) });
-  let over = false, refusals = 0;
-  const done = settle => { if (over) return; over = true; delete checks[key]; clearTimeout(reveal); clearTimeout(limit); settle(); if (!w.isDestroyed()) w.destroy(); };
+  let over = false;
+  const done = settle => {
+    if (over) return; over = true; delete checks[key]; clearTimeout(reveal); clearTimeout(limit); settle();
+    if (w.isDestroyed()) return;
+    if (key === 'egydead' && settle === ok) { w.hide(); edWin?.isDestroyed() || edWin?.destroy(); edWin = w; } else w.destroy(); // kept: egydead's requests are made from it
+  };
   const give = () => done(() => { refused.add(key); fail(new Error('Cloudflare check not passed')); });
-  const reveal = !UNSEEN.has(key) && setTimeout(() => !w.isDestroyed() && w.show(), 1500);
-  const limit = setTimeout(give, UNSEEN.has(key) ? 20e3 : 120e3);
-  w.webContents.on('did-navigate', (_, url, code) => code < 400 ? done(ok) : ++refusals > 2 && give()); // the check reloads the page once passed
+  const reveal = setTimeout(() => !w.isDestroyed() && w.show(), 1500);
+  const limit = setTimeout(give, 120e3);
+  w.webContents.on('did-navigate', (_, url, code) => code < 400 && done(ok)); // the check reloads the page once passed
   w.on('closed', give);
-  w.loadURL(origin + '/').catch(() => {});
+  w.loadURL(page).catch(() => {});
 });
 
 // Only ever fetch pages of the scraped site (renderer is not trusted to hit arbitrary URLs).
@@ -81,11 +83,30 @@ ipcMain.handle('fetch', async (_, url, form) => {
   if (![SITE, AR, MANGA, AS, MC, WC, ...TEK, ...SUGGEST].includes(u.origin) && !EGYDEAD.test(u.origin)) throw new Error('blocked: ' + u.origin);
   const headers = { 'User-Agent': UA, 'Accept-Language': 'ar,en;q=0.8', ...(u.origin === WC && { Referer: WC + '/' }) };
   if (u.pathname === '/new-episodes') return pagerFetch(u.href, headers);
+  if (/(^|\.)egydead\./.test(u.hostname)) return edFetch(u);
   const opts = form ? { method: 'POST', body: new URLSearchParams(form).toString(), headers: { ...headers, 'Content-Type': 'application/x-www-form-urlencoded' } } : { headers };
-  const res = await retry429(() => session.defaultSession.fetch(u.href, opts), u.origin);
+  const res = await retry429(() => session.defaultSession.fetch(u.href, opts), u.origin, form ? u.origin + '/' : u.href); // a form's page can't be opened: its site's home
   if (!res.ok) throw new Error(`HTTP ${res.status} ${u.pathname}${res.headers.get('cf-mitigated') ? ' · Cloudflare check' : ''}`);
   return res.text();
 });
+// egydead refuses the app's own requests even once its check is passed (with its cookie, same user agent): only its
+// page's go through. So they're made from inside its page, the check's window kept hidden on the site (as on Android).
+// It hops domains: asked on the domain that window landed on
+let edWin = null;
+async function edFetch(u) {
+  for (let checked = false; ; checked = true) {
+    if (!edWin || edWin.isDestroyed()) {
+      if (refused.has('egydead')) throw new Error(`HTTP 403 ${u.pathname} · Cloudflare check`);
+      await passCheck(u.origin, u.href).catch(() => {});
+      continue;
+    }
+    const at = new URL(edWin.webContents.getURL()).origin + u.pathname + u.search;
+    const [status, cf, text] = await edWin.webContents.executeJavaScript(`fetch(${JSON.stringify(at)}).then(async r => [r.status, r.headers.get('cf-mitigated'), await r.text()])`);
+    if (cf === 'challenge' && !checked) { edWin.destroy(); continue; } // its clearance ran out: the check again, shown
+    if (status >= 400) throw new Error(`HTTP ${status} ${u.pathname}${cf ? ' · Cloudflare check' : ''}`);
+    return text;
+  }
+}
 // egydead's MegaMax player only wraps other hosts. Its page lists their embeds when asked the way its own script
 // asks on play (an Inertia partial reload, which needs the page's version): { status, data: [{ label, mirrors: [{ driver, link }] }] }
 ipcMain.handle('mirrors', async (_, url) => {

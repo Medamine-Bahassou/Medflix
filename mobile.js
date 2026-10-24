@@ -37,9 +37,10 @@ if (!window.api && window.Capacitor) (() => {
   // egydead went behind Cloudflare's check too: once it refuses our native client there, egydead goes through its own
   // in-app page the same way. It hops domains (egydead.space redirects to the current one): the page sits on where it landed
   const ED_RE = /^https:\/\/([a-z0-9-]+\.)*(egydead|myseed|arabseed)\.[a-z]+\//;
-  let edPage = ''; // that origin, once
+  const edPage = {}; // site -> that origin, once (per site: myseed's requests must not go to where egydead landed)
+  const edSite = url => url.match(ED_RE)?.[2];
   const visited = {}; // site -> when its page was last opened for Cloudflare's check (refused again soon after: just fail)
-  const pageUrl = url => url.startsWith(SITE) ? viaPage && url : edPage && ED_RE.test(url) && edPage + url.replace(/^https:\/\/[^/]+/, '');
+  const pageUrl = url => url.startsWith(SITE) ? viaPage && url : edPage[edSite(url)] && edPage[edSite(url)] + url.replace(/^https:\/\/[^/]+/, '');
   const http = async (url, opt = {}, asPlayer = false) => {
     let res;
     const ua = url.startsWith(SITE) || asPlayer ? WV_UA : UA;
@@ -53,7 +54,7 @@ if (!window.api && window.Capacitor) (() => {
         viaPage = true; i--; continue;
       }
       if (!page && url.startsWith(SITE) && challenged(res)) { viaPage = true; i--; continue; } // this run: always through the page
-      if (!page && ED_RE.test(url) && cfCheck(res)) { edPage = new URL(res.url || url).origin; i--; continue; }
+      if (!page && ED_RE.test(url) && cfCheck(res)) { edPage[edSite(url)] = new URL(res.url || url).origin; i--; continue; }
       // refused in the in-app browser too: open the page itself there, full screen, once. Cloudflare's check can only be
       // passed that way (a script request can't), and it can be ticked. API calls and forms open the home page instead
       const site = new URL(page || url).origin;

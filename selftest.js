@@ -28,7 +28,7 @@ app.once('browser-window-created', (_, win) => win.webContents.once('did-finish-
       const mv = await scraper.details('/movie/chao', true);
       ok(mv.title && mv.episodes.some(e => e.path === '/watch/movie/chao'), 'movie details');
       const ec = await edList('all', 1, true);
-      ok(ec.items.length >= 15 && ec.pages > 50 && ec.items.every(i => i.title && i.poster && i.path.startsWith('/cinema/')), 'cinema list ' + ec.items.length + ' ' + ec.pages);
+      ok(ec.items.length >= 8 && ec.items.every(i => i.path.startsWith('/cinema/فيلم-')) && ec.pages > 50 && ec.items.every(i => i.title && i.poster && i.path.startsWith('/cinema/')), 'cinema list ' + ec.items.length + ' ' + ec.pages);
       ok((await edList('english', 2, true)).items.length >= 15, 'cinema page 2');
       const es = await edSearch('demon slayer');
       ok(!es.some(i => /demon slayer/i.test(i.title)), 'anime films filtered: ' + es.map(i => i.title));
@@ -38,6 +38,8 @@ app.once('browser-window-created', (_, win) => win.webContents.once('did-finish-
       ok(ew.servers.length && ew.servers.every(s => s.url.startsWith('https://')), 'cinema servers');
       ok((await myseedNow(em, slug)).includes('player-gateway.php'), 'myseed link');
       ok(!ew.servers.some(s => s.backup && ew.servers.some(o => o !== s && o.label === s.label)), 'cinema servers deduped');
+      const bslug = 'فيلم-boyka-undisputed-2016-مترجم', bw = await seedWatch(await load('edMovie', edUrl(bslug), true), bslug); // an old film: myseed still lists long-gone hosts
+      ok(bw.servers.length && !bw.servers.some(s => DEAD_HOSTS.test(new URL(s.url).hostname)), 'dead hosts dropped: ' + bw.servers.map(s => s.label));
       const mw = await mcWatch({ title: 'Camp Rock 3', year: '2026', dub: false });
       const ww = await wcWatch({ title: 'Weapons', year: '2025', dub: false });
       ok(ww.servers.length >= 3 && ww.servers.every(s => s.url.startsWith('https://') && s.backup) && ww.downloads.length, 'wecima film servers ' + ww.servers.map(s => s.label));
@@ -55,6 +57,8 @@ app.once('browser-window-created', (_, win) => win.webContents.once('did-finish-
       ok(sr.seasons.length >= 4 && ss.episodes.length > 10 && ss.episodes[0].n === '1' && ss.up === 'serie/مسلسل-المؤسس-عثمان', 'cinema series ' + sr.seasons.length + ' ' + ss.episodes.length);
       const sl = await edList('series', 1, true);
       ok(sl.items.length >= 15 && sl.items.every(i => i.path.startsWith('/cinema/serie/')), 'cinema series list');
+      const fe = (await edList('english-series', 1, true)).items.find(i => i.path.startsWith('/cinema/episode/')), fm = await load('edMovie', edUrl(fe.path.slice(8)), true);
+      ok(fe.href.endsWith('/show') && !/الحلقة/.test(fe.title) && ['season/', 'serie/'].some(d => fm.up.startsWith(d)), 'episode card opens its show: ' + fe.title + ' ' + fm.up);
       const tl = await load('mangaTekList', tUrl('manga', { sort: 'views', limit: 30 }), true);
       ok(tl.items.length === 30 && tl.items.every(i => i.title && i.poster && i.path.startsWith('/manga/series/t')), 'mangatek list');
       const solo = await mSeriesFull('t701', true); // Solo Leveling: on both sites, shown as MangaSwat's
