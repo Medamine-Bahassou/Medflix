@@ -42,49 +42,66 @@ public class DownloadService extends Service {
 
     static final Map<String, Item> active = new ConcurrentHashMap<>();
     // set by the page so the notification speaks the app's language
-    static volatile String labelActive = "Downloading", labelMany = "%d episodes", labelPreparing = "Preparing download…";
+    static volatile String labelActive = "Downloading", labelMany = "%d episodes", labelPreparing = "Preparing download…", labelPause = "Pause", labelCancel = "Cancel";
     static volatile boolean running;
     // the download queue (DownloaderPlugin.enqueue) still has work, a file downloading or one waiting its turn: stay up
     // between files too. Started from the background, Android 12+ refuses this service, and the next file would then stall
     static volatile boolean held;
     private static final Handler main = new Handler(Looper.getMainLooper());
+    private static DownloadService self;
+    private static boolean starting; // startForegroundService is in flight: onStartCommand must call startForeground before stopping
     // the screen going off lets the CPU and Wi-Fi sleep even with a foreground service: hold both while downloading
     private PowerManager.WakeLock cpu;
     private WifiManager.WifiLock wifi;
 
+    private static void onMain(Runnable r) {
+        if (Looper.myLooper() == Looper.getMainLooper()) r.run();
+        else main.post(r);
+    }
+
     static void start(Context c) {
-        if (Build.VERSION.SDK_INT >= 26) {
-            NotificationManager nm = c.getSystemService(NotificationManager.class);
-            NotificationChannel live = new NotificationChannel(CHANNEL, "Downloads", NotificationManager.IMPORTANCE_DEFAULT);
-            live.setSound(null, null);
-            live.enableVibration(false);
-            live.setShowBadge(false);
-            live.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
-            nm.createNotificationChannel(live);
-            nm.deleteNotificationChannel(OLD_CHANNEL); // the low-importance one before: not left in the app's settings
-            nm.createNotificationChannel(new NotificationChannel(DONE_CHANNEL, "Finished downloads", NotificationManager.IMPORTANCE_DEFAULT));
-        }
-        if (running) { // already foreground: Android 12+ refuses a new start while the app is in the background
-            update(c);
-            return;
-        }
-        try {
-            ContextCompat.startForegroundService(c, new Intent(c, DownloadService.class));
-        } catch (Exception e) {
-            // not allowed from the background: the download still runs, just without the service's protection
-        }
+        Context app = c.getApplicationContext();
+        onMain(() -> {
+            if (Build.VERSION.SDK_INT >= 26) {
+                NotificationManager nm = app.getSystemService(NotificationManager.class);
+                NotificationChannel live = new NotificationChannel(CHANNEL, "Downloads", NotificationManager.IMPORTANCE_DEFAULT);
+                live.setSound(null, null);
+                live.enableVibration(false);
+                live.setShowBadge(false);
+                live.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+                nm.createNotificationChannel(live);
+                nm.deleteNotificationChannel(OLD_CHANNEL); // the low-importance one before: not left in the app's settings
+                nm.createNotificationChannel(new NotificationChannel(DONE_CHANNEL, "Finished downloads", NotificationManager.IMPORTANCE_DEFAULT));
+            }
+            if (self != null) { // already foreground: Android 12+ refuses a new start while the app is in the background
+                update(app);
+                return;
+            }
+            if (starting) return;
+            try {
+                starting = true;
+                ContextCompat.startForegroundService(app, new Intent(app, DownloadService.class));
+            } catch (Exception e) {
+                starting = false; // not allowed from the background: the download still runs, just without the service's protection
+            }
+        });
     }
 
     /** refresh the ongoing notification after progress, or stop once nothing is downloading */
     static void update(Context c) {
-        if (active.isEmpty() && !held) {
-            // stay up a little: the page queues the next manga chapter as one finishes, maybe from the background
-            main.postDelayed(() -> {
-                if (active.isEmpty() && !held) c.stopService(new Intent(c, DownloadService.class));
-            }, 15000);
-            return;
-        }
-        notify(c, NOTIFICATION, progress(c));
+        Context app = c.getApplicationContext();
+        onMain(() -> {
+            if (active.isEmpty() && !held) {
+                if (self != null && !starting) {
+                    self.stopForeground(STOP_FOREGROUND_REMOVE);
+                    self.stopSelf();
+                    self = null;
+                    running = false;
+                }
+                return;
+            }
+            if (self != null) notify(app, NOTIFICATION, progress(app));
+        });
     }
 
     /** a separate, dismissable notification per finished (or failed) episode */
@@ -122,6 +139,8 @@ public class DownloadService extends Service {
             .setSubText(pct + "%")
             .setProgress(100, pct, total <= 0)
             .setContentIntent(openApp(c))
+            .addAction(0, labelPause, action(c, "pause", 1))
+            .addAction(0, labelCancel, action(c, "cancel", 2))
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setSilent(true)
@@ -129,6 +148,10 @@ public class DownloadService extends Service {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC) // its progress shown on the lock screen too
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE) // Android 12+ would hold it back up to 10s
             .build();
+    }
+
+    private static PendingIntent action(Context c, String act, int code) {
+        return PendingIntent.getService(c, code, new Intent(c, DownloadService.class).setAction(act), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
     }
 
     private static PendingIntent openApp(Context c) {
@@ -146,9 +169,21 @@ public class DownloadService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        starting = false;
+        self = this;
+        running = true;
         if (Build.VERSION.SDK_INT >= 29) startForeground(NOTIFICATION, progress(this), ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
         else startForeground(NOTIFICATION, progress(this));
-        running = true;
+        String act = intent != null ? intent.getAction() : null;
+        if ("pause".equals(act)) Downloads.INSTANCE.hold(null, true);
+        else if ("cancel".equals(act)) Downloads.INSTANCE.cancelRunning();
+        if (active.isEmpty() && !held) { // everything finished or was paused before the service got going
+            stopForeground(STOP_FOREGROUND_REMOVE);
+            stopSelf();
+            self = null;
+            running = false;
+            return START_NOT_STICKY;
+        }
         if (cpu == null) {
             cpu = getSystemService(PowerManager.class).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "medflix:downloads");
             cpu.acquire();
@@ -158,15 +193,15 @@ public class DownloadService extends Service {
             );
             wifi.acquire();
         }
-        if (active.isEmpty() && !held) stopSelf(); // everything finished before the service got going
         return START_NOT_STICKY;
     }
 
     @Override
     public void onDestroy() {
         running = false;
-        if (cpu != null) cpu.release();
-        if (wifi != null) wifi.release();
+        if (self == this) self = null;
+        if (cpu != null && cpu.isHeld()) cpu.release();
+        if (wifi != null && wifi.isHeld()) wifi.release();
         super.onDestroy();
     }
 

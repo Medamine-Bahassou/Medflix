@@ -13,7 +13,7 @@ import java.io.File
  */
 object Store {
     private lateinit var own: File
-    private val data = HashMap<String, JSONObject>()
+    private val data = java.util.concurrent.ConcurrentHashMap<String, JSONObject>()
     private val io = java.util.concurrent.Executors.newSingleThreadExecutor() // one write at a time: two never share the .tmp
     val version = mutableIntStateOf(0) // bumped on every change: screens reading the store redraw
 

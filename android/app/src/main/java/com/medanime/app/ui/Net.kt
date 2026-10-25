@@ -109,15 +109,24 @@ object Net {
             .apply { headers.forEach { (k, v) -> header(k, v) } }
             .apply { if (form != null) post(okhttp3.FormBody.Builder().apply { form.forEach { (k, v) -> add(k, v) } }.build()) else if (post) post(ByteArray(0).toRequestBody()) }.build() // form: MyCima's search
         val c = if (redirects) client else client.newBuilder().followRedirects(false).followSslRedirects(false).build()
-        c.newCall(req).execute().use { r ->
-            val body = r.body ?: return@use Resp(r.code, r.request.url.toString(), "", r.headers.toMap())
-            val text = if (stopAt.isEmpty()) body.string() else { // stop reading once it matches (an episode page is ~3MB; its csrf token is in <head>)
-                val re = Regex(stopAt); val src = body.source(); val sb = StringBuilder()
-                // ponytail: a chunk may end mid-character; only the ASCII token is read from it
-                while (!re.containsMatchIn(sb) && src.request(1)) sb.append(src.buffer.readUtf8())
-                sb.toString()
+        val call = c.newCall(req)
+        val reg = coroutineContext[kotlinx.coroutines.Job]?.invokeOnCompletion { if (it != null) call.cancel() } // abort socket on pause/back
+        try {
+            call.execute().use { r ->
+                val body = r.body ?: return@use Resp(r.code, r.request.url.toString(), "", r.headers.toMap())
+                val text = if (stopAt.isEmpty()) body.string() else { // stop reading once it matches (an episode page is ~3MB; its csrf token is in <head>)
+                    val re = Regex(stopAt); val src = body.source(); val sb = StringBuilder()
+                    // ponytail: a chunk may end mid-character; only the ASCII token is read from it
+                    while (!re.containsMatchIn(sb) && src.request(1)) sb.append(src.buffer.readUtf8())
+                    sb.toString()
+                }
+                Resp(r.code, r.request.url.toString(), text, r.headers.toMap())
             }
-            Resp(r.code, r.request.url.toString(), text, r.headers.toMap())
+        } catch (e: IOException) {
+            if (coroutineContext[kotlinx.coroutines.Job]?.isActive == false) throw kotlinx.coroutines.CancellationException()
+            throw e
+        } finally {
+            reg?.dispose()
         }
     }
 
@@ -137,7 +146,7 @@ class SitePage(private val origin: String) {
     private val lock = Mutex()
     private var ids = 0
 
-    private suspend fun eval(js: String) = suspendCoroutine { c -> view?.evaluateJavascript(js) { c.resume(it) } ?: c.resume("null") }
+    private suspend fun eval(js: String) = kotlinx.coroutines.suspendCancellableCoroutine { c -> view?.evaluateJavascript(js) { if (c.isActive) c.resume(it) } ?: c.resume("null") }
 
     private fun full(on: Boolean) {
         view?.layoutParams = if (on) FrameLayout.LayoutParams(-1, -1) else FrameLayout.LayoutParams(1, 1)
@@ -158,21 +167,25 @@ class SitePage(private val origin: String) {
             v.setBackgroundColor(Color.BLACK)
             v.webViewClient = object : WebViewClient() { // the page stays on its site: an ad can't take it away
                 override fun shouldOverrideUrlLoading(w: WebView, r: WebResourceRequest) = r.isForMainFrame && !r.url.toString().startsWith("$origin/")
+                override fun onRenderProcessGone(w: WebView, d: android.webkit.RenderProcessGoneDetail) = true.also { drop() }
             }
             (Net.activity.window.decorView as ViewGroup).addView(v, FrameLayout.LayoutParams(1, 1))
         }
         v.loadUrl(home)
         val start = System.currentTimeMillis()
-        while (true) { // robots.txt itself showing (plain text): through. Cloudflare's check is an HTML page in its place
-            delay(500)
-            if (view == null) throw IOException("check closed")
-            if (eval("location.href === ${JSONObject.quote(home)} && document.contentType === 'text/plain'") == "true") break
-            val waited = System.currentTimeMillis() - start
-            if (waited > 90_000) { drop(); throw IOException("challenge not passed") }
-            if (waited > 1500) full(true) // over the app, so a tap on its box can pass it
+        try {
+            while (true) { // robots.txt itself showing (plain text): through. Cloudflare's check is an HTML page in its place
+                delay(500)
+                if (view == null) throw IOException("check closed")
+                if (eval("location.href === ${JSONObject.quote(home)} && document.contentType === 'text/plain'") == "true") break
+                val waited = System.currentTimeMillis() - start
+                if (waited > 90_000) { drop(); throw IOException("challenge not passed") }
+                if (waited > 1500) full(true) // over the app, so a tap on its box can pass it
+            }
+            ready = true
+        } finally {
+            full(false) // never leave the full-screen WebView over the app when a request is cancelled
         }
-        full(false)
-        ready = true
     }
 
     fun dropIfChecking() { if (view != null && !ready) drop() }
