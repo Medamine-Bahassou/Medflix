@@ -70,7 +70,7 @@ public final class Cast {
     public static final class Options implements OptionsProvider {
         @Override
         public CastOptions getCastOptions(Context c) {
-            NotificationOptions n = new NotificationOptions.Builder().setTargetActivityClassName(MainActivity.class.getName()).build();
+            NotificationOptions n = new NotificationOptions.Builder().setTargetActivityClassName(com.medanime.app.ui.NativeActivity.class.getName()).build();
             return new CastOptions.Builder()
                 .setReceiverApplicationId(CastMediaControlIntent.DEFAULT_MEDIA_RECEIVER_APPLICATION_ID)
                 .setCastMediaOptions(new CastMediaOptions.Builder().setNotificationOptions(n).build())
@@ -89,7 +89,7 @@ public final class Cast {
 
     // ponytail: by address only (.m3u8/.mp4); a host whose links look like neither isn't caught, and an mp4 ad that
     // plays after the film started would be taken instead. Upgrade path: look at the responses' Content-Type.
-    static void sniff(WebResourceRequest r) {
+    public static void sniff(WebResourceRequest r) {
         String path = r.getUrl().getPath();
         if (path == null || !MEDIA.matcher(path).find()) return;
         String referer = null;
@@ -101,24 +101,42 @@ public final class Cast {
     }
 
     /** another server or episode in the player: forget the last one's video */
-    static void reset() {
+    public static void reset() {
         hls = video = null;
     }
 
-    /** cast { title, file?, at?, page? }: a downloaded file, else the video the player is playing; resolves once the TV plays it */
+    /** how a cast went: ok once the TV plays it (screen: the phone's own screen-cast picker opened instead), or why not */
+    public interface Done {
+        void ok(boolean screen);
+        void fail(String why);
+    }
+
+    /** the WebView app's plugin call, as before */
     static void start(Activity a, PluginCall call) {
-        String file = call.getString("file");
-        boolean mega = file == null && mega(call.getString("page"));
+        start(a, call.getString("title", ""), call.getString("file"), call.getDouble("at", 0.0), call.getString("page"), new Done() {
+            public void ok(boolean screen) {
+                if (!screen) { call.resolve(); return; }
+                JSObject r = new JSObject();
+                r.put("screen", true);
+                call.resolve(r);
+            }
+            public void fail(String why) { call.reject(why); }
+        });
+    }
+
+    /** a downloaded file, else the video the player is playing (page: the player's address, for MEGA's) */
+    public static void start(Activity a, String title, String file, double atSeconds, String page, Done done) {
+        boolean mega = file == null && mega(page);
         String[] m = file != null || mega ? null : hls != null ? hls : video;
         if (m == null && file == null && !mega) {
-            call.reject("no video");
+            done.fail("no video");
             return;
         }
         CastContext cc;
         try {
             cc = CastContext.getSharedInstance(a);
         } catch (Exception e) { // no Google Play services: mirror the screen instead
-            screen(a, call);
+            screen(a, done);
             return;
         }
         token = UUID.randomUUID().toString();
@@ -127,22 +145,22 @@ public final class Cast {
         try {
             base = server(a) + "/" + token;
         } catch (IOException e) {
-            call.reject("no wifi");
+            done.fail("no wifi");
             return;
         }
         MediaMetadata md = new MediaMetadata(MediaMetadata.MEDIA_TYPE_MOVIE);
-        md.putString(MediaMetadata.KEY_TITLE, call.getString("title", ""));
+        md.putString(MediaMetadata.KEY_TITLE, title == null ? "" : title);
         MediaInfo info = new MediaInfo.Builder(file != null ? base + "/f" : mega ? base + "/m" : base + "/v?u=" + Uri.encode(m[0]))
             .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
             .setContentType(m != null && m == hls ? "application/x-mpegurl" : "video/mp4")
             .setMetadata(md)
             .build();
-        long at = (long) (call.getDouble("at", 0.0) * 1000);
+        long at = (long) (atSeconds * 1000);
 
         SessionManager sm = cc.getSessionManager();
         CastSession s = sm.getCurrentCastSession();
         if (s != null && s.isConnected()) {
-            load(s, info, at, call);
+            load(s, info, at, done);
             return;
         }
         // not connected yet: the list of TVs; casting starts once one is picked
@@ -156,13 +174,13 @@ public final class Cast {
             @Override
             public void onSessionStarted(CastSession s, String id) {
                 sm.removeSessionManagerListener(this, CastSession.class);
-                load(s, info, at, call);
+                load(s, info, at, done);
             }
 
             @Override
             public void onSessionStartFailed(CastSession s, int error) {
                 sm.removeSessionManagerListener(this, CastSession.class);
-                call.reject("cast failed");
+                done.fail("cast failed");
             }
 
             @Override
@@ -190,40 +208,38 @@ public final class Cast {
             new Handler(Looper.getMainLooper()).postDelayed(() -> {
                 if (picked[0]) return;
                 sm.removeSessionManagerListener(l, CastSession.class);
-                call.reject("cancelled");
+                done.fail("cancelled");
             }, 1000)
         );
         d.show();
     }
 
-    private static void load(CastSession s, MediaInfo info, long at, PluginCall call) {
+    private static void load(CastSession s, MediaInfo info, long at, Done done) {
         RemoteMediaClient r = s.getRemoteMediaClient();
         if (r == null) {
-            call.reject("cast failed");
+            done.fail("cast failed");
             return;
         }
         r.load(new MediaLoadRequestData.Builder().setMediaInfo(info).setAutoplay(true).setCurrentTime(at).build())
             .setResultCallback(res -> {
                 if (res.getStatus().isSuccess()) {
                     CastContext.getSharedInstance().getMediaNotificationManager().updateNotification(); // its controls, now
-                    call.resolve();
+                    done.ok(false);
                 }
-                else call.reject("cast failed");
+                else done.fail("cast failed");
             });
     }
 
     /** the phone's screen cast picker; Samsung and others name it differently */
-    private static void screen(Activity a, PluginCall call) {
+    private static void screen(Activity a, Done done) {
         for (String action : new String[] { Settings.ACTION_CAST_SETTINGS, "android.settings.WIFI_DISPLAY_SETTINGS" }) {
             try {
                 a.startActivity(new Intent(action));
-                JSObject r = new JSObject();
-                r.put("screen", true);
-                call.resolve(r);
+                done.ok(true);
                 return;
             } catch (Exception ignored) {}
         }
-        call.reject("no cast");
+        done.fail("no cast");
     }
 
     // --- the server the TV plays from: http://<phone>:<port>/<token>/v?u=<host's url> or /<token>/f (the file) ---

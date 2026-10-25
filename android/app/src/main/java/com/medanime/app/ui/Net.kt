@@ -1,0 +1,253 @@
+package com.medanime.app.ui
+
+import android.annotation.SuppressLint
+import android.app.Activity
+import android.graphics.Color
+import android.view.ViewGroup
+import android.webkit.CookieManager
+import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.widget.FrameLayout
+import androidx.compose.runtime.mutableStateOf
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import okhttp3.Cookie
+import okhttp3.CookieJar
+import okhttp3.HttpUrl
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.IOException
+import java.util.concurrent.TimeUnit
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
+
+const val SITE = "https://witanime.site"
+
+class Resp(val status: Int, val url: String, val body: String, val headers: Map<String, String>) {
+    fun header(name: String) = headers.entries.firstOrNull { it.key.equals(name, true) }?.value
+}
+
+/** the same requests mobile.js makes, natively: one OkHttp client sharing the WebView's cookies */
+object Net {
+    lateinit var activity: Activity
+    // witanime sits behind Cloudflare: talk to it as the WebView, the browser its cookies were earned in
+    val wvUa: String by lazy { WebSettings.getDefaultUserAgent(activity) }
+    // witanime's API 404s without a client-hint header
+    val ch: String by lazy { "\"Chromium\";v=\"${Regex("Chrome/(\\d+)").find(wvUa)?.groupValues?.get(1) ?: "138"}\"" }
+    // Cloudflare's cookies, earned in a WebView, go with every native request too, and the sites' own go back to the WebViews.
+    // Also kept here: on a fresh install the WebView's store dropped witanime's session cookie between the episode page and
+    // its servers request (no WebView had run yet), and the site answered with no servers
+    private val jar = java.util.concurrent.ConcurrentHashMap<String, Cookie>() // domain|path|name -> cookie
+    private fun webCookies() = runCatching { CookieManager.getInstance() }.getOrNull() // none in JVM tests (CinemaTest)
+    private val cookies = object : CookieJar {
+        override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) = cookies.forEach {
+            jar["${it.domain}|${it.path}|${it.name}"] = it
+            webCookies()?.setCookie(url.toString(), it.toString())
+        }
+        override fun loadForRequest(url: HttpUrl): List<Cookie> {
+            val mine = jar.values.filter { it.matches(url) && it.expiresAt > System.currentTimeMillis() }
+            val names = mine.map { it.name }.toSet()
+            return mine + (webCookies()?.getCookie(url.toString())?.split("; ")?.mapNotNull { Cookie.parse(url, it) }?.filter { it.name !in names } ?: emptyList())
+        }
+    }
+    val client: OkHttpClient = OkHttpClient.Builder().cookieJar(cookies)
+        .connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build()
+
+    private fun challenged(r: Resp) = r.status == 403 || r.status == 503
+    // Cloudflare's own check: marked by a header, or its challenge page ("Just a moment…") (mobile.js cfCheck)
+    private fun cfCheck(r: Resp) = r.header("cf-mitigated") == "challenge" || (challenged(r) && Regex("<title>\\s*Just a moment|_cf_chl_opt|cf-chl-|challenge-form", RegexOption.IGNORE_CASE).containsMatchIn(r.body))
+    // the movie sites hop domains (egydead.space sends on to the current one)
+    private val ED_RE = Regex("^https://([a-z0-9-]+\\.)*(egydead|myseed|arabseed)\\.[a-z]+/")
+    private fun site(url: String) = if (url.startsWith(SITE)) "witanime" else ED_RE.find(url)?.groupValues?.get(2)
+    // site -> the origin its requests go through a real page on, once Cloudflare refused our native client there
+    private val via = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val pages = java.util.concurrent.ConcurrentHashMap<String, SitePage>()
+    fun unblock() { via["witanime"] = SITE } // the "verify" button: witanime through its page from now on
+
+    /**
+     * GET or POST (an empty one), with witanime's 429 retry; through the site's page once Cloudflare refuses us (mobile.js http).
+     * asPlayer: asked as the player's WebView asks, for links that only play in the browser that got them (myseed's)
+     */
+    suspend fun fetch(url: String, headers0: Map<String, String> = emptyMap(), post: Boolean = false, stopAt: String = "", redirects: Boolean = true, asPlayer: Boolean = false, form: Map<String, String>? = null): Resp {
+        // the latest-episodes pager 404s unless it looks like the home page's own call (mobile.js): Origin, or X-Requested-With
+        val headers = if (url.startsWith("$SITE/new-episodes")) mapOf("Accept" to "application/json", "Referer" to "$SITE/", "Origin" to SITE, "X-Requested-With" to "XMLHttpRequest") + headers0 else headers0
+        var i = 0
+        while (true) {
+            val key = site(url)
+            val origin = key?.let { via[it] }
+            val r = if (origin != null && redirects) pages.getOrPut(origin) { SitePage(origin) }.fetch(origin + url.replace(Regex("^https://[^/]+"), ""), if (post) "POST" else "GET", headers, stopAt)
+            else try { native(url, headers, post, redirects, stopAt, asPlayer, form) } catch (e: IOException) {
+                if (key != "witanime" || origin != null) throw e
+                via[key] = SITE; continue // a connection that stalls or drops for our native client: through the page
+            }
+            if (origin == null && redirects && key == "witanime" && challenged(r)) { via[key] = SITE; continue }
+            if (origin == null && redirects && key != null && key != "witanime" && cfCheck(r)) { via[key] = java.net.URI(r.url).let { "${it.scheme}://${it.host}" }; continue }
+            if (r.status != 429 || i == 3) return r
+            delay((r.header("retry-after")?.toLongOrNull() ?: (1L shl i)) * 1000) // see main.js
+            i++
+        }
+    }
+
+    /** closes Cloudflare's check where it's up over the app (back) */
+    fun dropChecks() = pages.values.forEach { it.dropIfChecking() }
+
+    private suspend fun native(url: String, headers: Map<String, String>, post: Boolean, redirects: Boolean, stopAt: String, asPlayer: Boolean, form: Map<String, String>?) = withContext(Dispatchers.IO) {
+        val req = Request.Builder().url(url)
+            .header("User-Agent", if (url.startsWith(SITE) || asPlayer) wvUa else UA).header("Accept-Language", "ar,en;q=0.8")
+            .apply { headers.forEach { (k, v) -> header(k, v) } }
+            .apply { if (form != null) post(okhttp3.FormBody.Builder().apply { form.forEach { (k, v) -> add(k, v) } }.build()) else if (post) post(ByteArray(0).toRequestBody()) }.build() // form: MyCima's search
+        val c = if (redirects) client else client.newBuilder().followRedirects(false).followSslRedirects(false).build()
+        c.newCall(req).execute().use { r ->
+            val body = r.body ?: return@use Resp(r.code, r.request.url.toString(), "", r.headers.toMap())
+            val text = if (stopAt.isEmpty()) body.string() else { // stop reading once it matches (an episode page is ~3MB; its csrf token is in <head>)
+                val re = Regex(stopAt); val src = body.source(); val sb = StringBuilder()
+                // ponytail: a chunk may end mid-character; only the ASCII token is read from it
+                while (!re.containsMatchIn(sb) && src.request(1)) sb.append(src.buffer.readUtf8())
+                sb.toString()
+            }
+            Resp(r.code, r.request.url.toString(), text, r.headers.toMap())
+        }
+    }
+
+    val checking = mutableStateOf(false) // Cloudflare's check is over the app (back closes it)
+}
+
+const val UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0 Safari/537.36"
+
+/**
+ * a site (witanime, the movie sites) through a hidden WebView sitting on it (DownloaderPlugin's Site, in Kotlin): its requests run as fetch()
+ * there, with the site's cookies and Chrome's own network stack. Cloudflare's check, if any, comes up over the app.
+ */
+class SitePage(private val origin: String) {
+    private val home = "$origin/robots.txt" // a few KB of text, no scripts or ads
+    private var view: WebView? = null
+    private var ready = false
+    private val lock = Mutex()
+    private var ids = 0
+
+    private suspend fun eval(js: String) = suspendCoroutine { c -> view?.evaluateJavascript(js) { c.resume(it) } ?: c.resume("null") }
+
+    private fun full(on: Boolean) {
+        view?.layoutParams = if (on) FrameLayout.LayoutParams(-1, -1) else FrameLayout.LayoutParams(1, 1)
+        Net.checking.value = on
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private suspend fun ensure() = lock.withLock {
+        if (ready) return@withLock
+        val v = view ?: WebView(Net.activity).also { v ->
+            view = v
+            v.settings.javaScriptEnabled = true
+            v.settings.domStorageEnabled = true
+            v.settings.useWideViewPort = true // lay the check out like Chrome (see DownloaderPlugin)
+            v.settings.loadWithOverviewMode = true
+            v.settings.textZoom = 100
+            CookieManager.getInstance().setAcceptThirdPartyCookies(v, true) // Cloudflare's box is a challenges.cloudflare.com frame
+            v.setBackgroundColor(Color.BLACK)
+            v.webViewClient = object : WebViewClient() { // the page stays on its site: an ad can't take it away
+                override fun shouldOverrideUrlLoading(w: WebView, r: WebResourceRequest) = r.isForMainFrame && !r.url.toString().startsWith("$origin/")
+            }
+            (Net.activity.window.decorView as ViewGroup).addView(v, FrameLayout.LayoutParams(1, 1))
+        }
+        v.loadUrl(home)
+        val start = System.currentTimeMillis()
+        while (true) { // robots.txt itself showing (plain text): through. Cloudflare's check is an HTML page in its place
+            delay(500)
+            if (view == null) throw IOException("check closed")
+            if (eval("location.href === ${JSONObject.quote(home)} && document.contentType === 'text/plain'") == "true") break
+            val waited = System.currentTimeMillis() - start
+            if (waited > 90_000) { drop(); throw IOException("challenge not passed") }
+            if (waited > 1500) full(true) // over the app, so a tap on its box can pass it
+        }
+        full(false)
+        ready = true
+    }
+
+    fun dropIfChecking() { if (view != null && !ready) drop() }
+
+    /** back while the check is up: close it (its requests fail, the next one asks again) */
+    fun drop() {
+        view?.let { (it.parent as? ViewGroup)?.removeView(it); it.destroy() }
+        view = null; ready = false; Net.checking.value = false
+    }
+
+    suspend fun fetch(url: String, method: String, headers: Map<String, String>, stopAt: String): Resp = withContext(Dispatchers.Main) {
+        ensure()
+        val id = (++ids).toString()
+        val h = JSONObject(headers.filterKeys { !Regex("^(user-agent|referer|cookie|sec-|accept-language)", RegexOption.IGNORE_CASE).containsMatchIn(it) }) // the browser sets these
+        val q = JSONObject.quote(id)
+        eval("(async () => { const out = v => (window.__med = window.__med || {})[$q] = JSON.stringify(v); try {" +
+            "const r = await fetch(${JSONObject.quote(url)}, { method: ${JSONObject.quote(method)}, headers: $h, credentials: 'include' });" +
+            // stopAt: stop reading once it matches (an episode page is ~3MB; its csrf token is in <head>)
+            "const re = ${JSONObject.quote(stopAt)} && new RegExp(${JSONObject.quote(stopAt)}), rd = r.body.getReader(), dec = new TextDecoder(); let t = '';" +
+            "for (;;) { const { done, value } = await rd.read(); if (done) break; t += dec.decode(value, { stream: true }); if (re && re.test(t)) { rd.cancel(); break; } }" +
+            "out({ status: r.status, url: r.url, data: t, headers: { 'retry-after': r.headers.get('retry-after') || '' } });" +
+            "} catch (e) { out({ error: String(e) }); } })()")
+        withTimeout(120_000) {
+            while (true) { // the result is polled for rather than handed over by a JavascriptInterface, which a bot check could spot
+                delay(150)
+                val v = eval("(() => { const m = window.__med || {}, r = m[$q]; delete m[$q]; return r === undefined ? null : r; })()")
+                val r = JSONArray("[$v]").get(0)
+                if (r == JSONObject.NULL) { if (view == null) throw IOException("check closed"); continue }
+                val o = JSONObject(r as String)
+                if (o.has("error")) throw IOException(o.getString("error"))
+                val hs = o.getJSONObject("headers")
+                return@withTimeout Resp(o.getInt("status"), o.getString("url"), o.getString("data"), hs.keys().asSequence().associateWith { hs.getString(it) })
+            }
+            @Suppress("UNREACHABLE_CODE") error("")
+        }
+    }
+}
+
+/**
+ * Every page and API answer the app reads, kept 90 days and shown from disk at once (scraper.js load()): the site is asked
+ * again at most once a minute per page. Offline, the saved copy is all there is.
+ */
+object Pages {
+    private const val KEEP = 90 * 24 * 3600_000L
+    private const val RECHECK = 60_000L
+    private val checked = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val bg = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
+    lateinit var dir: java.io.File
+
+    private fun file(url: String) = java.io.File(dir, java.security.MessageDigest.getInstance("SHA-1").digest(url.toByteArray()).joinToString("") { "%02x".format(it) })
+    private fun saved(url: String) = file(url).takeIf { it.isFile && System.currentTimeMillis() - it.lastModified() < KEEP }?.readText()
+    private fun due(url: String) = System.currentTimeMillis() - (checked[url] ?: 0) >= RECHECK
+
+    private suspend fun fresh(url: String): String {
+        checked[url] = System.currentTimeMillis()
+        val r = Net.fetch(url)
+        if (r.status >= 400) throw IOException("HTTP ${r.status} ${java.net.URI(url).path}")
+        dir.mkdirs()
+        file(url).writeText(r.body)
+        return r.body
+    }
+
+    /** the saved copy, then the site's answer if it changed: a screen showing one page redraws with it */
+    fun flow(url: String, force: Boolean = false) = flow {
+        val hit = if (force) null else saved(url)
+        if (hit != null) { emit(hit); if (!due(url)) return@flow }
+        val new = try { fresh(url) } catch (e: Exception) { if (hit != null) return@flow else throw e } // offline: keep the saved copy
+        if (new != hit) emit(new)
+    }.flowOn(Dispatchers.IO)
+
+    /** one answer for pages built from several: the saved copy at once (asked again behind it, for next time), else the site's */
+    suspend fun load(url: String, force: Boolean = false): String = withContext(Dispatchers.IO) {
+        val hit = if (force) null else saved(url)
+        if (hit != null) { if (due(url)) bg.launch { runCatching { fresh(url) } }; return@withContext hit }
+        try { fresh(url) } catch (e: Exception) { saved(url) ?: throw e }
+    }
+
+}

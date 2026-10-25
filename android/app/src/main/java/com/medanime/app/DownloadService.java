@@ -104,14 +104,17 @@ public class DownloadService extends Service {
     }
 
     private static Notification progress(Context c) {
+        // one snapshot: downloads are added on their threads and removed on the main one (a pause) while this runs; checking
+        // the live map's size, then reading its one item after a pause removed it, crashed the app
+        java.util.List<Item> items = new java.util.ArrayList<>(active.values());
         long received = 0, total = 0;
-        for (Item i : active.values()) {
+        for (Item i : items) {
             received += i.received;
             total += i.total;
         }
         int pct = total > 0 ? (int) (received * 100 / total) : 0;
         // nothing transferring yet (the file's link being looked up): "Preparing download…", its bar spinning
-        String what = active.isEmpty() ? labelPreparing : active.size() == 1 ? active.values().iterator().next().title : String.format(labelMany, active.size());
+        String what = items.isEmpty() ? labelPreparing : items.size() == 1 ? items.get(0).title : String.format(labelMany, items.size());
         return new NotificationCompat.Builder(c, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_download)
             .setContentTitle(labelActive)

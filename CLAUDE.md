@@ -1,11 +1,13 @@
 # Medflix
 
 A Netflix-style client for Arabic anime, manga, and movies & series. It scrapes the sites and shows them in its own UI.
-One web front end (`index.html`, `app.js`, `style.css`) runs in two shells:
-- **Desktop**: Electron (`main.js` + `preload.js`), run with `npm start`
-- **Android**: Capacitor (`mobile.js` + the Java in `android/app/src/main/java/com/medanime/app/`), built with `npm run apk`
+Two apps share the same sites and the same user data format:
+- **Desktop**: one web front end (`index.html`, `app.js`, `style.css`) in Electron (`main.js` + `preload.js`), run with `npm start`
+- **Android**: a native app (Kotlin + Jetpack Compose) in `android/app/src/main/java/com/medanime/app/ui/`, built with `npm run apk`.
+  It ports the web app section by section; a scraper or behaviour change usually belongs in both (`scraper.js` ↔ `Witanime.kt`,
+  `manga.js` ↔ `Manga.kt`, `cinema.js` ↔ `Cinema.kt`, `STR` ↔ `Str.kt`, `icons.js` ↔ `Icons.kt`; the last two are generated from the JS)
 
-Plain JS with no framework, no bundler, and no runtime dependencies besides `@capacitor/core`. Keep it that way.
+Web: plain JS with no framework, no bundler. Android: Compose, Coil (images), Jsoup (HTML), OkHttp; nothing more without need.
 
 ## Architecture: one `window.api`, two implementations
 
@@ -33,7 +35,10 @@ The UI only talks to `window.api`. It never calls the network or storage directl
 | `MainActivity.java` | WebView setup; blocks popups, navigation away, and players' alert dialogs |
 | `selftest.js` | Live scraper check against the real sites: `npx electron selftest.js` |
 
-`www/` is generated (`npm run build:web`). Never edit it.
+`www/` is generated (`npm run build:web`). Never edit it. On Android, `ui/` is the app: `NativeActivity` (shell, drawer, dock, shared
+builders), `Net.kt` (requests, Cloudflare through a hidden WebView, the page cache `Pages`), `Store.kt` (user data), `Player.kt`,
+`Screens.kt` / `MangaScreens.kt` / `CinemaScreens.kt`, `Settings.kt`, `Updater.kt`. `mobile.js`, `MainActivity` and the Capacitor plugin
+Java no longer ship, except `DownloadService` (the download notification), which `Downloads.kt` drives; casting is still to be ported from `Cast`. Live check: `./gradlew testDebugUnitTest`.
 
 ## Data
 
@@ -79,7 +84,7 @@ The UI only talks to `window.api`. It never calls the network or storage directl
 - `npx electron selftest.js`: run after any scraper change, since the sites change their markup.
 - `npm run apk` builds `MEDFLIX.apk` (debug build, signed with `~/.android/debug.keystore`). **That keystore must not change**,
   or installed apps refuse the update. `versionCode` is minutes since 1970, so every build installs as an update.
-- `npm run release`: builds the APK and publishes a GitHub release tagged `b<yyyymmddhhmm>` (the digits of `www/build.js`'s `BUILD`).
+- `npm run release`: builds the APK and publishes a GitHub release tagged `b<yyyymmddhhmm>` (the build's stamp, `BuildConfig.BUILD`).
   Commit and push first. The repo (`Medamine-Bahassou/Medflix`) is public, so releases are public.
 - **Update system**: on launch the app checks GitHub's latest release (`api.checkUpdate`) and compares its tag with `BUILD`.
   If it's newer, `updateSheet` offers it; `installUpdate` downloads the APK in the app and opens Android's installer.

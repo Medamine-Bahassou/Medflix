@@ -10,19 +10,19 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
 
+        <!-- the app: native (ui/). The WebView app (MainActivity, www/) is the desktop's only now -->
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
-            android:name=".MainActivity"
-            android:label="@string/title_activity_main"
-            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:name=".ui.NativeActivity"
+            android:label="@string/app_name"
             android:launchMode="singleTask"
+            android:theme="@style/AppTheme.NoActionBar"
+            android:windowSoftInputMode="adjustResize"
             android:exported="true">
-
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-
         </activity>
 
         <!-- casting to a TV: see Cast.java -->
