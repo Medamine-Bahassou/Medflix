@@ -13,6 +13,8 @@
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+        <!-- behind the status bar (and where it was, once the manga reader hides it): the app's black, not white -->
+        <item name="android:windowBackground">@android:color/black</item>
     </style>
 
 

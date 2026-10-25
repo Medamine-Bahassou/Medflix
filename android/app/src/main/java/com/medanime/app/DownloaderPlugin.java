@@ -464,6 +464,17 @@ public class DownloaderPlugin extends Plugin {
         return f.getCanonicalPath().startsWith(dir.getCanonicalPath() + File.separator);
     }
 
+    /** keep the screen on while watching: the WebView's iframe players don't hold a wake lock themselves */
+    @PluginMethod
+    public void keepAwake(PluginCall call) {
+        boolean on = call.getBoolean("on", false);
+        getActivity().runOnUiThread(() -> {
+            if (on) getActivity().getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            else getActivity().getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        });
+        call.resolve();
+    }
+
     @PluginMethod
     public void castReset(PluginCall call) {
         Cast.reset();

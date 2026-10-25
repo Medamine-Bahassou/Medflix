@@ -1496,7 +1496,10 @@ async function route(soft) {
   markActive();
   if (!soft) closeDrawer(); // a background redraw (fresher site data, often just after launch) happens behind it
   api.scrollbar?.(!(a === 'manga' && rest[0] === 'read')); // phones: the reader has its own scrollbar
-  $('#nav').style.display = a === 'play' || a === 'offline' || (a === 'manga' && rest[0] === 'read') || (a === 'cinema' && (rest[1] === 'watch' || rest[0] === 'episode')) ? 'none' : '';
+  api.statusBar?.(true); // phones: the reader hides it with its bars (manga.js), every page starts with it
+  const watching = a === 'play' || a === 'offline' || (a === 'cinema' && (rest[1] === 'watch' || rest[0] === 'episode'));
+  api.keepAwake?.(watching); // phones: the video is in an iframe, which doesn't stop the screen locking mid-episode
+  $('#nav').style.display = watching || (a === 'manga' && rest[0] === 'read') ? 'none' : '';
   if (!soft) { scrollTo(0, 0); spinner(); }
   view.classList.toggle('still', !!soft); // a redraw with fresher data: no entrance animations, no poster fade-in
   try {

@@ -129,6 +129,7 @@ if (!window.api && window.Capacitor) (() => {
     return to;
   };
   // --- player: an iframe over the stage rect; z-index keeps it under the header's server menu ---
+  let statusShown = true;
   const frame = () => document.querySelector('.player > iframe.mplayer');
 
   window.api = {
@@ -163,6 +164,8 @@ if (!window.api && window.Capacitor) (() => {
     storage: () => Downloader.storage(), // { granted, hasData, path }
     requestStorage: () => Downloader.requestStorage(),
     scrollbar: on => Downloader.scrollbar({ on }).catch(() => {}), // the WebView's own scrollbar, hidden in the manga reader
+    // the phone's status bar, hidden with the manga reader's bars (Capacitor's SystemBars); asked only when it changes
+    statusBar: on => on !== statusShown && (statusShown = on, Capacitor.Plugins.SystemBars[on ? 'show' : 'hide']({ bar: 'StatusBar' }).catch(() => {})),
 
     sources: async epPath => flat((await manifest(epPath)).players),
     async mirrors(url) { // egydead's MegaMax player: the hosts it wraps (see main.js)
@@ -239,6 +242,7 @@ if (!window.api && window.Capacitor) (() => {
     // Android TV / Chromecast: the TV plays the video the player here is playing, or the downloaded file (see Cast.java).
     // page: the player's address, for MEGA's (its key is after the #, which never reaches the network to be caught)
     cast: o => Downloader.cast({ ...o, page: frame()?.dataset.src }),
+    keepAwake: on => Downloader.keepAwake({ on }), // the screen stays on while a player page is open (see route())
     playerVisible() {}, // the iframe sits under the menu, nothing to hide
     playerSnapshot: async () => '',
     onPlayerBack() {}, // Android's back button walks the hash history on its own

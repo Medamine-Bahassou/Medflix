@@ -3,6 +3,7 @@
   "appName": "Medflix",
   "webDir": "www",
   "plugins": {
-    "CapacitorCookies": { "enabled": true }
+    "CapacitorCookies": { "enabled": true },
+    "SystemBars": { "style": "DARK" }
   }
 }

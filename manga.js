@@ -379,6 +379,8 @@ async function mangaReader(cid) {
   $('#rdl').onclick = () => saved ? toast(t('dlDone')) : queueChapters(s, [{ id: c.id, n: c.n }]);
   // lock: the bars stay hidden (chapter to chapter); a faint unlock button, dragged anywhere (remembered), brings them back
   const reader = $('.reader'), ul = $('#runlock');
+  // phones: the status bar goes and comes back with the bars (shown again on any other page: route)
+  new MutationObserver(() => api.statusBar?.(!reader.matches('.hide-ui, .locked'))).observe(reader, { attributes: true, attributeFilter: ['class'] });
   const lock = on => { reader.classList.toggle('locked', rdLocked = on); reader.classList.remove('hide-ui'); };
   const place = ([x, y] = store.prefs.unlockAt || [.5, .85]) => { ul.style.left = x * 100 + '%'; ul.style.top = y * 100 + '%'; };
   lock(rdLocked); place();
