@@ -17,6 +17,7 @@ const MC = 'https://cima.my-cima.net'; // the movies section's backup servers (M
 // more backup servers, films' and anime's: Cloudflare lets a request through that names the site as its referrer, so its
 // pages (pop-up ads and all) are never opened in a window for the check (see refused below)
 const WC = 'https://wecima.social';
+const RA = 'https://ristoanime.me'; // anime backup servers
 const SUGGEST = ['https://kitsu.io', 'https://v3.sg.media-imdb.com']; // the search's typo-tolerant title suggestions (app.js)
 const EGYDEAD = /^https:\/\/([a-z0-9-]+\.)*(egydead|myseed|arabseed)\.[a-z]+$/; // the movies section: the site hops between domains
 // plain Chrome of the version Electron really runs: Cloudflare's check fails a user agent that disagrees with the
@@ -80,7 +81,7 @@ const passCheck = (origin, page) => checks[siteKey(origin)] ||= new Promise((ok,
 // form: POSTs these fields instead of a GET (egydead's watch page, MyCima's search)
 ipcMain.handle('fetch', async (_, url, form) => {
   const u = new URL(url, SITE);
-  if (![SITE, AR, MANGA, AS, MC, WC, ...TEK, ...SUGGEST].includes(u.origin) && !EGYDEAD.test(u.origin)) throw new Error('blocked: ' + u.origin);
+  if (![SITE, AR, RA, MANGA, AS, MC, WC, ...TEK, ...SUGGEST].includes(u.origin) && !EGYDEAD.test(u.origin)) throw new Error('blocked: ' + u.origin);
   const headers = { 'User-Agent': UA, 'Accept-Language': 'ar,en;q=0.8', ...(u.origin === WC && { Referer: WC + '/' }) };
   if (u.pathname === '/new-episodes') return pagerFetch(u.href, headers);
   if (/(^|\.)egydead\./.test(u.hostname)) return edFetch(u);

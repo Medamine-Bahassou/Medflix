@@ -238,6 +238,29 @@ async function wecima(title, alt, ep, movie) {
   return [];
 }
 
+// ---------- ristoanime: more backup servers, for series' episodes ----------
+// Never listed either. Its own search only finds whole series, and files some under other names ("Bleach" season 4 for
+// witanime's "Bleach: Sennen Kessen-hen - Kashin-tan"), so WordPress's API is searched for the episode's own post instead
+// ("انمي Black Clover الموسم 2 الحلقة 4 مترجمة اون لاين"); its servers sit on the episode's /watch page.
+const RA = 'https://ristoanime.me';
+async function ristoanime(title, alt, ep, movie) {
+  const parts = !movie && splitSeason(title);
+  if (!parts) return []; // films: wecima covers them
+  const n = String(parseFloat(ep)), named = parts.base !== title.trim(); // named: witanime's title says which season
+  for (const name of [parts.base, alt && splitSeason(alt)?.base].filter(s => norm(s))) { // latin names only: similar() ignores the rest
+    const hits = JSON.parse(await api.fetch(`${RA}/wp-json/wp/v2/posts?per_page=100&_fields=link,title&search=${encodeURIComponent(`${name} ${n}`)}`)).map(p => {
+      const m = txt(parse(p.title?.rendered || '').body).replace(/[أإآ]/g, 'ا').match(/^انمي\s+(.+?)(?:\s+الموسم\s+(\S+))?\s+الحلقة\s+(\d+(?:\.\d+)?)/);
+      return m && m[3] === n && similar(m[1], name) >= .75 && { url: p.link, season: m[2] ? +m[2] || AR_NTH.indexOf(m[2]) + 1 : 1 };
+    }).filter(Boolean);
+    // its season numbers can differ from witanime's split ones: an unnamed season takes the only one it has
+    const hit = hits.find(h => h.season === parts.season) || (!named && new Set(hits.map(h => h.season)).size === 1 && hits[0]);
+    if (!hit) continue;
+    return [...parse(await api.fetch(hit.url.replace(/\/?$/, '/watch'))).querySelectorAll('li[data-watch]')]
+      .map(li => li.dataset.watch).filter(u => u.startsWith('https://')).map(url => ({ label: hostName(url), url }));
+  }
+  return [];
+}
+
 // Everything scraped is kept for 90 days and shown straight from the cache, but the site is asked again on
 // every visit (at most once a minute per page); a changed page is saved and the current view redrawn.
 // force=true waits for the site instead.
@@ -305,6 +328,7 @@ window.scraper = {
   search: q => load('list', `/search?q=${encodeURIComponent(q)}`),
   details: (path, force) => load('details', path, force),
   animerco,
+  ristoanime,
   wecima,
   // the app calls newView() when it changes page, and gets onChange() when a page it shows came back different
   newView: () => { used.clear(); gen++; },

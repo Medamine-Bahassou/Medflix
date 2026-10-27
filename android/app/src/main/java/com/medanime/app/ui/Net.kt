@@ -149,19 +149,20 @@ class SitePage(private val origin: String) {
     private suspend fun eval(js: String) = kotlinx.coroutines.suspendCancellableCoroutine { c -> view?.evaluateJavascript(js) { if (c.isActive) c.resume(it) } ?: c.resume("null") }
 
     private fun full(on: Boolean) {
-        view?.layoutParams = if (on) FrameLayout.LayoutParams(-1, -1) else FrameLayout.LayoutParams(1, 1)
+        view?.let { it.alpha = if (on) 1f else 0f; it.isFocusable = on; it.isFocusableInTouchMode = on }
         Net.checking.value = on
     }
 
     @SuppressLint("SetJavaScriptEnabled")
     private suspend fun ensure() = lock.withLock {
         if (ready) return@withLock
-        val v = view ?: WebView(Net.activity).also { v ->
+        val v = view ?: object : WebView(Net.activity) {
+            // always full screen so the check never loads at 1px and zooms when resized; hidden by alpha, touches pass through
+            override fun dispatchTouchEvent(e: android.view.MotionEvent) = alpha > 0f && super.dispatchTouchEvent(e)
+        }.also { v ->
             view = v
             v.settings.javaScriptEnabled = true
             v.settings.domStorageEnabled = true
-            v.settings.useWideViewPort = true // lay the check out like Chrome (see DownloaderPlugin)
-            v.settings.loadWithOverviewMode = true
             v.settings.textZoom = 100
             CookieManager.getInstance().setAcceptThirdPartyCookies(v, true) // Cloudflare's box is a challenges.cloudflare.com frame
             v.setBackgroundColor(Color.BLACK)
@@ -169,7 +170,10 @@ class SitePage(private val origin: String) {
                 override fun shouldOverrideUrlLoading(w: WebView, r: WebResourceRequest) = r.isForMainFrame && !r.url.toString().startsWith("$origin/")
                 override fun onRenderProcessGone(w: WebView, d: android.webkit.RenderProcessGoneDetail) = true.also { drop() }
             }
-            (Net.activity.window.decorView as ViewGroup).addView(v, FrameLayout.LayoutParams(1, 1))
+            full(false)
+            val decor = Net.activity.window.decorView as ViewGroup
+            decor.addView(v, FrameLayout.LayoutParams(-1, -1))
+            v.layout(0, 0, decor.width, decor.height)
         }
         v.loadUrl(home)
         val start = System.currentTimeMillis()

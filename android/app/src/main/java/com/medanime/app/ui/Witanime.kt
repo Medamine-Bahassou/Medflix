@@ -207,4 +207,42 @@ object Witanime {
         val r = Net.fetch("$SITE/watch/stream-gate/$token", mapOf("sec-ch-ua" to Net.ch, "Sec-Fetch-Dest" to "iframe", "Sec-Fetch-Mode" to "navigate", "Sec-Fetch-Site" to "same-origin"), redirects = false)
         return r.header("location") ?: r.url.takeIf { !it.startsWith(SITE) } ?: throw IOException("gate HTTP ${r.status}")
     }
+
+    // ---------- ristoanime: backup servers for series' episodes (scraper.js ristoanime) ----------
+    // never listed: its own search finds only whole series, some under other names, so WordPress's API is searched for the
+    // episode's own post ("انمي Black Clover الموسم 2 الحلقة 4 مترجمة اون لاين"); its servers sit on the episode's /watch page
+    private const val RA = "https://ristoanime.me"
+    private val AR_NTH = listOf("الاول", "الثاني", "الثالث", "الرابع", "الخامس", "السادس", "السابع", "الثامن", "التاسع", "العاشر")
+    private val ORD = listOf("first", "second", "third", "fourth", "fifth", "sixth")
+    // "Black Clover 2nd Season" -> ("Black Clover", 2); null for later cours / parts: their numbering can't be mapped (scraper.js splitSeason)
+    private fun splitSeason(title: String): Pair<String, Int>? {
+        if (Regex("\\b(?:cour|part)\\s*[2-9]\\b", RegexOption.IGNORE_CASE).containsMatchIn(title)) return null
+        var season = 1
+        val base = Regex("\\b(?:(\\d+)(?:st|nd|rd|th)|(first|second|third|fourth|fifth|sixth))\\s+season\\b|\\bseason\\s+(\\d+)\\b", RegexOption.IGNORE_CASE)
+            .replace(title) { m -> val (n, w, n2) = m.destructured; season = n.ifEmpty { n2 }.toIntOrNull() ?: (ORD.indexOf(w.lowercase()) + 1); "" }
+            .replace(Regex("\\b(?:cour|part)\\s*1\\b", RegexOption.IGNORE_CASE), "").replace(Regex("[\\s:\\-–]+$"), "").trim()
+        return base to season
+    }
+
+    /** the same episode's servers on ristoanime, found by its title (films: none) */
+    suspend fun ristoanime(title: String, alt: String, ep: String): List<Server> {
+        val (base, season) = splitSeason(title) ?: return emptyList()
+        val n = ep.toDoubleOrNull()?.let { if (it % 1 == 0.0) it.toLong().toString() else it.toString() } ?: return emptyList()
+        val named = base != title.trim() // witanime's title says which season
+        for (name in listOfNotNull(base, splitSeason(alt)?.first).filter { Manga.norm(it).isNotEmpty() }) { // latin names only: similar() ignores the rest
+            val posts = org.json.JSONArray(Net.fetch("$RA/wp-json/wp/v2/posts?per_page=100&_fields=link,title&search=" + URLEncoder.encode("$name $n", "UTF-8")).body)
+            val hits = (0 until posts.length()).mapNotNull { i ->
+                val p = posts.getJSONObject(i)
+                val t = Jsoup.parse(p.optJSONObject("title")?.optString("rendered").orEmpty()).text().replace(Regex("[أإآ]"), "ا")
+                val m = Regex("^انمي\\s+(.+?)(?:\\s+الموسم\\s+(\\S+))?\\s+الحلقة\\s+(\\d+(?:\\.\\d+)?)").find(t) ?: return@mapNotNull null
+                val (b, s, e) = m.destructured
+                if (e != n || similar(b, name) < .75) null else p.optString("link") to (if (s.isEmpty()) 1 else s.toIntOrNull() ?: (AR_NTH.indexOf(s) + 1))
+            }
+            // its season numbers can differ from witanime's split ones: an unnamed season takes the only one it has
+            val hit = hits.find { it.second == season } ?: hits.firstOrNull()?.takeIf { !named && hits.map { h -> h.second }.toSet().size == 1 } ?: continue
+            val u = hit.first.trimEnd('/') + "/watch"
+            return Jsoup.parse(Net.fetch(u).body, u).select("li[data-watch]").map { it.attr("data-watch") }.filter { it.startsWith("https://") }.map { Server(Cinema.host(it), "", "", it) }
+        }
+        return emptyList()
+    }
 }

@@ -58,13 +58,15 @@ fun PlayerScreen(epPath: String, nav: Nav) {
     var cur by remember(epPath) { mutableStateOf<Server?>(null) }
     var url by remember(epPath) { mutableStateOf<String?>(null) }
     var dead by remember(epPath) { mutableStateOf(false) }
+    var extra by remember(epPath) { mutableStateOf<List<Server>>(emptyList()) } // ristoanime's, after witanime's
+    fun all() = (servers ?: emptyList()) + extra
     val scope = rememberCoroutineScope()
     var job by remember { mutableStateOf<Job?>(null) }
     // the chosen server, falling through to the next ones until one gives its player (app.js tryFrom)
     fun tryFrom(i: Int) {
         job?.cancel()
         job = scope.launch {
-            val l = servers ?: return@launch
+            val l = all().ifEmpty { return@launch }
             dead = false
             for (n in l.indices) {
                 val s = l[(i + n) % l.size]
@@ -94,22 +96,29 @@ fun PlayerScreen(epPath: String, nav: Nav) {
             val l = Witanime.sources(epPath)
             val have = known.map { it.label.lowercase().substringBefore(' ') }.toSet()
             servers = known + l.filter { it.label.lowercase().substringBefore(' ') !in have } // a host already there isn't listed twice
-            if (known.isEmpty() && l.isNotEmpty()) tryFrom(first(l))
+            if (known.isEmpty() && all().isNotEmpty()) tryFrom(first(l))
         } catch (e: CancellationException) { throw e } catch (e: Exception) {
             android.util.Log.w("medflix", "sources", e)
-            if (known.isEmpty()) { why = e.message ?: e.toString(); servers = emptyList() }
+            if (known.isEmpty()) { why = e.message ?: e.toString(); servers = emptyList(); if (extra.isNotEmpty()) tryFrom(0) }
         }
+    }
+    // the same episode on ristoanime, once its title is known: backups, tried when witanime's are done and none played
+    LaunchedEffect(epPath, d != null) {
+        val dd = d ?: return@LaunchedEffect
+        if (epPath.startsWith("/watch/movie/")) return@LaunchedEffect
+        try { extra = Witanime.ristoanime(dd.title, dd.alt, ep) } catch (e: CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("medflix", "ristoanime", e) }
+        if (cur == null && extra.isNotEmpty()) servers?.let { tryFrom(it.size) }
     }
 
     val open = openUrl()
     PlayerChrome(d?.title ?: "", if (ep.firstOrNull()?.isDigit() == true) "${t("episode")} $ep" else ep, nav,
-        servers?.map { it.label to it.quality }, servers?.indexOf(cur) ?: -1, url == null && cur != null, { tryFrom(it) },
+        all().takeIf { servers != null || extra.isNotEmpty() }?.map { it.label to it.quality }, all().indexOf(cur), url == null && cur != null, { tryFrom(it) },
         prev?.let { { nav.replace(Screen.Play(it.path)) } }, next?.let { { nav.replace(Screen.Play(it.path)) } }, { nav.go(Screen.Title(show)) }, { DownloadMenu(epPath, show, ep, d, nav) }, { castTo("${d?.title ?: ""} · ${t("episode")} $ep", null, url) }) {
         val u = url
         when {
             u != null -> HostPlayer(u)
             dead -> Empty(t("noneWorked"), t("noneWorkedHint")) { OutlinedButton({ open(SITE + epPath) }) { Text(t("openBrowser"), color = Color.White) } }
-            servers?.isEmpty() == true -> if ("rate-limited" in why) Empty(t("rateLimited"), t("rateLimitedHint"))
+            servers?.isEmpty() == true && extra.isEmpty() -> if ("rate-limited" in why) Empty(t("rateLimited"), t("rateLimitedHint"))
                 else Empty(t("noServers"), noNames(why)) { OutlinedButton({ open(SITE + epPath) }) { Text(t("openBrowser"), color = Color.White) } }
             else -> CircularProgressIndicator(color = Red)
         }

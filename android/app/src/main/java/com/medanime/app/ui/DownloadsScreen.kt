@@ -140,7 +140,10 @@ fun DownloadsScreen(show: String, nav: Nav) {
                     .combinedClickable(onLongClick = { if (picks.on) picks.toggle(id) else picks.start(id) }) { if (picks.on) picks.toggle(id) }
                     .padding(start = 14.dp, end = 4.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("${t(if (d.manga()) "chapter" else "episode")} ${d.optString("ep")}" + d.optString("quality").let { if (it.isEmpty()) "" else "  $it" }, fontWeight = FontWeight.SemiBold)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("${t(if (d.manga()) "chapter" else "episode")} ${d.optString("ep")}" + d.optString("quality").let { if (it.isEmpty()) "" else "  $it" }, fontWeight = FontWeight.SemiBold)
+                            if (d.manga() && Store["mangaSeen"].optInt(d.optString("chapterId")) == 2) ReadBadge()
+                        }
                         if (st == "active") LinearProgressIndicator({ d.optLong("total").let { if (it > 0) d.optLong("received").toFloat() / it else 0f } },
                             Modifier.fillMaxWidth().padding(vertical = 4.dp), color = Red, trackColor = Color(0x22FFFFFF))
                         Text(status(d), color = Muted, fontSize = 12.sp)

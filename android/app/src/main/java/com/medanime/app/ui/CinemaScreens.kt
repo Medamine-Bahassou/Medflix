@@ -32,8 +32,8 @@ fun CinemaHomeScreen(nav: Nav) {
     }
 }
 
-// share of words two titles have in common (scraper.js similar)
-private fun similar(a: String, b: String): Double {
+// share of words two titles have in common (scraper.js similar); ristoanime matches by it too (Witanime)
+fun similar(a: String, b: String): Double {
     val x = Manga.norm(a).split(' ').toSet(); val y = Manga.norm(b).split(' ').toSet()
     return x.count { it in y }.toDouble() / (x + y).size
 }

@@ -433,6 +433,7 @@ fun PagedGrid(key: Any, first: (force: Boolean) -> Flow<Listing>, page: suspend 
     val (l, refresh) = loaded(key) { first(it) }
     val more = remember(key) { mutableStateListOf<Card>() }
     var next by remember(key) { mutableIntStateOf(2) }
+    var pages by remember(key) { mutableIntStateOf(0) } // the last page's count: the latest episodes' pager only knows one past itself
     Column {
         header()
         Body(l, refresh) { d ->
@@ -443,7 +444,7 @@ fun PagedGrid(key: Any, first: (force: Boolean) -> Flow<Listing>, page: suspend 
             val grid = rememberLazyGridState()
             val nearEnd by remember { derivedStateOf { (grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) >= grid.layoutInfo.totalItemsCount - 12 } }
             LaunchedEffect(nearEnd, next, d.pages) {
-                if (nearEnd && next <= d.pages) runCatching { page(next) }.onSuccess { more += it.items; next++ }.onFailure { delay(5000) }
+                if (nearEnd && next <= maxOf(d.pages, pages)) runCatching { page(next) }.onSuccess { more += it.items; pages = it.pages; next++ }.onFailure { delay(5000) }
             }
             CardsGrid(all, nav, grid)
         }

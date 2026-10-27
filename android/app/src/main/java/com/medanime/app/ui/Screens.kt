@@ -2,6 +2,8 @@ package com.medanime.app.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -112,7 +114,55 @@ fun HiddenScreen(nav: Nav) {
     }
 }
 
-/** search: witanime's titles, the movie sites' and manga, a row each (app.js search, without its spelling guesses) */
+// ---------- search: what the user meant (app.js fuzzySearch) ----------
+// the sites match titles literally: "narto" finds nothing and "demon slayer" isn't what they call it. What was typed is asked
+// first; when that finds little, it's asked again as the names typo-tolerant title searches suggest (Kitsu for anime and
+// manga, IMDb for films) and as its other spellings, and everything is ranked by how close its title is to one of them
+private fun fold(s: String) = java.text.Normalizer.normalize(s.lowercase(), java.text.Normalizer.Form.NFKD).replace(Regex("\\p{M}"), "")
+    .replace(Regex("[أإآ]"), "ا").replace('ة', 'ه').replace('ى', 'ي').replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
+private fun pairs(s: String) = " ${s.replace(" ", "")} ".let { t -> (0 until t.length - 1).map { t.substring(it, it + 2) }.toSet() }
+private fun dice(a: String, b: String): Double { val x = pairs(a); val y = pairs(b); return 2.0 * x.count { it in y } / (x.size + y.size) }
+// 0..1: 1 when the title holds the query (spaces and punctuation aside), else the most letter pairs it shares with the
+// whole title or with a run of as many title words
+private fun closeness(q: String, title: String): Double {
+    val a = fold(q); val b = fold(title)
+    if (a.isEmpty() || b.isEmpty()) return 0.0
+    if (a.replace(" ", "") in b.replace(" ", "")) return 1.0
+    val n = a.split(' ').size; val w = b.split(' ')
+    return (listOf(dice(a, b)) + w.indices.map { dice(a, w.subList(it, minOf(it + n, w.size)).joinToString(" ")) }).max()
+}
+// "spider-man" -> "spider man", "spiderman", "spider-man", "spider"
+private fun spellings(q: String) = fold(q).split(' ').filter { it.isNotEmpty() }.let { w ->
+    listOf(w.joinToString(" "), w.joinToString(""), w.joinToString("-")) + if (w.size > 1) w.filter { it.length >= 4 }.sortedByDescending { it.length }.take(1) else emptyList()
+}
+// each suggestion: a title's names (Kitsu's: canonical, English, romaji); only those near what was typed (IMDb also lists what's popular)
+private suspend fun suggest(kind: String, q: String): List<String> = try {
+    val enc = { v: String -> java.net.URLEncoder.encode(v, "UTF-8").replace("+", "%20") }
+    val all = if (kind == "film") org.json.JSONObject(Net.fetch("https://v3.sg.media-imdb.com/suggestion/x/${enc(fold(q))}.json").body).optJSONArray("d").let { d ->
+        (0 until (d?.length() ?: 0)).map { d!!.getJSONObject(it) }.filter { Regex("^(movie|tv)").containsMatchIn(it.optString("qid")) }.map { listOf(it.optString("l")) }
+    } else org.json.JSONObject(Net.fetch("https://kitsu.io/api/edge/$kind?${enc("filter[text]")}=${enc(q)}&${enc("page[limit]")}=3&${enc("fields[$kind]")}=canonicalTitle,titles").body).optJSONArray("data").let { d ->
+        (0 until (d?.length() ?: 0)).map { d!!.getJSONObject(it).getJSONObject("attributes") }.map { a -> listOf(a.optString("canonicalTitle"), a.optJSONObject("titles")?.optString("en").orEmpty(), a.optJSONObject("titles")?.optString("en_jp").orEmpty()) }
+    }
+    all.filter { n -> n.any { closeness(q, it) >= .45 } }.flatten().filter { it.isNotEmpty() }.distinct().take(4)
+} catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { emptyList() }
+// ask(text) -> cards; cards found only by a suggestion or another spelling must be close to one of the names
+private suspend fun fuzzySearch(q: String, kind: String, ask: suspend (String) -> List<Card>): List<Card> = coroutineScope {
+    val found = LinkedHashMap<String, Pair<Card, Boolean>>()
+    fun add(l: List<Card>, other: Boolean) = l.forEach { found.putIfAbsent(it.path, it to other) }
+    add(ask(q), false) // what was typed failing is the search failing (unreachable)
+    var names = listOf(q)
+    if (found.values.count { closeness(q, it.first.title) >= .6 } < 3) {
+        val sug = suggest(kind, q)
+        names = listOf(q) + sug
+        (sug + spellings(q)).distinct().filter { it != q }.take(5)
+            .map { v -> async { try { ask(v) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { emptyList() } } }
+            .forEach { add(it.await(), true) }
+    }
+    found.values.map { (c, other) -> Triple(c, other, names.maxOf { closeness(it, c.title) }) }.filter { !it.second || it.third >= .5 }
+        .sortedWith(compareByDescending<Triple<Card, Boolean, Double>> { it.third }.thenBy { it.first.title.length }).map { it.first } // as close: the shorter title (the show, before its spin-offs)
+}
+
+/** search: witanime's titles, the movie sites' and manga, a row each, each with its spelling guesses (app.js search) */
 @Composable
 fun SearchScreen(q0: String, nav: Nav) {
     var q by rememberSaveable { mutableStateOf(q0) }
@@ -123,15 +173,15 @@ fun SearchScreen(q0: String, nav: Nav) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(nav.back) { Icon(Ic.back, null, Modifier.size(22.dp)) }
             TextField(q, { q = it }, Modifier.weight(1f).padding(end = 16.dp, top = 8.dp, bottom = 8.dp).focusRequester(focus), placeholder = { Text(t("searchPh")) }, singleLine = true,
-                leadingIcon = { Icon(Ic.search, null, Modifier.size(20.dp)) }, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                leadingIcon = { Icon(Ic.search, null, Modifier.size(20.dp)) }, trailingIcon = { if (q.isNotEmpty()) IconButton({ q = "" }) { Icon(Ic.x, t("clear"), Modifier.size(18.dp)) } }, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 shape = RoundedCornerShape(6.dp), colors = TextFieldDefaults.colors(focusedContainerColor = CardC, unfocusedContainerColor = CardC, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, cursorColor = Red))
         }
         if (typed.isEmpty()) return@Column
         val (l, retry) = loadedOnce(typed) { _ ->
             coroutineScope {
-                val a = async { runCatching { Witanime.search(typed).first().items }.getOrNull() }
-                val c = async { runCatching { Cinema.search(typed) }.getOrNull() }
-                val m = async { runCatching { Manga.browse(mapOf("search" to typed), 1, HashSet()).items }.getOrNull() }
+                val a = async { runCatching { fuzzySearch(typed, "anime") { Witanime.search(it).first().items } }.getOrNull() }
+                val c = async { runCatching { fuzzySearch(typed, "film") { Cinema.search(it) } }.getOrNull() }
+                val m = async { runCatching { fuzzySearch(typed, "manga") { Manga.browse(mapOf("search" to it), 1, HashSet()).items } }.getOrNull() }
                 if (a.await() == null && c.await() == null && m.await() == null) throw java.io.IOException(t("unreachable"))
                 Triple(a.await() ?: emptyList(), c.await() ?: emptyList(), m.await() ?: emptyList())
             }
@@ -151,14 +201,28 @@ fun SearchScreen(q0: String, nav: Nav) {
 @Composable
 fun MyListScreen(nav: Nav) {
     Store.version.intValue
-    val items = listed()
+    val all = listed()
     val nh = Store["hidden"].length()
+    var q by rememberSaveable { mutableStateOf("") }
+    var kind by rememberSaveable { mutableStateOf("") }
+    // a kind by the saved type: "movie" is an anime film, so it stays with anime
+    val kindOf = { c: Card -> when (c.type) { "manga" -> "manga"; "cinema" -> "cinema"; else -> "anime" } }
+    val items = all.filter { (kind.isEmpty() || kindOf(it) == kind) && it.title.contains(q.trim(), ignoreCase = true) }
     Column {
         TopBar(nav)
         Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(t("myList"), Modifier.weight(1f), fontWeight = FontWeight.Bold, fontSize = 22.sp)
         }
-        if (items.isEmpty()) return@Column Empty(t("listEmpty"), t("listHint"))
+        if (all.isEmpty()) return@Column Empty(t("listEmpty"), t("listHint"))
+        TextField(q, { q = it }, Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp), placeholder = { Text(t("listSearchPh")) }, singleLine = true,
+            leadingIcon = { Icon(Ic.search, null, Modifier.size(20.dp)) }, trailingIcon = { if (q.isNotEmpty()) IconButton({ q = "" }) { Icon(Ic.x, t("clear"), Modifier.size(18.dp)) } },
+            shape = RoundedCornerShape(6.dp), colors = TextFieldDefaults.colors(focusedContainerColor = CardC, unfocusedContainerColor = CardC, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, cursorColor = Red))
+        // only the kinds the list holds, and none when it holds one
+        val kinds = listOf("anime", "cinema", "manga").filter { k -> all.any { kindOf(it) == k } }
+        if (kinds.size > 1) Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            (listOf("") + kinds).forEach { k -> FilterChip(kind == k, { kind = k }, { Text(t(k.ifEmpty { "all" })) }) }
+        }
+        if (items.isEmpty()) return@Column Empty(t("nothing"), "")
         CardsGrid(items, nav) {
             if (nh > 0) TextButton({ nav.go(Screen.Hidden) }) { Icon(Ic.eyeSlash, null, Modifier.size(16.dp), tint = Muted); Spacer(Modifier.width(6.dp)); Text(t("openHidden", nh), color = Muted, fontSize = 13.sp) }
         }
@@ -166,7 +230,7 @@ fun MyListScreen(nav: Nav) {
 }
 
 // ---------- the details page shared by anime, manga and films (app.js det-hero) ----------
-class Numbered(val label: String, val seen: Boolean, val last: Boolean, val open: Screen, val id: String = label, val saved: Boolean = false) // id: what picking it hands the actions
+class Numbered(val label: String, val seen: Boolean, val last: Boolean, val open: Screen, val id: String = label, val saved: Boolean = false, val read: Boolean = seen) // id: what picking it hands the actions; read: the ✓ (manga: to the last page, not just opened)
 
 /**
  * banner and poster, titles, chips (red: true), story, buttons, info; then a numbered list (episodes, chapters) with
@@ -182,6 +246,10 @@ fun DetailPage(banner: String, poster: String, title: String, alt: String, chips
     var filter by rememberSaveable { mutableStateOf("") }
     var rev by rememberSaveable { mutableStateOf(false) }
     var more by rememberSaveable { mutableStateOf(false) }
+    var big by remember { mutableStateOf(false) } // the poster, full screen
+    if (big) androidx.compose.ui.window.Dialog({ big = false }, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(Modifier.fillMaxSize().background(Color.Black).clickable { big = false }) { AsyncImage(poster, title, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
+    }
     val shown = (if (rev) list.reversed() else list).filter { filter.isEmpty() || it.label.startsWith(filter) }
     BoxWithConstraints {
         val cols = (maxWidth / 72.dp).toInt().coerceAtLeast(4)
@@ -194,7 +262,7 @@ fun DetailPage(banner: String, poster: String, title: String, alt: String, chips
                     }
                     IconButton(nav.back, Modifier.padding(4.dp)) { Icon(Ic.back, null, Modifier.size(22.dp)) }
                     Row(Modifier.padding(start = 16.dp, end = 16.dp, top = 150.dp), verticalAlignment = Alignment.Bottom) {
-                        if (poster.isNotEmpty()) AsyncImage(poster, null, Modifier.padding(end = 14.dp).width(110.dp).aspectRatio(2 / 3f).clip(RoundedCornerShape(6.dp)).background(CardC), contentScale = ContentScale.Crop)
+                        if (poster.isNotEmpty()) AsyncImage(poster, null, Modifier.padding(end = 14.dp).width(110.dp).aspectRatio(2 / 3f).clip(RoundedCornerShape(6.dp)).background(CardC).clickable { big = true }, contentScale = ContentScale.Crop)
                         Column {
                             Text(title, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp, lineHeight = 26.sp)
                             if (alt.isNotEmpty()) Text(alt, color = Muted, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -238,6 +306,7 @@ fun DetailPage(banner: String, poster: String, title: String, alt: String, chips
                                 .combinedClickable(onLongClick = { if (acts != null) { if (picks.on) picks.toggle(e.id) else picks.start(e.id) } }) { if (picks.on) picks.toggle(e.id) else nav.go(e.open) }, Alignment.Center) {
                                 Text(e.label, color = if (e.seen) Muted else Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                                 if (e.saved) Icon(Ic.download, null, Modifier.align(Alignment.TopEnd).padding(3.dp).size(10.dp), tint = Muted) // downloaded
+                                if (e.read) Icon(Ic.check, t("chRead"), Modifier.align(Alignment.TopStart).padding(3.dp).size(10.dp), tint = Red) // watched / read: too small for the read pill
                             }
                         }
                         repeat(cols - line.size) { Spacer(Modifier.weight(1f)) }

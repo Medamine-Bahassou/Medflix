@@ -218,6 +218,7 @@ object Downloads {
             supersede(it.getString("id")); DownloadService.active.remove(it.getString("id"))
             it.put("state", "queued").put("received", 0)
         }
+        askNotifications()
         start(d, show)
         pump() // the service's hold and texts
     }
@@ -250,10 +251,21 @@ object Downloads {
         pump()
     }
 
+    private var sentToSettings = false // once a run: not on every download
     private fun askNotifications() { // the progress shows as a notification (Android 13+: hidden without this)
         val act = Net.activity
-        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(act, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
+        if (androidx.core.app.NotificationManagerCompat.from(act).areNotificationsEnabled()) return
+        val prefs = Store["prefs"]
+        // android shows its dialog until it's refused twice; after that (or when switched off in settings) only the settings page can turn them on
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(act, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+            && (!prefs.optBoolean("notifAsked") || ActivityCompat.shouldShowRequestPermissionRationale(act, Manifest.permission.POST_NOTIFICATIONS))) {
+            prefs.put("notifAsked", true); Store.persist("prefs")
             ActivityCompat.requestPermissions(act, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+        } else if (!sentToSettings) {
+            sentToSettings = true
+            toast(t("dlNotifAsk"))
+            runCatching { act.startActivity(android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, act.packageName)) }
+        }
     }
 
     /** counts the bytes read, for progress against Content-Length */

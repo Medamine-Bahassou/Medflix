@@ -156,6 +156,13 @@ public class DownloaderPlugin extends Plugin {
             }, 150);
         }
 
+        void full(boolean on) {
+            if (view == null) return;
+            view.setAlpha(on ? 1f : 0f);
+            view.setFocusable(on);
+            view.setFocusableInTouchMode(on);
+        }
+
         /** runs then once the site's page is ready; call (if any) is rejected should the page be dropped first */
         void ensure(PluginCall call, Runnable then) {
             if (ready) {
@@ -165,15 +172,17 @@ public class DownloaderPlugin extends Plugin {
             waiting.add(then);
             if (call != null) waitingCalls.add(call);
             if (view != null) return;
-            view = new WebView(getActivity());
+            // always full screen so the check never loads at 1px and zooms when resized; hidden by alpha, touches pass through
+            view = new WebView(getActivity()) {
+                @Override
+                public boolean dispatchTouchEvent(android.view.MotionEvent e) {
+                    return getAlpha() > 0f && super.dispatchTouchEvent(e);
+                }
+            };
             // it fetches the next download's link with the screen off too (see MainActivity)
             if (Build.VERSION.SDK_INT >= 26) view.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false);
             view.getSettings().setJavaScriptEnabled(true);
             view.getSettings().setDomStorageEnabled(true);
-            // lay the check out like Chrome does (its viewport meta, fit to width) and ignore the phone's font size: the page
-            // loads while the view is 1px, and without these it came up zoomed in once shown full screen
-            view.getSettings().setUseWideViewPort(true);
-            view.getSettings().setLoadWithOverviewMode(true);
             view.getSettings().setTextZoom(100);
             CookieManager.getInstance().setAcceptThirdPartyCookies(view, true); // Cloudflare's checkbox is a challenges.cloudflare.com frame
             view.setBackgroundColor(Color.BLACK);
@@ -201,7 +210,10 @@ public class DownloaderPlugin extends Plugin {
                     }
                 }
             );
-            ((ViewGroup) getActivity().getWindow().getDecorView()).addView(view, new FrameLayout.LayoutParams(1, 1));
+            full(false);
+            ViewGroup decor = (ViewGroup) getActivity().getWindow().getDecorView();
+            decor.addView(view, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+            view.layout(0, 0, decor.getWidth(), decor.getHeight());
             view.loadUrl(home);
             watch();
         }
@@ -236,7 +248,7 @@ public class DownloaderPlugin extends Plugin {
                     view.evaluateJavascript("location.href === " + JSONObject.quote(home) + " && (document.contentType === 'text/plain' || /^\\s*(user-agent|sitemap|disallow|allow)\\s*:/im.test(document.body ? document.body.innerText : ''))", r -> {
                         if (view == null || ready || !"true".equals(r)) return;
                         ready = true;
-                        view.setLayoutParams(new FrameLayout.LayoutParams(1, 1));
+                        full(false);
                         List<Runnable> go = new ArrayList<>(waiting);
                         waiting.clear();
                         waitingCalls.clear();
@@ -248,7 +260,7 @@ public class DownloaderPlugin extends Plugin {
                         return;
                     }
                     if (waited > 1500) // Cloudflare's check: over the app, so a tap on its box can pass it
-                        view.setLayoutParams(new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+                        full(true);
                     h.postDelayed(this, 500);
                 }
             });
@@ -299,7 +311,7 @@ public class DownloaderPlugin extends Plugin {
         getActivity().runOnUiThread(() -> s.ensure(call, () -> {
             if (s.view == null) return;
             s.ready = false; // other requests wait meanwhile; back closes it (closeChallenge)
-            s.view.setLayoutParams(new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+            s.full(true);
             s.view.loadUrl(url);
             WebView mine = s.view;
             long start = System.currentTimeMillis();

@@ -5,10 +5,24 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import kotlinx.coroutines.isActive
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -35,10 +49,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import androidx.compose.ui.graphics.asImageBitmap
+import coil3.request.allowHardware
+import coil3.request.maxBitmapSize
+import coil3.toBitmap
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import org.json.JSONObject
 
@@ -75,7 +95,7 @@ fun MangaBrowseScreen(query: Map<String, String>, nav: Nav) {
         PageTitle(t("manga"), nav)
         var q by rememberSaveable(query) { mutableStateOf(query["search"] ?: "") }
         TextField(q, { q = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp), placeholder = { Text(t("mSearchPh")) }, singleLine = true,
-            leadingIcon = { Icon(Ic.search, null, Modifier.size(20.dp)) }, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            leadingIcon = { Icon(Ic.search, null, Modifier.size(20.dp)) }, trailingIcon = { if (q.isNotEmpty()) IconButton({ q = "" }) { Icon(Ic.x, t("clear"), Modifier.size(18.dp)) } }, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { go { put("search", q.trim()) } }), shape = RoundedCornerShape(6.dp),
             colors = TextFieldDefaults.colors(focusedContainerColor = CardC, unfocusedContainerColor = CardC, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, cursorColor = Red))
         Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -123,7 +143,7 @@ fun MangaSeriesScreen(id: String, nav: Nav) {
                     start?.let { (cid, label) -> RedButton(label) { nav.go(Screen.MangaRead(cid)) } }
                     ListButton("/manga/series/$id", s.title, s.poster, "manga")
                 }, emptyList(), nav, t("chapters"),
-                full.chs.map { Numbered(it.n, seen.has(it.id), r?.optString("chapterId") == it.id, Screen.MangaRead(it.id), it.id, com.medanime.app.Downloads.done("manga:${it.id}")) }, t("jumpCh"),
+                full.chs.map { Numbered(it.n, seen.has(it.id), r?.optString("chapterId") == it.id, Screen.MangaRead(it.id), it.id, com.medanime.app.Downloads.done("manga:${it.id}"), seen.optInt(it.id) == 2) }, t("jumpCh"),
                 // several chapters: mark them read or unread, download them, or delete their saved copies (manga.js acts)
                 acts = { ids -> listOfNotNull("read" to t("markRead"), "unread" to t("markUnread"),
                     if (ids.any { !com.medanime.app.Downloads.done("manga:$it") }) "dl" to t("downloadShort") else null,
@@ -194,7 +214,51 @@ fun MangaReaderScreen(cid: String, nav: Nav) {
                 if (i >= c.images.size - 1 && c.images.isNotEmpty() && Store["mangaSeen"].optInt(c.id) != 2) { Store["mangaSeen"].put(c.id, 2); Store.persist("mangaSeen") }
                 Store.persist("manga")
             }
-            val toggle = Modifier.clickable(remember { MutableInteractionSource() }, null) { if (!rdLocked) bars = !bars }
+            val list = rememberLazyListState(spot.toInt()) // here: the bottom bar shows where it is
+            // auto-scroll (scroll mode, manga.js autoScroll): the pages glide down at 0.5x-10x (40dp/s per 1x, remembered). A long
+            // press on its button opens the speed row; it runs until that button stops it (or another chapter opens)
+            var auto by remember(cid) { mutableStateOf(false) }
+            var speedOpen by remember { mutableStateOf(false) }
+            var speed by remember { mutableFloatStateOf(Store["prefs"].optDouble("mangaSpeed", 3.0).toFloat()) }
+            val setSpeed = { v: Float -> speed = (Math.round(v * 2) / 2f).coerceIn(.5f, 10f); Store["prefs"].put("mangaSpeed", speed.toDouble()); Store.persist("prefs") }
+            val dens = androidx.compose.ui.platform.LocalDensity.current.density
+            LaunchedEffect(auto, horiz) {
+                if (!auto || horiz) return@LaunchedEffect
+                var last = withFrameNanos { it }
+                while (auto) {
+                    val now = withFrameNanos { it }
+                    val dy = (now - last) / 1e9f * 40f * speed * dens; last = now
+                    // a finger dragging the pages takes the scroll over meanwhile: the glide goes on after it
+                    try { list.scrollBy(dy) } catch (e: kotlinx.coroutines.CancellationException) { if (!kotlinx.coroutines.currentCoroutineContext().isActive) throw e }
+                }
+            }
+            // zoom, 1x-4x (manga.js readerZoom): pinched around the fingers, or a double tap for 2.5x and back; zoomed, one finger
+            // also pans sideways while the pages still scroll under it. A single tap shows or hides the bars
+            var z by remember(cid) { mutableFloatStateOf(1f) }
+            var off by remember(cid) { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+            var box by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+            // the content under f stays put; kept inside the screen's edges
+            fun zoomTo(nz0: Float, f: androidx.compose.ui.geometry.Offset, pan: androidx.compose.ui.geometry.Offset = androidx.compose.ui.geometry.Offset.Zero) {
+                val nz = nz0.coerceIn(1f, 4f)
+                val t = f - (f - off) * (nz / z) + pan
+                z = nz
+                off = androidx.compose.ui.geometry.Offset(t.x.coerceIn(box.width * (1 - nz), 0f), t.y.coerceIn(box.height * (1 - nz), 0f))
+            }
+            val toggle = Modifier.onSizeChanged { box = it }
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
+                        do {
+                            val e = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial) // before the list scrolls or the pager turns
+                            val down = e.changes.filter { it.pressed }
+                            if (down.size >= 2) { zoomTo(z * e.calculateZoom(), e.calculateCentroid(), e.calculatePan()); e.changes.forEach { it.consume() } }
+                            else if (z > 1f && down.size == 1) zoomTo(z, androidx.compose.ui.geometry.Offset.Zero, androidx.compose.ui.geometry.Offset(down[0].positionChange().x, 0f)) // not consumed: the list scrolls too
+                        } while (e.changes.any { it.pressed })
+                    }
+                }
+                .pointerInput(Unit) { detectTapGestures(onDoubleTap = { zoomTo(if (z > 1f) 1f else 2.5f, it) },
+                    onTap = { if (!rdLocked) bars = !bars }) }
+                .graphicsLayer { scaleX = z; scaleY = z; translationX = off.x; translationY = off.y; transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f) }
             val end = @Composable {
                 Column(Modifier.fillMaxWidth().padding(vertical = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("${t("endOfChapter")} ${c.n}", color = Muted)
@@ -203,14 +267,14 @@ fun MangaReaderScreen(cid: String, nav: Nav) {
                     else GhostButton(t("chapters"), Ic.manga) { nav.replace(Screen.MangaSeries(d.sid)) }
                 }
             }
-            // ponytail: no pinch zoom yet (manga.js readerZoom)
+            var seekAt by remember { mutableLongStateOf(0L) } // the last jump from the scrollbar
             if (horiz) {
                 val pager = androidx.compose.foundation.pager.rememberPagerState(spot.toInt().coerceAtMost(c.images.size)) { c.images.size + 1 }
                 LaunchedEffect(pager) { snapshotFlow { pager.settledPage }.collect { if (it > 0) bars = false; reached(it, 0.0) } }
-                androidx.compose.foundation.pager.HorizontalPager(pager, Modifier.fillMaxSize().then(toggle)) { i ->
+                androidx.compose.foundation.pager.HorizontalPager(pager, Modifier.fillMaxSize().then(toggle), userScrollEnabled = z == 1f) { i -> // zoomed: the swipe pans, not turns
                     // each page scrolls on its own when taller than the screen
                     if (i < c.images.size) Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), Alignment.Center) {
-                        AsyncImage(c.images[i], null, Modifier.fillMaxWidth(), contentScale = ContentScale.FillWidth)
+                        MangaPage(c.images[i], Modifier.fillMaxWidth())
                     } else Box(Modifier.fillMaxSize(), Alignment.Center) { end() }
                 }
                 // which page of how many (an LTR isolate: "3 / 15" in Arabic too); above the bar while it shows, not on the end page
@@ -219,11 +283,22 @@ fun MangaReaderScreen(cid: String, nav: Nav) {
                         .background(Color(0x99000000), RoundedCornerShape(99.dp)).padding(horizontal = 12.dp, vertical = 4.dp),
                     color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             } else {
-                val list = rememberLazyListState(spot.toInt())
                 val loaded = remember(cid) { mutableStateMapOf<Int, Boolean>() }
+                // the saved spot's fraction down its page: only known once that page has loaded (a placeholder is 480dp). Until then
+                // nothing is saved, or the first settle would overwrite the spot with the page's top; a scroll by hand gives up
+                var restored by remember(cid) { mutableStateOf(spot == 0.0) }
+                LaunchedEffect(cid) {
+                    val at = spot.toInt()
+                    val byHand = snapshotFlow { if (list.isScrollInProgress) true else if (loaded[at] == true) false else null }.first { it != null }!!
+                    // a frame's callbacks run before its layout: two frames, so the size read is the loaded page's, not the placeholder's
+                    repeat(2) { withFrameNanos { } }
+                    val h = list.layoutInfo.visibleItemsInfo.firstOrNull { it.index == at }?.size
+                    if (h != null && !byHand && !list.isScrollInProgress) list.scrollToItem(at, ((spot - at) * h).toInt())
+                    restored = true
+                }
                 LaunchedEffect(list) {
-                    snapshotFlow { list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset }.debounce(300).collect { (i, off) ->
-                        if (i > 0) bars = false // reading: the bars slide away, and come back on a tap
+                    snapshotFlow { list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset }.debounce(300).filter { restored }.collect { (i, off) ->
+                        if (i > 0 && System.currentTimeMillis() - seekAt > 1000) bars = false // reading: the bars slide away, and come back on a tap; not while sliding the scrollbar in them
                         val last = list.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 // the last page scrolled into view: read
                         reached(if (last >= c.images.size - 1) last else i, off.toDouble() / (list.layoutInfo.visibleItemsInfo.firstOrNull()?.size ?: 1))
                     }
@@ -231,12 +306,10 @@ fun MangaReaderScreen(cid: String, nav: Nav) {
                 LazyColumn(Modifier.fillMaxSize().then(toggle), list) {
                     if (c.images.isEmpty()) item { Empty(t("noImages"), "") }
                     itemsIndexed(c.images) { i, src ->
-                        AsyncImage(src, null, Modifier.fillMaxWidth().then(if (loaded[i] == true) Modifier else Modifier.heightIn(min = 480.dp)), contentScale = ContentScale.FillWidth,
-                            onSuccess = { loaded[i] = true })
+                        MangaPage(src, Modifier.fillMaxWidth().then(if (loaded[i] == true) Modifier else Modifier.heightIn(min = 480.dp))) { loaded[i] = true }
                     }
                     item { end() }
                 }
-                if (c.images.isNotEmpty()) ReaderScrollbar(list, c.images.size, Modifier.align(androidx.compose.ui.AbsoluteAlignment.CenterLeft))
             }
             var picker by remember { mutableStateOf(false) }
             AnimatedVisibility(showBars, Modifier.align(Alignment.TopCenter), enter = fadeIn(), exit = fadeOut()) {
@@ -255,14 +328,26 @@ fun MangaReaderScreen(cid: String, nav: Nav) {
             }
             AnimatedVisibility(showBars, Modifier.align(Alignment.BottomCenter), enter = fadeIn(), exit = fadeOut()) {
                 // chapter to chapter replaces the page, so back leaves the reader (like the video player)
-                Row(Modifier.fillMaxWidth().background(Color(0xE6000000)).navigationBarsPadding().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.fillMaxWidth().background(Color(0xE6000000)).navigationBarsPadding().padding(8.dp)) {
+                if (speedOpen && !horiz) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton({ setSpeed(speed - .5f) }) { Icon(Ic.minus, null, Modifier.size(18.dp)) }
+                    Slider(speed, { setSpeed(it) }, Modifier.weight(1f), valueRange = .5f..10f, steps = 18, colors = SliderDefaults.colors(thumbColor = Red, activeTrackColor = Red))
+                    IconButton({ setSpeed(speed + .5f) }) { Icon(Ic.plus, null, Modifier.size(18.dp)) }
+                    Text("\u2066${if (speed % 1 == 0f) speed.toInt() else speed}x\u2069", Modifier.width(40.dp), color = Color.White, fontSize = 13.sp)
+                }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     IconButton({ rdLocked = true }) { Icon(Ic.lock, t("lockUi"), Modifier.size(20.dp)) }
                     IconButton({ Store["prefs"].put("mangaH", !horiz); Store.persist("prefs") }) { Icon(if (horiz) Ic.horiz else Ic.vert, t("readMode"), Modifier.size(20.dp), tint = if (horiz) Red else Color.White) }
+                    // playing closes the speed row
+                    if (!horiz) Box(Modifier.size(48.dp).combinedClickable(onLongClick = { speedOpen = !speedOpen }) { auto = !auto; if (auto) speedOpen = false }, Alignment.Center) {
+                        Icon(if (auto) Ic.pause else Ic.play, t("autoScroll"), Modifier.size(20.dp), tint = if (auto) Red else Color.White)
+                    }
                     Spacer(Modifier.weight(1f))
                     IconButton({ prev?.let { nav.replace(Screen.MangaRead(it)) } }, enabled = prev != null) { Icon(Ic.prev, t("prevCh"), Modifier.size(22.dp)) }
                     if (d.chs.isNotEmpty()) TextButton({ picker = true }) { Text("${t("chShort")} ${c.n}", color = Color.White, fontSize = 15.sp); Icon(Ic.caretUp, null, Modifier.padding(start = 6.dp).size(14.dp), tint = Color.White) }
                     IconButton({ next?.let { nav.replace(Screen.MangaRead(it)) } }, enabled = next != null) { Icon(Ic.next, t("nextCh"), Modifier.size(22.dp)) }
                 }
+                if (!horiz && c.images.isNotEmpty()) ReaderScrollbar(list, c.images.size) { seekAt = System.currentTimeMillis() } }
             }
             // locked: a faint button brings the bars back
             if (rdLocked) IconButton({ rdLocked = false; bars = true }, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 24.dp).background(Color(0x55000000), androidx.compose.foundation.shape.CircleShape)) {
@@ -275,7 +360,7 @@ fun MangaReaderScreen(cid: String, nav: Nav) {
                         Row(Modifier.fillMaxWidth().clickable { picker = false; nav.replace(Screen.MangaRead(x.id)) }.padding(horizontal = 24.dp, vertical = 14.dp)) {
                             Text("${t("chapter")} ${x.n}", Modifier.weight(1f), color = if (x.id == c.id) Red else if (seen.has(x.id)) Muted else Color.White, fontWeight = if (x.id == c.id) FontWeight.Bold else FontWeight.Normal)
                             if (com.medanime.app.Downloads.done("manga:${x.id}")) Icon(Ic.download, t("offline"), Modifier.padding(end = 8.dp).size(14.dp), tint = Muted)
-                            if (seen.optInt(x.id) == 2) Text(t("chRead"), color = Muted, fontSize = 12.sp)
+                            if (seen.optInt(x.id) == 2) ReadBadge()
                         }
                     }
                 }
@@ -283,6 +368,11 @@ fun MangaReaderScreen(cid: String, nav: Nav) {
         }
     }
 }
+
+/** a chapter read to its last page: a small grey pill (style.css rd-badge) */
+@Composable
+internal fun ReadBadge() = Text(t("chRead"), Modifier.padding(start = 8.dp).background(Color(0x1AFFFFFF), RoundedCornerShape(99.dp)).padding(horizontal = 8.dp, vertical = 2.dp),
+    color = Color(0xFFCCCCCC), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
 
 /** a chapter with several copies (two sites, or one listing it twice): which one to read, by number, no site names */
 @Composable
@@ -304,27 +394,48 @@ private fun SourceMenu(alts: List<Ch>, cur: String, pick: (String) -> Unit) {
 
 /**
  * the reader's scrollbar (vertical mode), on the left: the thumb follows the place in the chapter; dragging it or tapping
- * the track jumps there. Faint until scrolled or touched (manga.js rd-scroll)
+ * the track jumps there. Hidden until scrolled or touched (manga.js rd-scroll)
+ */
+/**
+ * a page as strips of at most 2048px: webtoon pages run 800x9000, and old phones' GPUs (Redmi 9A: 4096px) can't draw a
+ * bitmap that tall, so the whole page came out blank
  */
 @Composable
-private fun ReaderScrollbar(list: androidx.compose.foundation.lazy.LazyListState, pages: Int, modifier: Modifier) {
+private fun MangaPage(src: String, modifier: Modifier, onSuccess: () -> Unit = {}) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val strips by androidx.compose.runtime.produceState<List<androidx.compose.ui.graphics.ImageBitmap>?>(null, src) {
+        val req = coil3.request.ImageRequest.Builder(ctx).data(src).memoryCachePolicy(coil3.request.CachePolicy.DISABLED) // the strips are what's kept
+            .size(coil3.size.Size.ORIGINAL).allowHardware(false)
+            .maxBitmapSize(coil3.size.Size.ORIGINAL).build() // Coil shrinks past 4096px (800x9000 -> 364x4096, blurry): the strips make that needless
+        val bmp = ((coil3.SingletonImageLoader.get(ctx).execute(req) as? coil3.request.SuccessResult)?.image ?: return@produceState).toBitmap()
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            (0 until bmp.height step 2048).map { y -> android.graphics.Bitmap.createBitmap(bmp, 0, y, bmp.width, minOf(2048, bmp.height - y)).asImageBitmap() }
+        }
+        onSuccess()
+    }
+    androidx.compose.foundation.layout.Column(modifier) {
+        strips?.forEach { androidx.compose.foundation.Image(it, null, Modifier.fillMaxWidth(), contentScale = ContentScale.FillWidth) }
+    }
+}
+
+/** how far the chapter is read, under the bottom bar's buttons: a tap or a drag jumps there (from the right in Arabic) */
+@Composable
+private fun ReaderScrollbar(list: androidx.compose.foundation.lazy.LazyListState, pages: Int, onSeek: () -> Unit) {
     val scope = rememberCoroutineScope()
-    var dragging by remember { mutableStateOf(false) }
     val frac by remember(pages) { derivedStateOf {
         val first = list.layoutInfo.visibleItemsInfo.firstOrNull()
         if (first == null) 0f else ((list.firstVisibleItemIndex + list.firstVisibleItemScrollOffset.toFloat() / maxOf(1, first.size)) / pages).coerceIn(0f, 1f)
     } }
-    val alpha by androidx.compose.animation.core.animateFloatAsState(if (dragging || list.isScrollInProgress) 1f else .35f)
-    BoxWithConstraints(modifier.fillMaxHeight().width(28.dp).padding(vertical = 96.dp)) {
-        val thumb = 48.dp
-        val travel = maxHeight - thumb
-        // a touch at y: that share of the chapter
-        val go = { y: Float -> val f = (y / constraints.maxHeight).coerceIn(0f, 1f) * pages; scope.launch { list.scrollToItem(f.toInt().coerceAtMost(pages - 1)) } }
-        Box(Modifier.fillMaxSize().pointerInput(pages) {
-            detectVerticalDragGestures(onDragStart = { dragging = true; go(it.y) }, onDragEnd = { dragging = false }, onDragCancel = { dragging = false }) { ch, _ -> go(ch.position.y) }
-        }.pointerInput(pages) { detectTapGestures { go(it.y) } }) {
-            Box(Modifier.align(Alignment.TopCenter).fillMaxHeight().width(3.dp).background(Color(0x33FFFFFF).copy(alpha = .2f * alpha + .05f), RoundedCornerShape(2.dp)))
-            Box(Modifier.align(Alignment.TopCenter).offset(y = travel * frac).width(6.dp).height(thumb).graphicsLayer { this.alpha = alpha }.background(Red, RoundedCornerShape(3.dp)))
+    val rtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
+    BoxWithConstraints(Modifier.fillMaxWidth().height(28.dp).padding(horizontal = 12.dp)) {
+        val thumb = 14.dp; val track = maxWidth
+        // a touch at x (from the left, whatever the language): that share of the chapter
+        val go = { x: Float -> onSeek(); val f = (x / constraints.maxWidth).coerceIn(0f, 1f).let { if (rtl) 1 - it else it } * pages; scope.launch { list.scrollToItem(f.toInt().coerceAtMost(pages - 1)) } }
+        Box(Modifier.fillMaxSize().pointerInput(pages, rtl) { detectHorizontalDragGestures(onDragStart = { go(it.x) }) { ch, _ -> go(ch.position.x) } }
+            .pointerInput(pages, rtl) { detectTapGestures { go(it.x) } }) {
+            Box(Modifier.align(Alignment.CenterStart).fillMaxWidth().height(3.dp).background(Color(0x33FFFFFF), RoundedCornerShape(2.dp)))
+            Box(Modifier.align(Alignment.CenterStart).fillMaxWidth(frac).height(3.dp).background(Red, RoundedCornerShape(2.dp)))
+            Box(Modifier.align(Alignment.CenterStart).offset(x = (track - thumb) * frac).size(thumb).background(Red, androidx.compose.foundation.shape.CircleShape))
         }
     }
 }

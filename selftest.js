@@ -45,6 +45,8 @@ app.once('browser-window-created', (_, win) => win.webContents.once('did-finish-
       ok(ww.servers.length >= 3 && ww.servers.every(s => s.url.startsWith('https://') && s.backup) && ww.downloads.length, 'wecima film servers ' + ww.servers.map(s => s.label));
       const wa = await scraper.wecima('Kusuriya no Hitorigoto 2nd Season', '', '4', false), wm = await scraper.wecima('Suzume no Tojimari', '', '', true);
       ok(wa.length >= 3 && wm.length && [...wa, ...wm].every(s => s.url.startsWith('https://')), 'wecima anime servers ' + wa.length + ' ' + wm.length);
+      const ra = await scraper.ristoanime('Black Clover 2nd Season', '', '4', false), r1 = await scraper.ristoanime('BLEACH: Sennen Kessen-hen - Kashin-tan', '', '9', false);
+      ok(ra.length >= 3 && r1.length >= 3 && [...ra, ...r1].every(s => s.url.startsWith('https://')), 'ristoanime servers ' + ra.length + ' ' + r1.length);
       ok(mw.servers.length >= 3 && mw.servers.every(s => s.url.startsWith('https://') && s.ref) && mw.downloads.length, 'mycima servers ' + mw.servers.map(s => s.label));
       ok(closeness('spiderman', 'Spider-Man: No Way Home') === 1 && closeness('naurto', 'Naruto') > .5 && closeness('naurto', 'Bleach') < .3, 'search closeness');
       const fz = await fuzzySearch('naurto', 'anime', v => scraper.search(v).then(r => r.items));
