@@ -1,7 +1,7 @@
 // Android (Capacitor) stand-in for the Electron preload API (preload.js / main.js): same calls, done with
 // Capacitor's native HTTP (no CORS, any headers, shared cookie jar), IndexedDB, and an iframe player.
 if (!window.api && window.Capacitor) (() => {
-  const SITE = 'https://witanime.site', AR = 'https://eva.animerco.org', MANGA = 'https://appswat.com', TEK = ['https://api.mangatek.com', 'https://mangatek.com'], AS = 'https://animeschedule.net', MC = 'https://cima.my-cima.net', WC = 'https://wecima.social', RA = 'https://ristoanime.me';
+  const SITE = 'https://witanime.site', AR = 'https://eva.animerco.org', MANGA = 'https://appswat.com', TEK = ['https://api.mangatek.com', 'https://mangatek.com'], AS = 'https://animeschedule.net', MC = 'https://cima.my-cima.net', WC = 'https://wecima.singles', RA = 'https://ristoanime.me';
   const SUGGEST = ['https://kitsu.io', 'https://v3.sg.media-imdb.com']; // the search's title suggestions (app.js)
   // same desktop Chrome UA as the Electron build, so the sites serve the markup the scraper expects
   const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0 Safari/537.36';

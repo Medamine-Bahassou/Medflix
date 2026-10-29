@@ -16,7 +16,7 @@ const TEK = ['https://api.mangatek.com', 'https://mangatek.com']; // the manga s
 const MC = 'https://cima.my-cima.net'; // the movies section's backup servers (MyCima)
 // more backup servers, films' and anime's: Cloudflare lets a request through that names the site as its referrer, so its
 // pages (pop-up ads and all) are never opened in a window for the check (see refused below)
-const WC = 'https://wecima.social';
+const WC = 'https://wecima.singles';
 const RA = 'https://ristoanime.me'; // anime backup servers
 const SUGGEST = ['https://kitsu.io', 'https://v3.sg.media-imdb.com']; // the search's typo-tolerant title suggestions (app.js)
 const EGYDEAD = /^https:\/\/([a-z0-9-]+\.)*(egydead|myseed|arabseed)\.[a-z]+$/; // the movies section: the site hops between domains
@@ -85,7 +85,8 @@ ipcMain.handle('fetch', async (_, url, form) => {
   const headers = { 'User-Agent': UA, 'Accept-Language': 'ar,en;q=0.8', ...(u.origin === WC && { Referer: WC + '/' }) };
   if (u.pathname === '/new-episodes') return pagerFetch(u.href, headers);
   if (/(^|\.)egydead\./.test(u.hostname)) return edFetch(u);
-  const opts = form ? { method: 'POST', body: new URLSearchParams(form).toString(), headers: { ...headers, 'Content-Type': 'application/x-www-form-urlencoded' } } : { headers };
+  // a form is the site's own XHR (myseed answers its server calls only to one): sent as its page sends it
+  const opts = form ? { method: 'POST', body: new URLSearchParams(form).toString(), headers: { ...headers, 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest', Origin: u.origin } } : { headers };
   const res = await retry429(() => session.defaultSession.fetch(u.href, opts), u.origin, form ? u.origin + '/' : u.href); // a form's page can't be opened: its site's home
   if (!res.ok) throw new Error(`HTTP ${res.status} ${u.pathname}${res.headers.get('cf-mitigated') ? ' · Cloudflare check' : ''}`);
   return res.text();
@@ -139,7 +140,7 @@ const pagerFetch = (url, headers) => new Promise((ok, fail) => {
 // A saved image shows at once and is re-downloaded from the site once per app run.
 const IMG_DIR = path.join(app.getPath('userData'), 'images');
 // manga: only appswat's (or its meshmanga.com mirror's) sized posters/covers and mangatek's covers; chapter pages are read once and would just fill the disk
-const IMG_HOSTS = /^https:\/\/(images\.witanime\.site|eva\.animerco\.org\/wp-content\/uploads|(appswat|meshmanga)\.com\/v2\/media\/__sized__|api\.mangatek\.com\/covers|img\.animeschedule\.net\/production|([a-z0-9-]+\.)*(egydead|myseed|arabseed)\.[a-z]+\/wp-content\/uploads)\//;
+const IMG_HOSTS = /^https:\/\/(images\.witanime\.site|eva\.animerco\.org\/wp-content\/uploads|(appswat|meshmanga)\.com\/v2\/media\/__sized__|api\.mangatek\.com\/covers|img\.animeschedule\.net\/production|media\.kitsu\.app\/episodes|([a-z0-9-]+\.)*(egydead|myseed|arabseed)\.[a-z]+\/wp-content\/uploads)\//;
 const imgChecked = new Set();
 protocol.registerSchemesAsPrivileged([{ scheme: 'medimg', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 

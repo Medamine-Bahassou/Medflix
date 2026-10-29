@@ -23,7 +23,7 @@ data class Movie(val title: String, val year: String, val dub: Boolean, val orig
 data class Link(val label: String, val quality: String, val url: String, val backup: Boolean = false) // backup: another site's copy of the film
 
 object Cinema {
-    const val ED = "https://m.myseed.pics"
+    const val ED = "https://m.myseed.tv"
     // [id, listing path, ar, en]
     val CATS = listOf(
         listOf("all", "/recently/", "أحدث الأفلام", "Latest movies"), // everything just added: its films (see list)
@@ -187,7 +187,7 @@ object Cinema {
      * every site's links for the title (cinema.js edWatch): the site's own, then, for a film, EgyDead's, MyCima's and
      * WeCima's copies of it; a host already listed isn't offered again by a later site
      */
-    suspend fun watch(m: Movie, slug: String): Watch = coroutineScope {
+    suspend fun watch(m: Movie, slug: String): Watch = kotlinx.coroutines.supervisorScope { // a backup site failing mustn't take the others' links with it
         val mine = async { runCatching { seed(m.origin, pathOf(slug)) } }
         val more = if (slug.contains('/')) emptyList() else listOf(async { egy(m) }, async { mc(m) }, async { wc(m) })
             .map { d -> runCatching { d.await() }.onFailure { android.util.Log.w("medflix", "backup", it) }.getOrNull() }.filterNotNull()
@@ -228,7 +228,7 @@ object Cinema {
                 .filter { it.url.startsWith("https://") })
     }
     // WeCima: Cloudflare lets a request through when it names the site as its referrer; its pages are only read for links
-    private const val WC = "https://wecima.social"
+    private const val WC = "https://wecima.singles"
     private suspend fun wc(m: Movie): Watch {
         val ref = mapOf("Referer" to "$WC/")
         val hit = parse(get("$WC/?s=" + URLEncoder.encode(m.title, "UTF-8"), headers = ref), WC).select(".GridItem a[href][title]").find { sameFilm(m, it.attr("title")) }
@@ -238,16 +238,41 @@ object Cinema {
             doc.select(".List--Download--Wecima--Single a[href]").map { it.attr("href") }.filter { it.startsWith("https://") }.map { Link(host(it), "", it) })
     }
 
+    // the watch page's own calls, made as its script makes them (an XHR from the site, with the page's csrf token)
+    private fun csrf(html: String) = Regex("csrf__token'\\s*:\\s*\"([^\"]+)").find(html)?.groupValues?.get(1)
+    private suspend fun xhr(origin: String, what: String, form: Map<String, String>, asPlayer: Boolean = false) =
+        JSONObject(Net.fetch("$origin/$what/", mapOf("X-Requested-With" to "XMLHttpRequest", "Referer" to "$origin/"), asPlayer = asPlayer, form = form).body)
+    // the watch page lists one quality's servers (480p); the menu asks for the others (720p, 1080p), then each server's link on its own
+    private suspend fun otherQualities(origin: String, html: String, doc: Document): List<Link> = coroutineScope {
+        val csrf = csrf(html) ?: return@coroutineScope emptyList()
+        val post = doc.selectFirst(".servers__list li[data-post]")?.attr("data-post") ?: return@coroutineScope emptyList()
+        val shown = doc.select(".servers__list li[data-qu]").map { it.attr("data-qu") }.toSet()
+        doc.select(".qualities__list li[data-quality]").map { it.attr("data-quality") }.filter { it.isNotEmpty() && it !in shown }.map { q ->
+            async {
+                val form = mapOf("post_id" to post, "quality" to q, "csrf_token" to csrf)
+                val lis = runCatching { Jsoup.parse(xhr(origin, "get__quality__servers", form).optString("html")).select("li[data-server]") }.getOrDefault(emptyList())
+                lis.map { li ->
+                    async { runCatching { xhr(origin, "get__watch__server", form + ("server" to li.attr("data-server"))).optString("server") }.getOrNull()
+                        ?.takeIf { it.isNotEmpty() }?.let { Link(li.attr("data-server-name").ifEmpty { txt(li) }.ifEmpty { t("server") }, q, it) } }
+                }.awaitAll().filterNotNull()
+            }
+        }.awaitAll().flatten()
+    }
+
     /** a site's watch page (+ watch/) and download page (+ download/): stream servers, best hosts first, and download links */
     private suspend fun seed(origin: String, path: String): Watch = coroutineScope {
         val base = "$origin/" + path.split('/').joinToString("/") { URLEncoder.encode(it, "UTF-8").replace("+", "%20") }
         val dl = async { runCatching { parse(get("$base/download/"), origin) }.getOrNull() }
-        val doc = parse(get("$base/watch/"), origin)
+        val html = get("$base/watch/")
+        val doc = parse(html, origin)
         if (doc.selectFirst(".serversList, .mob-servers, .servers__list") == null) throw IOException("not the watch page: ${txt(doc.selectFirst("title")).ifEmpty { "empty" }}")
-        val servers = doc.select(".serversList li[data-link], .mob-servers li[data-link], .servers__list li[data-link]").map { li ->
-            Link(txt(li).ifEmpty { t("server") }, li.closest("[data-quality]")?.attr("data-quality") ?: li.attr("data-quality"), li.attr("data-link"))
-        }.filter { it.url.isNotEmpty() && !DEAD.containsMatchIn(runCatching { URI(origin).resolve(it.url).host }.getOrDefault("")) } // gone hosts: not offered, nor unwrapped
-            .map { async { unwrap(it, origin) } }.awaitAll().flatten().sortedBy { rank(it.label) }
+        val listed = doc.select(".serversList li[data-link], .mob-servers li[data-link], .servers__list li[data-link]").map { li ->
+            Link(txt(li).ifEmpty { t("server") }, li.attr("data-qu").ifEmpty { li.closest("[data-quality]")?.attr("data-quality") ?: li.attr("data-quality") }, li.attr("data-link"))
+        }
+        val servers = (listed + otherQualities(origin, html, doc))
+            .filter { it.url.isNotEmpty() && !DEAD.containsMatchIn(runCatching { URI(origin).resolve(it.url).host }.getOrDefault("")) } // gone hosts: not offered, nor unwrapped
+            .map { async { unwrap(it, origin) } }.awaitAll().flatten()
+            .sortedWith(compareBy({ rank(it.label) }, { -(it.quality.toIntOrNull() ?: 0) })) // each host's best quality first
         val dDoc = dl.await() ?: doc
         val downloads = doc.select(".donwload-servers-list li").map { li -> Link(txt(li.selectFirst(".ser-name")), txt(li.selectFirst(".server-info")), li.selectFirst("a.ser-link")?.attr("href") ?: "") } +
             dDoc.select("a.download__item[href]").map { a ->
@@ -259,8 +284,15 @@ object Cinema {
     }
     // myseed's link only plays for the browser the watch page was made for (its user agent), and not for long: asked anew,
     // past the site's cache and as the player asks, each time it's played
-    suspend fun myseedNow(m: Movie, slug: String): String {
-        val tok = Regex("vids\\.php\\?t=([A-Za-z0-9]+)").find(get("${base(m, slug)}/watch/?_=${System.currentTimeMillis()}", asPlayer = true))?.groupValues?.get(1) ?: throw IOException("no myseed link")
+    // (quality: one the page doesn't list is asked for as its menu asks, as the player too)
+    suspend fun myseedNow(m: Movie, slug: String, quality: String = ""): String {
+        val html = get("${base(m, slug)}/watch/?_=${System.currentTimeMillis()}", asPlayer = true)
+        val doc = parse(html, m.origin)
+        val direct = doc.selectFirst(".servers__list li[data-direct-arabseed=1]")
+        val link = if (quality.isEmpty() || direct == null || direct.attr("data-qu") == quality) html
+            else xhr(m.origin, "get__watch__server", mapOf("post_id" to direct.attr("data-post"), "quality" to quality, "server" to direct.attr("data-server"),
+                "csrf_token" to (csrf(html) ?: "")), asPlayer = true).optString("server")
+        val tok = Regex("vids\\.php\\?t=([A-Za-z0-9]+)").find(link)?.groupValues?.get(1) ?: throw IOException("no myseed link")
         return myseedUrl(tok, m.origin)
     }
     fun isLast(l: Link) = l.label == LAST

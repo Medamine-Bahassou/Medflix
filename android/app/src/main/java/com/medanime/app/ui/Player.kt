@@ -1,5 +1,6 @@
 package com.medanime.app.ui
 
+import android.net.Uri
 import android.annotation.SuppressLint
 import android.content.pm.ActivityInfo
 import android.graphics.Color as AColor
@@ -271,6 +272,7 @@ fun LinksMenu(links: List<Link>?) {
 @Composable
 fun HostPlayer(url: String) {
     var full by remember { mutableStateOf<Pair<View, WebChromeClient.CustomViewCallback>?>(null) }
+    var loading by remember { mutableStateOf(true) } // the host's page still coming: black until then, so a spinner over it
     val act = Net.activity
     val bars = remember { WindowCompat.getInsetsController(act.window, act.window.decorView) }
     // leaving fullscreen can come from the player, back, or the page closing (its WebView may be going): each step on its own
@@ -286,6 +288,7 @@ fun HostPlayer(url: String) {
     }
     BackHandler(full != null) { exit() }
     DisposableEffect(Unit) { onDispose { exit() } }
+    Box(Modifier.fillMaxSize(), Alignment.Center) {
     AndroidView({ ctx ->
         WebView(ctx).apply {
             keepScreenOn = true // the host's player holds no wake lock: the screen stays on mid-episode
@@ -298,11 +301,14 @@ fun HostPlayer(url: String) {
             webViewClient = object : WebViewClient() {
                 // our page never navigates: the frame taking the whole page somewhere is an ad
                 override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest) = r.isForMainFrame
+                override fun onPageFinished(v: WebView, u: String?) { loading = false } // our page's load waits for the host's frame
                 // the players' video, for casting to a TV
                 override fun shouldInterceptRequest(v: WebView, r: WebResourceRequest): android.webkit.WebResourceResponse? { com.medanime.app.Cast.sniff(r); return null }
             }
             webChromeClient = object : WebChromeClient() {
                 override fun onCreateWindow(v: WebView, dialog: Boolean, gesture: Boolean, msg: Message) = false
+                // a video with no poster of its own: Android's default is a green robot, drawn until it plays
+                override fun getDefaultVideoPoster() = android.graphics.Bitmap.createBitmap(1, 1, android.graphics.Bitmap.Config.ARGB_8888)
                 override fun onJsAlert(v: WebView, u: String, m: String, r: JsResult): Boolean { r.cancel(); return true }
                 override fun onJsConfirm(v: WebView, u: String, m: String, r: JsResult): Boolean { r.cancel(); return true }
                 override fun onJsPrompt(v: WebView, u: String, m: String, d: String?, r: JsPromptResult): Boolean { r.cancel(); return true }
@@ -322,12 +328,17 @@ fun HostPlayer(url: String) {
     }, Modifier.fillMaxSize(), onRelease = { exit(); it.destroy() }, update = {
         if (it.tag != url) {
             it.tag = url
+            loading = true
             com.medanime.app.Cast.reset() // casting takes the video of what's playing now
-            // no-referrer: as mobile.js frames it (some hosts refuse other sites' pages)
-            it.loadDataWithBaseURL("https://localhost/", "<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'>" +
+            // no-referrer: as mobile.js frames it (some hosts refuse other sites' pages). myseed's gateway is the other way round:
+            // with no referrer, or ours, it shows a "visit the official site" banner; framed from its front site (front=), its player
+            val front = Uri.parse(url).takeIf { u -> u.host == "d.myseed.tv" }?.getQueryParameter("front") // the site's domain of the day (Cinema.myseedUrl)
+            it.loadDataWithBaseURL(if (front != null) "https://$front/" else "https://localhost/", "<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'>" +
                 "<style>body{margin:0;background:#000}iframe{position:fixed;inset:0;width:100%;height:100%;border:0}</style>" +
-                "<iframe src=\"${android.text.Html.escapeHtml(url)}\" allow=\"autoplay; fullscreen; encrypted-media; picture-in-picture\" allowfullscreen referrerpolicy=\"no-referrer\"></iframe>",
+                "<iframe src=\"${android.text.Html.escapeHtml(url)}\" allow=\"autoplay; fullscreen; encrypted-media; picture-in-picture\" allowfullscreen referrerpolicy=\"${if (front != null) "origin" else "no-referrer"}\"></iframe>",
                 "text/html", "utf-8", null)
         }
     })
+    if (loading) CircularProgressIndicator(color = Red) // draws no touch handler: the player under it still gets taps
+    }
 }

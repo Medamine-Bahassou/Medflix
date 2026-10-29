@@ -20,14 +20,18 @@ import org.json.JSONObject
 /** Movies & series: the site's categories, a row each (cinema.js cinemaHome) */
 @Composable
 fun CinemaHomeScreen(nav: Nav) {
-    val (l, refresh) = loadedOnce("cinema") { f -> Cinema.list("all", 1, f) }
+    val (l, refresh) = loadedOnce("cinema", quiet = true) { f -> Cinema.list("all", 1, f) }
+    val rows = remember { mutableStateMapOf<String, List<Card>>() } // a row scrolled back to is drawn at once, not loaded (and parsed) again
     SectionPage(l, refresh, nav, { filmSlides(it.items.take(5)) }) { d ->
         item { Chips(Cinema.CATS.drop(1).map { Cinema.catName(it[0]) to Screen.CinemaBrowse(it[0]) }, nav) }
         item { CardRowView(t("continueWatching"), continued(setOf("cinema")), nav) }
         item { CardRowView(Cinema.catName("all"), d.items, nav, Screen.CinemaBrowse("all")) }
         items(Cinema.CATS.drop(1).map { it[0] }, { it }) { id -> // each row asks for its category as it scrolls into view
-            val (r, _) = loadedOnce("cat:$id") { f -> Cinema.list(id, 1, f).items }
-            CardRowView(Cinema.catName(id), r.data, nav, Screen.CinemaBrowse(id))
+            val r = rows[id]
+            if (r == null) {
+                LaunchedEffect(id) { rows[id] = try { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { Cinema.list(id, 1).items } } catch (e: CancellationException) { throw e } catch (e: Exception) { emptyList() } }
+                Spacer(Modifier.height(250.dp)) // a card row's height while it loads: what's below doesn't jump when it fills
+            } else CardRowView(Cinema.catName(id), r, nav, Screen.CinemaBrowse(id))
         }
     }
 }
@@ -43,7 +47,7 @@ fun similar(a: String, b: String): Double {
 @Composable
 fun CinemaTitleScreen(slug: String, show: Boolean, nav: Nav) {
     if (slug.startsWith("episode/") && !show) return LaunchedEffect(slug) { nav.replace(Screen.CinemaPlay(slug)) } // an episode plays straight away
-    val (l, refresh) = loadedOnce(slug, show) { f -> Cinema.movie(slug, f) }
+    val (l, refresh) = loadedOnce(slug, show, quiet = true) { f -> Cinema.movie(slug, f) }
     val open = openUrl()
     androidx.compose.material3.pulltorefresh.PullToRefreshBox(l.busy && l.data != null, refresh) {
         Body(l, refresh) { m ->
@@ -69,9 +73,10 @@ fun CinemaTitleScreen(slug: String, show: Boolean, nav: Nav) {
             DetailPage(m.banner, m.poster, m.title, m.year, m.cat.map { it to true } + (m.tags + m.genres).map { it to false }, m.desc, {
                 play?.let { (s, label) -> RedButton(label) { nav.go(s) } }
                 ListButton(path, m.title, m.poster, "cinema")
+                if (slug.contains('/')) NotifyButton(path, m.title, m.poster, eps.lastOrNull()?.slug ?: "") // a series' season; new films have their own switch (settings)
                 if (m.trailer.isNotEmpty()) GhostButton(t("trailer"), Ic.play) { open(m.trailer) }
             }, emptyList(), nav, if (eps.isNotEmpty()) t("episodes") else null,
-                eps.map { Numbered(it.n, Store["seen"].has("/cinema/${it.slug}"), h?.optString("slug") == it.slug, Screen.CinemaPlay(it.slug), "/cinema/${it.slug}") },
+                eps.map { Numbered(it.n, Store["seen"].has("/cinema/${it.slug}"), h?.optString("slug") == it.slug, Screen.CinemaPlay(it.slug), "/cinema/${it.slug}", thumb = m.banner.ifEmpty { m.poster }) }, // the site gives no episode names or stills
                 acts = { listOf("seen" to t("markWatched"), "unseen" to t("markUnwatched")) },
                 run = { v, ids -> ids.forEach { if (v == "seen") Store["seen"].put(it, 1) else Store["seen"].remove(it) }; Store.persist("seen") },
                 before = {
@@ -126,7 +131,7 @@ fun CinemaPlayScreen(slug: String, nav: Nav) {
             cur = n; url = null
             Store["prefs"].put("edServer", s.label); Store.persist("prefs")
             job?.cancel()
-            job = scope.launch { url = if (s.label == "myseed") runCatching { Cinema.myseedNow(m, slug) }.getOrElse { if (it is CancellationException) throw it; s.url } else s.url }
+            job = scope.launch { url = if (s.label == "myseed") runCatching { Cinema.myseedNow(m, slug, s.quality) }.getOrElse { if (it is CancellationException) throw it; s.url } else s.url }
         }
         LaunchedEffect(slug, attempt) {
             // the last server used, else the first one; uqload only when it's all there is

@@ -42,8 +42,11 @@ class Resp(val status: Int, val url: String, val body: String, val headers: Map<
 /** the same requests mobile.js makes, natively: one OkHttp client sharing the WebView's cookies */
 object Net {
     lateinit var activity: Activity
+    lateinit var app: android.content.Context // also set by a background check (Alerts), which runs with no activity
+    // a site's page needs the app's window: a background check's request fails instead
+    fun hasWindow() = ::activity.isInitialized && !activity.isDestroyed
     // witanime sits behind Cloudflare: talk to it as the WebView, the browser its cookies were earned in
-    val wvUa: String by lazy { WebSettings.getDefaultUserAgent(activity) }
+    val wvUa: String by lazy { WebSettings.getDefaultUserAgent(app) }
     // witanime's API 404s without a client-hint header
     val ch: String by lazy { "\"Chromium\";v=\"${Regex("Chrome/(\\d+)").find(wvUa)?.groupValues?.get(1) ?: "138"}\"" }
     // Cloudflare's cookies, earned in a WebView, go with every native request too, and the sites' own go back to the WebViews.
@@ -62,7 +65,18 @@ object Net {
             return mine + (webCookies()?.getCookie(url.toString())?.split("; ")?.mapNotNull { Cookie.parse(url, it) }?.filter { it.name !in names } ?: emptyList())
         }
     }
-    val client: OkHttpClient = OkHttpClient.Builder().cookieJar(cookies)
+    // some networks' DNS doesn't know (or blocks) a site: then ask Cloudflare's DNS over HTTPS, at an IP so it needs no lookup itself
+    private val dns = object : okhttp3.Dns {
+        private val doh by lazy { OkHttpClient.Builder().callTimeout(8, TimeUnit.SECONDS).build() }
+        override fun lookup(hostname: String): List<java.net.InetAddress> = try { okhttp3.Dns.SYSTEM.lookup(hostname) } catch (e: java.net.UnknownHostException) {
+            runCatching {
+                val a = doh.newCall(Request.Builder().url("https://1.1.1.1/dns-query?name=$hostname&type=A").header("Accept", "application/dns-json").build())
+                    .execute().use { JSONObject(it.body!!.string()).optJSONArray("Answer") }
+                (0 until (a?.length() ?: 0)).map { a!!.getJSONObject(it) }.filter { it.optInt("type") == 1 }.map { java.net.InetAddress.getByName(it.getString("data")) }
+            }.getOrNull()?.ifEmpty { null } ?: throw e // offline: the system's error
+        }
+    }
+    val client: OkHttpClient = OkHttpClient.Builder().cookieJar(cookies).dns(dns)
         .connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build()
 
     private fun challenged(r: Resp) = r.status == 403 || r.status == 503
@@ -143,6 +157,7 @@ class SitePage(private val origin: String) {
     private val home = "$origin/robots.txt" // a few KB of text, no scripts or ads
     private var view: WebView? = null
     private var ready = false
+    private var failed: String? = null // the page itself didn't load (no DNS, no connection)
     private val lock = Mutex()
     private var ids = 0
 
@@ -156,6 +171,7 @@ class SitePage(private val origin: String) {
     @SuppressLint("SetJavaScriptEnabled")
     private suspend fun ensure() = lock.withLock {
         if (ready) return@withLock
+        if (!Net.hasWindow()) throw IOException("no window")
         val v = view ?: object : WebView(Net.activity) {
             // always full screen so the check never loads at 1px and zooms when resized; hidden by alpha, touches pass through
             override fun dispatchTouchEvent(e: android.view.MotionEvent) = alpha > 0f && super.dispatchTouchEvent(e)
@@ -169,22 +185,28 @@ class SitePage(private val origin: String) {
             v.webViewClient = object : WebViewClient() { // the page stays on its site: an ad can't take it away
                 override fun shouldOverrideUrlLoading(w: WebView, r: WebResourceRequest) = r.isForMainFrame && !r.url.toString().startsWith("$origin/")
                 override fun onRenderProcessGone(w: WebView, d: android.webkit.RenderProcessGoneDetail) = true.also { drop() }
+                override fun onReceivedError(w: WebView, r: WebResourceRequest, e: android.webkit.WebResourceError) { if (r.isForMainFrame) failed = e.description.toString() }
             }
             full(false)
             val decor = Net.activity.window.decorView as ViewGroup
             decor.addView(v, FrameLayout.LayoutParams(-1, -1))
             v.layout(0, 0, decor.width, decor.height)
         }
+        failed = null
         v.loadUrl(home)
         val start = System.currentTimeMillis()
         try {
             while (true) { // robots.txt itself showing (plain text): through. Cloudflare's check is an HTML page in its place
                 delay(500)
                 if (view == null) throw IOException("check closed")
-                if (eval("location.href === ${JSONObject.quote(home)} && document.contentType === 'text/plain'") == "true") break
+                val at = eval("location.href === ${JSONObject.quote(home)} && document.contentType === 'text/plain' ? 'ok'" +
+                    " : window._cf_chl_opt || document.querySelector('#challenge-form, script[src*=\"challenges.cloudflare.com\"]') ? 'check' : document.readyState")
+                if (at == "\"ok\"") break
+                failed?.let { drop(); throw IOException(it) } // e.g. net::ERR_NAME_NOT_RESOLVED: no check is coming, only Chromium's (unreadable) error page
                 val waited = System.currentTimeMillis() - start
                 if (waited > 90_000) { drop(); throw IOException("challenge not passed") }
-                if (waited > 1500) full(true) // over the app, so a tap on its box can pass it
+                if (at == "\"check\"" && waited > 1500) full(true) // over the app, so a tap on its box can pass it
+                if (at == "\"complete\"" && waited > 15_000) { drop(); throw IOException("site page not reached") } // loaded, but neither the file nor a check (a block page)
             }
             ready = true
         } finally {

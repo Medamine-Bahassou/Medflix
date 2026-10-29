@@ -70,6 +70,7 @@ object Store {
         if (l.has(path)) l.remove(path)
         else l.put(path, JSONObject().put("path", path).put("title", title).put("poster", poster).put("type", type).put("at", System.currentTimeMillis()))
         persist("list")
+        if (l.has(path) && Alerts.can(path)) Alerts.follow(path, title, poster, quiet = true) // listed: its new episodes or chapters notify too
         return l.has(path)
     }
 

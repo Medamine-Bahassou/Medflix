@@ -56,9 +56,9 @@ import coil3.toBitmap
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.flow
 import org.json.JSONObject
 
@@ -67,7 +67,7 @@ private class MangaHome(val hot: List<Card>, val latest: List<Card>, val popular
 /** Manga: MeshManga's catalogue with MangaTek's merged in (manga.js mangaHome) */
 @Composable
 fun MangaHomeScreen(nav: Nav) {
-    val (l, refresh) = loadedOnce("manga") { f ->
+    val (l, refresh) = loadedOnce("manga", quiet = true) { f ->
         coroutineScope {
             val hot = async { Manga.hot(f) }
             val latest = async { Manga.latest(f) }
@@ -127,7 +127,7 @@ fun Pick(name: String, cur: String?, opts: List<Pair<String, String>>, pick: (St
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MangaSeriesScreen(id: String, nav: Nav) {
-    val (l, refresh) = loadedOnce(id) { f -> Manga.full(id, f) }
+    val (l, refresh) = loadedOnce(id, quiet = true) { f -> Manga.full(id, f) }
     androidx.compose.material3.pulltorefresh.PullToRefreshBox(l.busy && l.data != null, refresh) {
         Body(l, refresh) { full ->
             val s = full.s
@@ -142,6 +142,7 @@ fun MangaSeriesScreen(id: String, nav: Nav) {
                 s.story, {
                     start?.let { (cid, label) -> RedButton(label) { nav.go(Screen.MangaRead(cid)) } }
                     ListButton("/manga/series/$id", s.title, s.poster, "manga")
+                    NotifyButton("/manga/series/$id", s.title, s.poster, full.chs.firstOrNull()?.id ?: "")
                 }, emptyList(), nav, t("chapters"),
                 full.chs.map { Numbered(it.n, seen.has(it.id), r?.optString("chapterId") == it.id, Screen.MangaRead(it.id), it.id, com.medanime.app.Downloads.done("manga:${it.id}"), seen.optInt(it.id) == 2) }, t("jumpCh"),
                 // several chapters: mark them read or unread, download them, or delete their saved copies (manga.js acts)
@@ -208,13 +209,24 @@ fun MangaReaderScreen(cid: String, nav: Nav) {
             }
             var bars by remember { mutableStateOf(true) }
             val showBars = bars && !rdLocked
-            // where the reader is: page i (+ how far down it), saved once it settles; the last page read
-            val reached = { i: Int, frac: Double ->
-                if (i < c.images.size) spots.put(c.id, i + minOf(.999, frac))
-                if (i >= c.images.size - 1 && c.images.isNotEmpty() && Store["mangaSeen"].optInt(c.id) != 2) { Store["mangaSeen"].put(c.id, 2); Store.persist("mangaSeen") }
+            // its bars away (reading, or locked): the phone's status and navigation bars too, the pages on the whole screen;
+            // a swipe from an edge shows them for a moment. leaving the reader brings them back
+            val sys = remember { androidx.core.view.WindowCompat.getInsetsController(Net.activity.window, Net.activity.window.decorView) }
+            LaunchedEffect(showBars) {
+                sys.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                if (showBars) sys.show(androidx.core.view.WindowInsetsCompat.Type.systemBars()) else sys.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            }
+            DisposableEffect(Unit) { onDispose { sys.show(androidx.core.view.WindowInsetsCompat.Type.systemBars()) } }
+            // where the reader is: page i (+ how far down it; null: unknown, the spot stays); last, the last page in view: the
+            // chapter's last page there marks it read (not the spot: it peeks in while the page above is still being read)
+            val reached = { i: Int?, frac: Double, last: Int ->
+                if (i != null && i < c.images.size) spots.put(c.id, i + minOf(.999, frac))
+                if (last >= c.images.size - 1 && c.images.isNotEmpty() && Store["mangaSeen"].optInt(c.id) != 2) { Store["mangaSeen"].put(c.id, 2); Store.persist("mangaSeen") }
                 Store.persist("manga")
             }
-            val list = rememberLazyListState(spot.toInt()) // here: the bottom bar shows where it is
+            // here: the bottom bar shows where it is. Not saveable: the screen holder put back last time's pixel offset over the
+            // 480dp placeholders, which spilled into the pages below; the saved spot places it instead
+            val list = remember(cid) { androidx.compose.foundation.lazy.LazyListState(spot.toInt()) }
             // auto-scroll (scroll mode, manga.js autoScroll): the pages glide down at 0.5x-10x (40dp/s per 1x, remembered). A long
             // press on its button opens the speed row; it runs until that button stops it (or another chapter opens)
             var auto by remember(cid) { mutableStateOf(false) }
@@ -222,6 +234,9 @@ fun MangaReaderScreen(cid: String, nav: Nav) {
             var speed by remember { mutableFloatStateOf(Store["prefs"].optDouble("mangaSpeed", 3.0).toFloat()) }
             val setSpeed = { v: Float -> speed = (Math.round(v * 2) / 2f).coerceIn(.5f, 10f); Store["prefs"].put("mangaSpeed", speed.toDouble()); Store.persist("prefs") }
             val dens = androidx.compose.ui.platform.LocalDensity.current.density
+            // gliding, nobody touches the phone: the screen stays on until it stops
+            val view = androidx.compose.ui.platform.LocalView.current
+            DisposableEffect(auto, horiz) { view.keepScreenOn = auto && !horiz; onDispose { view.keepScreenOn = false } }
             LaunchedEffect(auto, horiz) {
                 if (!auto || horiz) return@LaunchedEffect
                 var last = withFrameNanos { it }
@@ -268,9 +283,12 @@ fun MangaReaderScreen(cid: String, nav: Nav) {
                 }
             }
             var seekAt by remember { mutableLongStateOf(0L) } // the last jump from the scrollbar
+            // auto-scrolling, the pages never stop moving: the bars a tap shows stay 4s (as a video player's do) instead of going
+            // with the next half-second's scroll; not while the speed row is open, and a jump from the scrollbar gives them 4s more
+            LaunchedEffect(showBars, auto, speedOpen, seekAt) { if (auto && showBars && !speedOpen) { kotlinx.coroutines.delay(4000); bars = false } }
             if (horiz) {
                 val pager = androidx.compose.foundation.pager.rememberPagerState(spot.toInt().coerceAtMost(c.images.size)) { c.images.size + 1 }
-                LaunchedEffect(pager) { snapshotFlow { pager.settledPage }.collect { if (it > 0) bars = false; reached(it, 0.0) } }
+                LaunchedEffect(pager) { snapshotFlow { pager.settledPage }.collect { if (it > 0) bars = false; reached(it, 0.0, it) } }
                 androidx.compose.foundation.pager.HorizontalPager(pager, Modifier.fillMaxSize().then(toggle), userScrollEnabled = z == 1f) { i -> // zoomed: the swipe pans, not turns
                     // each page scrolls on its own when taller than the screen
                     if (i < c.images.size) Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), Alignment.Center) {
@@ -283,37 +301,46 @@ fun MangaReaderScreen(cid: String, nav: Nav) {
                         .background(Color(0x99000000), RoundedCornerShape(99.dp)).padding(horizontal = 12.dp, vertical = 4.dp),
                     color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             } else {
-                val loaded = remember(cid) { mutableStateMapOf<Int, Boolean>() }
-                // the saved spot's fraction down its page: only known once that page has loaded (a placeholder is 480dp). Until then
-                // nothing is saved, or the first settle would overwrite the spot with the page's top; a scroll by hand gives up
-                var restored by remember(cid) { mutableStateOf(spot == 0.0) }
+                // each page's drawn height (px): its placeholder when it's drawn again (scrolled back to, nothing moves), and what a
+                // spot's fraction is of, saved and restored alike
+                val heights = remember(cid) { mutableStateMapOf<Int, Int>() }
+                // the saved spot's fraction down its page: only known once that page is drawn. Until then nothing is saved, or the
+                // first save would overwrite the spot with the page's top; a scroll by hand first gives up
+                var restored by remember(cid) { mutableStateOf(spot == 0.0 || spot.toInt() >= c.images.size) }
                 LaunchedEffect(cid) {
+                    if (restored) return@LaunchedEffect
                     val at = spot.toInt()
-                    val byHand = snapshotFlow { if (list.isScrollInProgress) true else if (loaded[at] == true) false else null }.first { it != null }!!
-                    // a frame's callbacks run before its layout: two frames, so the size read is the loaded page's, not the placeholder's
-                    repeat(2) { withFrameNanos { } }
-                    val h = list.layoutInfo.visibleItemsInfo.firstOrNull { it.index == at }?.size
-                    if (h != null && !byHand && !list.isScrollInProgress) list.scrollToItem(at, ((spot - at) * h).toInt())
+                    val byHand = snapshotFlow { if (list.isScrollInProgress) true else if (heights[at] != null) false else null }.first { it != null }!!
+                    if (!byHand) list.scrollToItem(at, Math.round((spot - at) * heights[at]!!).toInt())
                     restored = true
                 }
+                // the spot now, all read from the list at once: the top page + how far down its laid-out height. Not while that page
+                // is still its placeholder (the fraction of 480dp lands elsewhere once it loads), nor before the saved spot is back
+                val save = {
+                    val i = list.firstVisibleItemIndex
+                    val h = heights[i]
+                    if (restored) reached(if (h != null) i else null, list.firstVisibleItemScrollOffset.toDouble() / maxOf(1, h ?: 1),
+                        list.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0)
+                }
+                // every half second while it moves (auto-scroll never settles, a debounce never fired), and once more on leaving
                 LaunchedEffect(list) {
-                    snapshotFlow { list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset }.debounce(300).filter { restored }.collect { (i, off) ->
-                        if (i > 0 && System.currentTimeMillis() - seekAt > 1000) bars = false // reading: the bars slide away, and come back on a tap; not while sliding the scrollbar in them
-                        val last = list.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 // the last page scrolled into view: read
-                        reached(if (last >= c.images.size - 1) last else i, off.toDouble() / (list.layoutInfo.visibleItemsInfo.firstOrNull()?.size ?: 1))
+                    snapshotFlow { list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset }.sample(500).filter { restored }.collect { (i, _) ->
+                        if (i > 0 && !auto && System.currentTimeMillis() - seekAt > 1000) bars = false // reading: the bars slide away, and come back on a tap; not while sliding the scrollbar in them, nor as auto-scroll moves the pages
+                        save()
                     }
                 }
+                DisposableEffect(list) { onDispose { save() } }
                 LazyColumn(Modifier.fillMaxSize().then(toggle), list) {
                     if (c.images.isEmpty()) item { Empty(t("noImages"), "") }
                     itemsIndexed(c.images) { i, src ->
-                        MangaPage(src, Modifier.fillMaxWidth().then(if (loaded[i] == true) Modifier else Modifier.heightIn(min = 480.dp))) { loaded[i] = true }
+                        MangaPage(src, Modifier.fillMaxWidth(), heights[i]) { heights[i] = it }
                     }
                     item { end() }
                 }
             }
             var picker by remember { mutableStateOf(false) }
             AnimatedVisibility(showBars, Modifier.align(Alignment.TopCenter), enter = fadeIn(), exit = fadeOut()) {
-                Row(Modifier.fillMaxWidth().background(Color(0xE6000000)).padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().background(Color(0xE6000000)).statusBarsPadding().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(nav.back) { Icon(Ic.back, null, Modifier.size(22.dp)) }
                     Column(Modifier.weight(1f).clickable { nav.replace(Screen.MangaSeries(d.sid)) }) {
                         Text(d.title, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -401,7 +428,7 @@ private fun SourceMenu(alts: List<Ch>, cur: String, pick: (String) -> Unit) {
  * bitmap that tall, so the whole page came out blank
  */
 @Composable
-private fun MangaPage(src: String, modifier: Modifier, onSuccess: () -> Unit = {}) {
+private fun MangaPage(src: String, modifier: Modifier, known: Int? = null, onSize: (Int) -> Unit = {}) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val strips by androidx.compose.runtime.produceState<List<androidx.compose.ui.graphics.ImageBitmap>?>(null, src) {
         val req = coil3.request.ImageRequest.Builder(ctx).data(src).memoryCachePolicy(coil3.request.CachePolicy.DISABLED) // the strips are what's kept
@@ -411,9 +438,14 @@ private fun MangaPage(src: String, modifier: Modifier, onSuccess: () -> Unit = {
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
             (0 until bmp.height step 2048).map { y -> android.graphics.Bitmap.createBitmap(bmp, 0, y, bmp.width, minOf(2048, bmp.height - y)).asImageBitmap() }
         }
-        onSuccess()
     }
-    androidx.compose.foundation.layout.Column(modifier) {
+    val dens = androidx.compose.ui.platform.LocalDensity.current
+    // drawn: its height is told. Until then: the height it had when last drawn, else 480dp
+    androidx.compose.foundation.layout.Column(modifier.then(when {
+        strips != null -> Modifier.onSizeChanged { onSize(it.height) }
+        known != null -> Modifier.height(with(dens) { known.toDp() })
+        else -> Modifier.heightIn(min = 480.dp)
+    })) {
         strips?.forEach { androidx.compose.foundation.Image(it, null, Modifier.fillMaxWidth(), contentScale = ContentScale.FillWidth) }
     }
 }

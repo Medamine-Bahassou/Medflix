@@ -57,19 +57,23 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.withStarted
 import coil3.ImageLoader
 import coil3.SingletonImageLoader
 import coil3.compose.AsyncImage
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.crossfade
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
 import okio.Path.Companion.toOkioPath
@@ -86,7 +90,7 @@ sealed interface Screen {
     data class Grid(val title: String, val base: String) : Screen
     data class Search(val q: String = "") : Screen
     data object MyList : Screen
-    data object Settings : Screen
+    data class Settings(val part: String = "") : Screen // part: one of its pages ("": its menu)
     data class Title(val path: String) : Screen
     data class Play(val epPath: String) : Screen
     data object Manga : Screen
@@ -101,6 +105,8 @@ sealed interface Screen {
     data class Offline(val epPath: String) : Screen // a downloaded episode
     data class Section(val name: String) : Screen // a home row's full listing
     data object Hidden : Screen // cards long-pressed away
+    data object Schedule : Screen // the anime's air times this week
+    data class Airing(val route: String) : Screen // a schedule card: its show, found on witanime
 }
 // full-screen pages: no dock, no drawer swipe
 private fun Screen.full() = this is Screen.Play || this is Screen.CinemaPlay || this is Screen.MangaRead || this is Screen.Offline
@@ -108,7 +114,7 @@ private fun Screen.full() = this is Screen.Play || this is Screen.CinemaPlay || 
 // the sections (app.js NAV), in the drawer; up to 4 of them in the dock (settings)
 val NAV = linkedMapOf<String, Pair<Screen, () -> ImageVector>>(
     "home" to (Screen.Home to { Ic.home }), "anime" to (Screen.Anime to { Ic.series }), "cinema" to (Screen.Cinema to { Ic.cinema }),
-    "manga" to (Screen.Manga to { Ic.manga }), "myList" to (Screen.MyList to { Ic.myList }), "downloads" to (Screen.Downloads() to { Ic.download }),
+    "manga" to (Screen.Manga to { Ic.manga }), "schedule" to (Screen.Schedule to { Ic.schedule }), "myList" to (Screen.MyList to { Ic.myList }), "downloads" to (Screen.Downloads() to { Ic.download }),
     "search" to (Screen.Search() to { Ic.search }),
 )
 fun navLabel(id: String) = if (id == "search") (if (Store.lang == "ar") "بحث" else "Search") else t(id)
@@ -119,6 +125,7 @@ class NativeActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(SystemBarStyle.dark(android.graphics.Color.TRANSPARENT), SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)) // light icons on the black app
         Net.activity = this
+        Net.app = applicationContext
         if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) android.webkit.WebView.setWebContentsDebuggingEnabled(true) // chrome://inspect
         Store.init(this)
         gridCols.intValue = Store["prefs"].optInt("gridCols", 3).coerceIn(2, 5)
@@ -126,20 +133,30 @@ class NativeActivity : ComponentActivity() {
         com.medanime.app.Downloads.init(this)
         // the Cast SDK starts with the app, so the TVs are already found when cast is tapped (no Google Play services: none)
         runCatching { com.google.android.gms.cast.framework.CastContext.getSharedInstance(this) }
-        // posters as the WebView fetched them: its user agent and Cloudflare cookies, and no Referer (witanime 403s hotlinks);
-        // MangaTek's Cloudflare lets Chrome through, not the WebView (ImageCache)
-        val images = Net.client.newBuilder().addInterceptor {
-            it.proceed(it.request().newBuilder().header("User-Agent", if ("mangatek.com" in it.request().url.host) UA else Net.wvUa).build())
-        }.build()
-        // kept for good, as ImageCache did: in the app's files (Android empties its cache folder), with no practical size cap
-        SingletonImageLoader.setSafe { ImageLoader.Builder(it).components { add(OkHttpNetworkFetcherFactory(callFactory = { images })) }
-            .diskCache { coil3.disk.DiskCache.Builder().directory(File(filesDir, "images-cache").toOkioPath()).maxSizeBytes(Long.MAX_VALUE / 4).build() }
-            .crossfade(true).build() }
+        setImageLoader(this)
         // servers' answers (store.streams) are forgotten after 90 days (app.js STREAMS_KEEP)
         Store["streams"].let { st -> st.keys().asSequence().toList().forEach { k -> if (System.currentTimeMillis() - (st.optJSONObject(k)?.optLong("at") ?: 0) > 90 * 24 * 3600_000L) st.remove(k) } }
+        Alerts.schedule(this)
+        opening.value = intent.getStringExtra("open")
         setContent { App() }
     }
+    override fun onNewIntent(intent: android.content.Intent) { super.onNewIntent(intent); opening.value = intent.getStringExtra("open") } // a notification tapped
 }
+
+/** Coil's loader, for the app and for the background check's notifications (Alerts), whichever starts first */
+fun setImageLoader(c: android.content.Context) {
+    // posters as the WebView fetched them: its user agent and Cloudflare cookies, and no Referer (witanime 403s hotlinks);
+    // MangaTek's Cloudflare lets Chrome through, not the WebView (ImageCache)
+    val images = Net.client.newBuilder().addInterceptor {
+        it.proceed(it.request().newBuilder().header("User-Agent", if ("mangatek.com" in it.request().url.host) UA else Net.wvUa).build())
+    }.build()
+    // kept for good, as ImageCache did: in the app's files (Android empties its cache folder), with no practical size cap
+    SingletonImageLoader.setSafe { ImageLoader.Builder(it).components { add(OkHttpNetworkFetcherFactory(callFactory = { images })) }
+        .diskCache { coil3.disk.DiskCache.Builder().directory(File(c.filesDir, "images-cache").toOkioPath()).maxSizeBytes(Long.MAX_VALUE / 4).build() }
+        .crossfade(true).build() }
+}
+
+val opening = mutableStateOf<String?>(null) // a notification's title, opened over the current page
 
 class Nav(val go: (Screen) -> Unit, val replace: (Screen) -> Unit, val back: () -> Unit, val menu: () -> Unit)
 
@@ -160,6 +177,7 @@ fun App() {
         else { backAt = System.currentTimeMillis(); toast(t("backAgain")) }
     }
     BackHandler(stack.size > 1) { nav.back() }
+    LaunchedEffect(opening.value) { opening.value?.let { stack.add(Alerts.screen(it)); opening.value = null } }
     BackHandler(drawer.isOpen) { scope.launch { drawer.close() } }
     val owner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     DisposableEffect(owner) { // back from Android's "all files access" page
@@ -179,7 +197,8 @@ fun App() {
         MaterialTheme(darkColorScheme(primary = Red, background = Bg, surface = Bg, surfaceContainer = CardC, onPrimary = Color.White, secondaryContainer = Red)) {
             ModalNavigationDrawer({ Drawer(top, tab) }, drawerState = drawer, gesturesEnabled = !top.full() || drawer.isOpen) {
                 Scaffold(containerColor = Bg, bottomBar = { if (!top.full()) Dock(top, tab) }) { pad ->
-                    Box(Modifier.padding(pad).fillMaxSize()) {
+                    // the reader takes the whole screen, under the phone's bars, so its pages don't move as they hide; its own bars pad themselves
+                    Box(Modifier.padding(if (top is Screen.MangaRead) PaddingValues() else pad).fillMaxSize()) {
                         saved.SaveableStateProvider(top.toString()) {
                             when (top) {
                                 Screen.Home -> HomeScreen(nav)
@@ -187,7 +206,7 @@ fun App() {
                                 is Screen.Grid -> Column { PageTitle(top.title, nav); CardGrid(top.base, nav) }
                                 is Screen.Search -> SearchScreen(top.q, nav)
                                 Screen.MyList -> MyListScreen(nav)
-                                Screen.Settings -> SettingsScreen(nav)
+                                is Screen.Settings -> SettingsScreen(top.part, nav)
                                 is Screen.Title -> TitleScreen(top.path, nav)
                                 is Screen.Play -> PlayerScreen(top.epPath, nav)
                                 Screen.Manga -> MangaHomeScreen(nav)
@@ -202,6 +221,8 @@ fun App() {
                                 is Screen.Offline -> OfflineScreen(top.epPath, nav)
                                 is Screen.Section -> SectionScreen(top.name, nav)
                                 Screen.Hidden -> HiddenScreen(nav)
+                                Screen.Schedule -> ScheduleScreen(nav)
+                                is Screen.Airing -> AiringScreen(top.route, nav)
                             }
                         }
                     }
@@ -222,7 +243,7 @@ private fun Dock(top: Screen, tab: (Screen) -> Unit) {
         val colors = NavigationBarItemDefaults.colors(selectedIconColor = Color.White, selectedTextColor = Color.White, indicatorColor = Red, unselectedIconColor = Muted, unselectedTextColor = Muted)
         Store.dock().forEach { id ->
             val (s, icon) = NAV.getValue(id)
-            NavigationBarItem(section(top) == id, { tab(s) }, { Icon(icon(), null, Modifier.size(24.dp)) }, label = { Text(navLabel(id), fontSize = 11.sp, maxLines = 1) }, colors = colors)
+            NavigationBarItem(section(top) == id, { tab(s) }, { Icon(icon(), null, Modifier.size(24.dp)) }, label = { Text(if (id == "schedule") t("scheduleShort") else navLabel(id), fontSize = 11.sp, maxLines = 1) }, colors = colors)
         }
     }
 }
@@ -233,10 +254,11 @@ private fun section(s: Screen) = when (s) {
     Screen.Anime, is Screen.Grid, is Screen.Title, is Screen.Play, is Screen.Section -> "anime"
     Screen.Cinema, is Screen.CinemaBrowse, is Screen.CinemaTitle, is Screen.CinemaPlay -> "cinema"
     Screen.Manga, is Screen.MangaBrowse, is Screen.MangaSeries, is Screen.MangaRead -> "manga"
+    Screen.Schedule, is Screen.Airing -> "schedule"
     Screen.MyList -> "myList"
     is Screen.Downloads, is Screen.Offline -> "downloads"
     is Screen.Search -> "search"
-    Screen.Settings, Screen.Hidden -> "settings"
+    is Screen.Settings, Screen.Hidden -> "settings"
 }
 
 /** the side drawer: every section, settings, language (app.js renderNav) */
@@ -250,7 +272,7 @@ private fun Drawer(top: Screen, tab: (Screen) -> Unit) {
         }
         NAV.forEach { (id, v) -> item(id, v.first, v.second()) }
         HorizontalDivider(Modifier.padding(vertical = 12.dp, horizontal = 24.dp), color = Color(0x22FFFFFF))
-        item("settings", Screen.Settings, Ic.settings)
+        item("settings", Screen.Settings(), Ic.settings)
         Spacer(Modifier.weight(1f))
         LangSwitch(Modifier.padding(24.dp))
     }
@@ -306,21 +328,42 @@ fun PageTitle(title: String, nav: Nav) = Row(Modifier.fillMaxWidth().padding(end
 // ---------- loading: a page's data as its flow gives it (saved copy, then the site's if it changed) ----------
 class Loaded<T>(val data: T?, val error: Throwable?, val busy: Boolean)
 
+// how often a page left open is asked again, quietly (quiet = true): the sites post new episodes, films and chapters several
+// times an hour, and asking sooner than this mostly finds nothing new (and spends data and battery)
+const val QUIET_EVERY = 5 * 60_000L
+
+// the last answer of each page: a screen left (another section, back) drops its state, and reading + parsing the saved copy
+// again took long enough to flash the spinner on every switch. it's drawn from here at once, then checked as before
+private val shown = android.util.LruCache<List<Any?>, Any>(40)
+
 @Composable
-fun <T> loaded(vararg keys: Any?, src: (force: Boolean) -> Flow<T>): Pair<Loaded<T>, () -> Unit> {
+fun <T> loaded(vararg keys: Any?, quiet: Boolean = false, src: (force: Boolean) -> Flow<T>): Pair<Loaded<T>, () -> Unit> {
     var nonce by remember(*keys) { mutableIntStateOf(0) }
-    val st = produceState(Loaded<T>(null, null, true), *keys, nonce) {
-        src(nonce > 0)
-            .onStart { value = Loaded(value.data, null, true) }
+    val life = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    val id = keys.toList() + src.javaClass // the call site too: two screens may share a key (a slug, an id) with different data
+    @Suppress("UNCHECKED_CAST")
+    val st = produceState(Loaded(shown[id] as T?, null, false), *keys, nonce) {
+        val pulled = nonce > 0 // only a pull shows the refresh spinner: coming back to a page re-reads it quietly behind what's shown
+        src(pulled)
+            .flowOn(Dispatchers.Default) // parsing a page (Jsoup, ~0.5MB of HTML) on the main thread stalls scrolling while rows load
+            .onStart { value = Loaded(value.data, null, pulled) }
             .onCompletion { value = Loaded(value.data, value.error, false) }
             .catch { android.util.Log.w("medflix", "load", it); if (value.data == null) value = Loaded(null, it, false) else toast(noNames(it.message)) } // a refresh that failed keeps the page
-            .collect { value = Loaded(it, null, true) }
+            .collect { if (it != value.data) value = Loaded(it, null, pulled); it?.let { d -> shown.put(id, d) } } // the same page again: no redraw
+        // while it's shown: the sites' own answer now and then, with no spinner, and nothing said if it fails (offline).
+        // the app in the background waits, and is asked at once when it's back if the time has passed meanwhile
+        while (quiet && value.data != null) {
+            delay(QUIET_EVERY)
+            life.withStarted {}
+            try { src(true).flowOn(Dispatchers.Default).collect { if (it != value.data) { value = Loaded(it, null, false); it?.let { d -> shown.put(id, d) } } } }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("medflix", "quiet", e) }
+        }
     }
     return st.value to { nonce++ }
 }
 /** a page built from several requests: one answer (saved copies first; pulled down, the sites' own) */
 @Composable
-fun <T> loadedOnce(vararg keys: Any?, block: suspend (force: Boolean) -> T) = loaded(*keys) { f -> flow { emit(block(f)) } }
+fun <T> loadedOnce(vararg keys: Any?, quiet: Boolean = false, block: suspend (force: Boolean) -> T) = loaded(*keys, block.javaClass, quiet = quiet) { f -> flow { emit(block(f)) } }
 
 @Composable
 fun <T> Body(l: Loaded<T>, retry: () -> Unit, content: @Composable (T) -> Unit) = when {
@@ -376,7 +419,8 @@ private fun CardMenu(c: Card, done: () -> Unit) = ModalBottomSheet(done, contain
             Icon(icon, null, Modifier.size(22.dp)); Text(label, Modifier.padding(start = 16.dp), fontSize = 16.sp)
         }
     }
-    opt(if (listed) Ic.check else Ic.plus, t(if (listed) "listRemove" else "listAdd")) { listToggle(c) }
+    if (!c.showPath.startsWith("/airing/")) opt(if (listed) Ic.check else Ic.plus, t(if (listed) "listRemove" else "listAdd")) { listToggle(c) } // a schedule card isn't a show page yet
+    if (Alerts.can(c.showPath)) Alerts.on(c.showPath).let { on -> opt(if (on) Ic.bellFill else Ic.bell, t(if (on) "notifyStop" else "notify")) { Alerts.toggleCard(c) } }
     opt(if (hidden) Ic.eye else Ic.eyeSlash, if (hidden) t("unhide") else hideLabel(c)) { setHidden(c, !hidden) }
     cardMenuPicks?.let { p -> opt(Ic.check, t("select")) { p.start(c.showPath) } }
     Spacer(Modifier.navigationBarsPadding().height(16.dp))
@@ -427,16 +471,18 @@ fun Chips(links: List<Pair<String, Screen>>, nav: Nav) = Row(Modifier.horizontal
     links.forEach { (label, s) -> AssistChip({ nav.go(s) }, { Text(label) }, shape = RoundedCornerShape(99.dp)) }
 }
 
-/** a listing, page after page as its end nears the screen (app.js lazyGrid) */
+/** a listing, page after page as its end nears the screen (app.js lazyGrid); pulled down, its first page again from the site */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PagedGrid(key: Any, first: (force: Boolean) -> Flow<Listing>, page: suspend (Int) -> Listing, nav: Nav, header: @Composable () -> Unit = {}) {
-    val (l, refresh) = loaded(key) { first(it) }
+    val (l, reload) = loaded(key, quiet = true) { first(it) }
     val more = remember(key) { mutableStateListOf<Card>() }
     var next by remember(key) { mutableIntStateOf(2) }
     var pages by remember(key) { mutableIntStateOf(0) } // the last page's count: the latest episodes' pager only knows one past itself
+    val refresh = { more.clear(); next = 2; pages = 0; reload() } // the pages after it are asked again as it scrolls
     Column {
         header()
-        Body(l, refresh) { d ->
+        androidx.compose.material3.pulltorefresh.PullToRefreshBox(l.busy && l.data != null, refresh) { Body(l, refresh) { d ->
             val seen = HashSet<String>()
             Store.version.intValue
             val all = (d.items + more).filter { seen.add(it.path) && !isHidden(it) }
@@ -444,10 +490,10 @@ fun PagedGrid(key: Any, first: (force: Boolean) -> Flow<Listing>, page: suspend 
             val grid = rememberLazyGridState()
             val nearEnd by remember { derivedStateOf { (grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) >= grid.layoutInfo.totalItemsCount - 12 } }
             LaunchedEffect(nearEnd, next, d.pages) {
-                if (nearEnd && next <= maxOf(d.pages, pages)) runCatching { page(next) }.onSuccess { more += it.items; pages = it.pages; next++ }.onFailure { delay(5000) }
+                if (nearEnd && next <= maxOf(d.pages, pages)) runCatching { withContext(Dispatchers.Default) { page(next) } }.onSuccess { more += it.items; pages = it.pages; next++ }.onFailure { delay(5000) }
             }
             CardsGrid(all, nav, grid)
-        }
+        } }
     }
 }
 // cards per row in the poster grids (my list, listings), 2 to 5: pinched out for bigger cards, in for smaller; remembered

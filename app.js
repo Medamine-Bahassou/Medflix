@@ -31,7 +31,7 @@ const STR = {
     rateLimited: 'الموقع يطلب الانتظار قليلًا', rateLimitedHint: 'طلبات كثيرة في وقت قصير. انتظر دقيقة أو دقيقتين ثم أعد المحاولة.', noServers: 'لا توجد سيرفرات لهذه الحلقة', noServersHint: 'لم يتم العثور عليها في أي مصدر.', noServersEdHint: 'لم يتم العثور عليها في المصدر.', verify: 'التحقق من الوصول', verifyFailed: 'لم يكتمل التحقق', today: 'اليوم',
     downloads: 'التنزيلات', download: 'تحميل الحلقة', dlPreparing: 'جارٍ تجهيز التحميل…', dlStarted: 'بدأ التحميل', dlFinished: n => `اكتمل تحميل «\u2068${n}\u2069»`,
     dlFailed: 'فشل التحميل', dlNoHost: 'لا يوجد رابط تحميل مدعوم لهذه الحلقة (MediaFire)', dlActive: 'الحلقة قيد التحميل بالفعل', dlDone: 'الحلقة محمّلة بالفعل',
-    dlCancelled: 'أُلغي التحميل', dlNotifActive: 'جارٍ تحميل الحلقات', dlNotifMany: '%d حلقات', dlNotifDone: 'اكتمل التحميل', dlNotifAsk: 'فعّل الإشعارات لترى تقدّم التحميل', downloadShort: 'تحميل', playOffline: 'تشغيل النسخة المحمّلة', inApp: 'داخل التطبيق', browser: 'المتصفح', dlNone: 'لا توجد روابط تحميل', openedBrowser: 'تم الفتح في المتصفح', dlOpenList: 'قيد التحميل · عرض التنزيلات', del: 'حذف', offline: 'بدون إنترنت', noDownloads: 'لا توجد تنزيلات', noDownloadsHint: 'افتح أي حلقة أو فصل واضغط زر التحميل.',
+    dlCancelled: 'أُلغي التحميل', dlNotifActive: 'جارٍ تحميل الحلقات', dlNotifMany: '%d حلقات', dlNotifDone: 'اكتمل التحميل', dlNotifAsk: 'فعّل الإشعارات لترى تقدّم التحميل', notify: 'نبّهني', notifying: 'التنبيه مفعّل', notifyAdded: n => `ستصلك إشعارات بجديد «\u2068${n}\u2069»`, notifyRemoved: 'أُوقفت الإشعارات', notifyStop: 'إيقاف التنبيه', notifyAsk: 'فعّل الإشعارات لتصلك الحلقات والفصول الجديدة', notifyTitle: 'الإشعارات', notifyHint: 'اضغط «نبّهني» في صفحة أي أنمي أو مسلسل أو مانجا لتصلك إشعارات بحلقاته أو فصوله الجديدة.', notifyMovies: 'الأفلام الجديدة', newEp: n => `حلقة جديدة: ${n}`, newCh: n => `فصل جديد: ${n}`, newMovie: 'فيلم جديد', newMovies: n => `${n} أفلام جديدة`, downloadShort: 'تحميل', playOffline: 'تشغيل النسخة المحمّلة', inApp: 'داخل التطبيق', browser: 'المتصفح', dlNone: 'لا توجد روابط تحميل', openedBrowser: 'تم الفتح في المتصفح', dlOpenList: 'قيد التحميل · عرض التنزيلات', del: 'حذف', offline: 'بدون إنترنت', noDownloads: 'لا توجد تنزيلات', noDownloadsHint: 'افتح أي حلقة أو فصل واضغط زر التحميل.',
     dlQueued: 'في الانتظار', dlPaused: 'متوقف مؤقتًا', pauseAll: 'إيقاف الكل مؤقتًا', resumeAll: 'استئناف الكل', dlPausedAll: 'التحميلات متوقفة مؤقتًا', confirmDel: n => `حذف «\u2068${n}\u2069»؟`, confirmDelAll: n => `حذف كل تنزيلات هذا العمل (${n})؟`, confirmDelHint: 'سيُحذف الملف المحمّل من الجهاز، ولا يمكن التراجع.', showPause: 'إيقاف مؤقت', showResume: 'استئناف', dlQueuedN: n => `أُضيف ${n} للتحميل`, pagesOf: (r, n) => `${r} / ${n} صفحة`, pagesN: n => `${n} صفحة`,
     epCount: n => `${n} حلقة`, chCount: n => `${n} فصل`, dlActiveN: n => `${n} قيد التحميل`, deleteAll: 'حذف الكل', kindAnime: 'أنمي',
     markRead: 'تحديد كمقروء', markUnread: 'تحديد كغير مقروء', markPrevRead: 'تحديد الفصول السابقة كمقروءة', markWatched: 'تحديد كمُشاهَد', markUnwatched: 'تحديد كغير مُشاهَد', delDownload: 'حذف التنزيل',
@@ -64,7 +64,7 @@ const STR = {
     rateLimited: 'The site asks to slow down', rateLimitedHint: 'Too many requests in a short time. Wait a minute or two, then retry.', noServers: 'No servers for this episode', noServersHint: 'Not found on any source.', noServersEdHint: 'Not found on the source.', verify: 'Verify access', verifyFailed: 'Check not passed', today: 'Today',
     downloads: 'Downloads', download: 'Download episode', dlPreparing: 'Preparing download…', dlStarted: 'Download started', dlFinished: n => `Downloaded “\u2068${n}\u2069”`,
     dlFailed: 'Download failed', dlNoHost: 'No supported download link for this episode (MediaFire)', dlActive: 'Already downloading', dlDone: 'Already downloaded',
-    dlCancelled: 'Download cancelled', dlNotifActive: 'Downloading', dlNotifMany: '%d episodes', dlNotifDone: 'Download complete', dlNotifAsk: 'Turn on notifications to see download progress', downloadShort: 'Download', playOffline: 'Play downloaded copy', inApp: 'In app', browser: 'Browser', dlNone: 'No download links', openedBrowser: 'Opened in browser', dlOpenList: 'Downloading · open Downloads', del: 'Delete', offline: 'Offline', noDownloads: 'No downloads yet', noDownloadsHint: 'Open any episode or chapter and press the download button.',
+    dlCancelled: 'Download cancelled', dlNotifActive: 'Downloading', dlNotifMany: '%d episodes', dlNotifDone: 'Download complete', dlNotifAsk: 'Turn on notifications to see download progress', notify: 'Notify me', notifying: 'Notifying', notifyAdded: n => `You'll be notified of new “\u2068${n}\u2069”`, notifyRemoved: 'Notifications off', notifyStop: 'Stop notifying', notifyAsk: 'Turn on notifications to get new episodes and chapters', notifyTitle: 'Notifications', notifyHint: 'Tap Notify me on any anime, series or manga page to get its new episodes or chapters.', notifyMovies: 'New movies', newEp: n => `New episode: ${n}`, newCh: n => `New chapter: ${n}`, newMovie: 'New movie', newMovies: n => `${n} new movies`, downloadShort: 'Download', playOffline: 'Play downloaded copy', inApp: 'In app', browser: 'Browser', dlNone: 'No download links', openedBrowser: 'Opened in browser', dlOpenList: 'Downloading · open Downloads', del: 'Delete', offline: 'Offline', noDownloads: 'No downloads yet', noDownloadsHint: 'Open any episode or chapter and press the download button.',
     dlQueued: 'Queued', dlPaused: 'Paused', pauseAll: 'Pause all', resumeAll: 'Resume all', dlPausedAll: 'Downloads are paused', confirmDel: n => `Delete “\u2068${n}\u2069”?`, confirmDelAll: n => `Delete all ${n} downloads of this show?`, confirmDelHint: 'The downloaded files are removed from this device. This can’t be undone.', showPause: 'Pause', showResume: 'Resume', dlQueuedN: n => `${n} added to downloads`, pagesOf: (r, n) => `${r} / ${n} pages`, pagesN: n => `${n} pages`,
     epCount: n => `${n} episodes`, chCount: n => `${n} chapters`, dlActiveN: n => `${n} downloading`, deleteAll: 'Delete all', kindAnime: 'Anime',
     markRead: 'Mark as read', markUnread: 'Mark as unread', markPrevRead: 'Mark earlier chapters as read', markWatched: 'Mark as watched', markUnwatched: 'Mark as unwatched', delDownload: 'Delete download',
@@ -1171,16 +1171,17 @@ async function title(path, force) {
     ${d.info.length ? `<div class="infos">${d.info.map(([k, v]) => `<div><span>${esc(k)}</span>${esc(v)}</div>`).join('')}</div>` : ''}
     ${d.episodes.length > 1 || type === 'anime' ? `<div class="section"><h2>${t('episodes')} <small>${d.episodes.length}</small>
       <div class="ep-tools"><input id="epf" placeholder="${t('jump')}" type="number"><button class="btn ghost small" id="rev" aria-label="${t('reverse')}" title="${t('reverse')}">${ICON.sort}</button></div></h2>
-      <div class="eps" id="eps"></div></div>` : ''}
+      <div class="eps list" id="eps"></div></div>` : ''}
     ${d.related.length ? row(t('moreLike'), d.related) : ''}`;
 
   const eps = $('#eps');
-  let rev = false;
+  let rev = false, info = {};
   const drawEps = (f = '') => eps && (eps.innerHTML = (rev ? [...d.episodes].reverse() : d.episodes)
     .filter(e => !f || String(e.ep).startsWith(f))
-    .map(e => `<a class="ep ${store.seen[e.path] ? 'seen' : ''} ${h?.epPath === e.path ? 'last' : ''}" href="${playHash(e.path)}">${/^\d/.test(e.ep) ? t('ep') + ' ' : ''}${esc(e.ep)}</a>`).join(''));
+    .map(e => epRow(e.ep, info[+e.ep], d.banner || d.poster, playHash(e.path), store.seen[e.path], h?.epPath === e.path)).join(''));
   drawEps();
   if (eps) {
+    scraper.episodeInfo([d.title, ...(d.alt || '').split(/\s*[,،]\s*/)]).then(i => { info = i; drawEps($('#epf').value); }).catch(() => {}); // names are extras: the numbers stand without them
     $('#epf').oninput = e => drawEps(e.target.value);
     $('#rev').onclick = () => { rev = !rev; drawEps($('#epf').value); };
   }
@@ -1189,6 +1190,9 @@ async function title(path, force) {
   $('#rf').onclick = () => pageRefresh().then(() => toast(t('updated')));
   if (d.trailer) $('#trl').onclick = () => showTrailer(d.trailer);
 }
+// an episode's row (anime, series): its still (else the show's picture), its number and, when known, its name
+const epRow = (n, i, pic, href, seen, last) => `<a class="ep ${seen ? 'seen' : ''} ${last ? 'last' : ''}" href="${href}">
+  <img src="${esc(img(i?.thumb || pic))}" alt="" loading="lazy"><span><b>${/^\d/.test(n) ? t('ep') + ' ' : ''}${esc(n)}</b>${i?.name ? `<small dir="auto">${esc(i.name)}</small>` : ''}</span></a>`;
 // a full-screen overlay (a tap, back or Esc closes it): trailers, and posters shown full size
 function overlay(html) {
   const m = document.createElement('div');
@@ -1526,6 +1530,13 @@ async function route(soft) {
   if (!soft) { view.style.animation = 'none'; view.offsetHeight; view.style.animation = ''; }
 }
 scraper.watch(() => route(true)); // the site had something newer than the saved copy
+// a page left open is asked again every 5 minutes, quietly: the sites post new episodes, films and chapters several times an
+// hour, and sooner mostly finds nothing new. not while the app is hidden; back on screen after that, at once
+const QUIET_EVERY = 5 * 60e3;
+let quietAt = Date.now();
+const quietCheck = () => { if (document.visibilityState === 'visible' && Date.now() - quietAt >= QUIET_EVERY) { quietAt = Date.now(); scraper.recheck(); } };
+setInterval(quietCheck, 60e3);
+document.addEventListener('visibilitychange', quietCheck);
 addEventListener('hashchange', () => route()); // not `route` directly: the event would arrive as the `soft` flag and skip the redraw
 
 (async () => {

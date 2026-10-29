@@ -208,7 +208,7 @@ async function animerco(title, alt, ep, movie) {
 // ---------- WeCima: more backup servers, for anime (here) and films (cinema.js) ----------
 // Never listed either. Its pages sit behind Cloudflare's check, which lets a request through when it names the site as
 // its referrer (main.js and mobile.js do), so none of its pages, nor their pop-up ads, is ever opened: they're only read for links.
-const WC = 'https://wecima.social';
+const WC = 'https://wecima.singles';
 parsers.wcSearch = doc => [...doc.querySelectorAll('.GridItem a[href][title]')].map(a => ({ url: a.getAttribute('href'), title: a.getAttribute('title') }));
 const wcSearch = q => load('wcSearch', `${WC}/?s=${encodeURIComponent(q)}`);
 const wcLinks = async url => {
@@ -261,12 +261,34 @@ async function ristoanime(title, alt, ep, movie) {
   return [];
 }
 
+// ---------- kitsu: episodes' names and stills (witanime lists numbers only) ----------
+const KITSU = 'https://kitsu.io/api/edge';
+const fold = s => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+parsers.kitsuFind = j => (j.data || []).map(a => ({ id: a.id, names: [a.attributes.canonicalTitle, ...Object.values(a.attributes.titles || {})].filter(Boolean).map(fold) }));
+parsers.kitsuEps = j => ({ count: j.meta?.count || 0, eps: (j.data || []).map(({ attributes: a }) =>
+  ({ n: String(a.number), name: a.canonicalTitle || a.titles?.en_us || a.titles?.en || a.titles?.en_jp || '', thumb: a.thumbnail?.original || '' })) });
+// { "1": { name, thumb } } for a show, found on kitsu by one of its names (only an exact one: a near miss is often another season)
+async function episodeInfo(names) {
+  const want = names.map(fold).filter(Boolean);
+  if (!want.length) return {};
+  const hit = (await load('kitsuFind', `${KITSU}/anime?filter[text]=${encodeURIComponent(names[0])}&page[limit]=5&fields[anime]=canonicalTitle,titles`, false, true))
+    .find(a => a.names.some(n => want.includes(n)));
+  if (!hit) return {};
+  const page = o => load('kitsuEps', `${KITSU}/anime/${hit.id}/episodes?sort=number&page[limit]=20&page[offset]=${o}&fields[episodes]=number,canonicalTitle,titles,thumbnail`, false, true);
+  const pages = [await page(0)];
+  // ponytail: kitsu gives 20 a page, so a 1000-episode show is 50 requests (once, then cached); 5 at a time to stay polite
+  for (let o = 20; o < pages[0].count; o += 100)
+    pages.push(...await Promise.all([0, 20, 40, 60, 80].filter(d => o + d < pages[0].count).map(d => page(o + d).catch(() => ({ eps: [] })))));
+  return Object.fromEntries(pages.flatMap(p => p.eps).map(e => [e.n, e]));
+}
+
 // Everything scraped is kept for 90 days and shown straight from the cache, but the site is asked again on
 // every visit (at most once a minute per page); a changed page is saved and the current view redrawn.
 // force=true waits for the site instead.
 const KEEP = 90 * 24 * HOUR, RECHECK = 60e3;
 let cache = null, saveT = null, onChange = null;
 const used = new Set(), checking = new Set(), inflight = new Map(); // URLs the current view was built from; background checks in flight; deduplicated live fetches
+const viewed = new Map(); // the current view's own pages (url -> kind), asked again by recheck(); not keep's extras (kitsu's 20-episode pages)
 // bumped by newView(): a load started for a page the user already left never settles, so a slow page can't draw
 // over the one that replaced it (and leave the nav highlighting a different page). keep=true opts out (background work).
 let gen = 0;
@@ -277,7 +299,7 @@ function fetchPage(kind, url) {
   let p = inflight.get(url);
   if (!p) {
     p = api.fetch(url).then(text => {
-      const isJson = kind.startsWith('manga') || (kind === 'airNames' && text.trim().startsWith('{'));
+      const isJson = /^(manga|kitsu)/.test(kind) || (kind === 'airNames' && text.trim().startsWith('{'));
       const data = parsers[kind](isJson ? JSON.parse(text) : kind === 'newEpisodes' ? text : parse(text), url);
       cache[url] = { at: Date.now(), data };
       save();
@@ -295,6 +317,7 @@ async function load(kind, url, force = false, keep = false) {
     if (!keep && g !== gen) return never;
   }
   used.add(url);
+  if (!keep) viewed.set(url, kind);
   const hit = cache[url];
   if (!hit || force) {
     try { return fresh(await fetchPage(kind, url)); }
@@ -327,11 +350,14 @@ window.scraper = {
   newEpisodes: (page, force) => load('newEpisodes', `/new-episodes?page=${page}`, force),
   search: q => load('list', `/search?q=${encodeURIComponent(q)}`),
   details: (path, force) => load('details', path, force),
+  episodeInfo,
   animerco,
   ristoanime,
   wecima,
   // the app calls newView() when it changes page, and gets onChange() when a page it shows came back different
-  newView: () => { used.clear(); gen++; },
+  newView: () => { used.clear(); viewed.clear(); gen++; },
+  // a page left open: its pages asked again behind it (as on a visit), redrawn by onChange only if the site changed
+  recheck: () => viewed.forEach((kind, url) => load(kind, url, false, true).catch(() => {})),
   watch: fn => { onChange = fn; },
   SITE,
 };

@@ -1,10 +1,14 @@
 package com.medanime.app.ui
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
@@ -24,6 +28,7 @@ data class CardRow(val title: String, val items: List<Card>)
 data class HomePage(val hero: List<Hero>, val rows: List<CardRow>)
 data class Listing(val items: List<Card>, val pages: Int)
 data class Episode(val path: String, val ep: String)
+data class EpInfo(val name: String, val thumb: String)
 data class Details(val path: String, val title: String, val alt: String, val desc: String, val genres: List<String>, val tags: List<String>,
                    val info: List<Pair<String, String>>, val trailer: String, val poster: String, val banner: String,
                    val episodes: List<Episode>, val related: List<Card>)
@@ -138,6 +143,33 @@ object Witanime {
         }
     }.flowOn(Dispatchers.Default)
 
+    // ---------- kitsu: episodes' names and stills, witanime lists numbers only (scraper.js episodeInfo) ----------
+    private const val KITSU = "https://kitsu.io/api/edge"
+    private fun fold(s: String) = s.lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
+    /** episode number -> its name and still, for a show found on kitsu by one of its names (only an exact one: a near miss is often another season) */
+    suspend fun episodeInfo(names: List<String>): Map<Int, EpInfo> = kotlinx.coroutines.coroutineScope {
+        val want = names.map(::fold).filter { it.isNotEmpty() }
+        if (want.isEmpty()) return@coroutineScope emptyMap()
+        val enc = { v: String -> URLEncoder.encode(v, "UTF-8").replace("+", "%20") }
+        val found = JSONObject(Pages.load("$KITSU/anime?${enc("filter[text]")}=${enc(names[0])}&${enc("page[limit]")}=5&${enc("fields[anime]")}=canonicalTitle,titles")).optJSONArray("data")
+        val id = (0 until (found?.length() ?: 0)).map { found!!.getJSONObject(it) }.firstOrNull { a ->
+            val at = a.getJSONObject("attributes"); val ts = at.optJSONObject("titles")
+            (listOf(at.optString("canonicalTitle")) + (ts?.keys()?.asSequence()?.map { ts.optString(it) }?.toList() ?: emptyList())).any { fold(it) in want }
+        }?.optString("id") ?: return@coroutineScope emptyMap()
+        val page = { o: Int -> async { runCatching { JSONObject(Pages.load("$KITSU/anime/$id/episodes?sort=number&${enc("page[limit]")}=20&${enc("page[offset]")}=$o&${enc("fields[episodes]")}=number,canonicalTitle,titles,thumbnail")) }.getOrNull() } }
+        val first = page(0).await() ?: return@coroutineScope emptyMap()
+        val count = first.optJSONObject("meta")?.optInt("count") ?: 0
+        // ponytail: kitsu gives 20 a page, so a 1000-episode show is 50 requests (once, then cached); 5 at a time to stay polite
+        val rest = (20 until count step 20).chunked(5).flatMap { os -> os.map(page).awaitAll() }
+        (listOf(first) + rest).filterNotNull().flatMap { p -> p.optJSONArray("data")?.let { d -> (0 until d.length()).map { d.getJSONObject(it).getJSONObject("attributes") } } ?: emptyList() }
+            .associate { a ->
+                val ts = a.optJSONObject("titles")
+                a.optInt("number") to EpInfo(a.optString("canonicalTitle").takeIf { it.isNotEmpty() && it != "null" }
+                    ?: listOf("en_us", "en", "en_jp").firstNotNullOfOrNull { ts?.optString(it)?.takeIf { s -> s.isNotEmpty() && s != "null" } } ?: "",
+                    a.optJSONObject("thumbnail")?.optString("original").orEmpty())
+            }
+    }
+
     // home rows the site has a full listing for (app.js SECTIONS); the latest episodes row pages on its own (newEpisodes)
     val SECTIONS = mapOf("الأكثر مشاهدة" to "/browse?sort=Most Viewed", "أكثر الأنميات مشاهدة" to "/browse?sort=Most Viewed",
         "أكثر الأفلام مشاهدة" to "/movies?sort=Most Viewed", "أشهر أنميات الموسم" to "/seasonal", "أحدث الأفلام" to "/movies")
@@ -245,4 +277,70 @@ object Witanime {
         }
         return emptyList()
     }
+
+    // ---------- animeschedule.net: the anime schedule (scraper.js airTimes / airNames / airScore) ----------
+    private const val AS = "https://animeschedule.net"
+    // the timetable's "2026-10-28T14:30+01:00", read where SimpleDateFormat's ISO zone (X) isn't (before Android 7)
+    private fun isoMs(s: String) = runCatching {
+        java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mmZ", java.util.Locale.US).parse(s.take(16) + (Regex("([+-]\\d\\d):?(\\d\\d)$").find(s)?.let { it.groupValues[1] + it.groupValues[2] } ?: "+0000"))!!.time
+    }.getOrNull()
+    // its timetable (this week, Monday to Sunday), one entry per show (by its slug, "route"): its Japanese airing (raw) over sub, then dub
+    suspend fun airTimes(force: Boolean = false): List<Air> {
+        val html = Pages.load("$AS/", force)
+        return withContext(Dispatchers.Default) {
+            val rank = mapOf("raw" to 0, "sub" to 1, "dub" to 2)
+            val best = LinkedHashMap<String, Pair<Int, Air>>()
+            Jsoup.parse(html, AS).select(".timetable-column-show[route]").forEach { s ->
+                val route = s.attr("route")
+                val at = isoMs(s.selectFirst("time.show-air-time")?.attr("datetime") ?: "") ?: return@forEach
+                val r = rank[s.selectFirst("[airtype]")?.attr("airtype")] ?: 3
+                if ((best[route]?.first ?: 9) <= r) return@forEach
+                best[route] = r to Air(route, txt(s.selectFirst(".show-title-bar")), at,
+                    s.selectFirst("img[data-src]")?.attr("data-src") ?: src(s.selectFirst("img.show-poster")), txt(s.selectFirst(".show-episode")).replace(Regex("^\\D+"), ""))
+            }
+            best.values.map { it.second }
+        }
+    }
+    // a show's names (main romaji title first, then English and the others), to find it on witanime
+    suspend fun airNames(route: String): List<String> {
+        val d = JSONObject(Pages.load("$AS/api/v3/anime/${URLEncoder.encode(route, "UTF-8")}"))
+        val n = d.optJSONObject("names") ?: JSONObject()
+        val syn = n.optJSONArray("synonyms")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList()
+        return (listOf(n.optString("romaji"), n.optString("english"), d.optString("title")) + syn).filter { it.isNotEmpty() }.distinct()
+    }
+    // a title's words as both sites can agree on them: "2nd Season" / "Season 2" / "II" / a last "2" -> s2, "Cour 2" / "Part 2" /
+    // "2nd Cour" -> p2 (season and part 1 dropped), long vowels shortened (Reijou / Reijo, Juuou / Jyu Oh)
+    private fun airWords(s: String) = " ${Manga.norm(s)} "
+        .replace(Regex(" (\\d+)(?:st|nd|rd|th) season(?= )| season ?(\\d+)(?= )")) { " s" + it.groupValues[1].ifEmpty { it.groupValues[2] } }
+        .replace(Regex(" (?:cour|part) (\\d+)(?= )| (\\d+)(?:st|nd|rd|th) cour(?= )")) { " p" + it.groupValues[1].ifEmpty { it.groupValues[2] } }
+        .replace(Regex(" (ii|iii|\\d)(?= $)")) { it.groupValues[1].let { n -> " s" + if (n[0] == 'i') n.length else n } }
+        .replace(Regex(" [sp]1(?= )"), "")
+        .replace("jy", "j").replace("uu", "u").replace(Regex("o[uh]"), "o").split(' ').filter { it.isNotEmpty() }
+    // how alike two titles are, 0-1: 1 for the same words; 0 for another season or part; else the words of one found in the
+    // other, over the longer one's count (a word matching a longer one it starts: Ranma1 / Ranma)
+    fun airScore(a: String, b: String): Double {
+        val x = airWords(a); val y = airWords(b)
+        if (x.joinToString("") == y.joinToString("")) return 1.0
+        fun part(l: List<String>) = l.filter { Regex("^[sp]\\d+$").matches(it) }.sorted().joinToString(",")
+        if (part(x) != part(y)) return 0.0
+        fun like(u: String, v: String) = u == v || u.length >= 4 && v.length >= 4 && (u.startsWith(v) || v.startsWith(u))
+        return x.count { u -> y.any { like(u, it) } }.toDouble() / maxOf(x.size, y.size)
+    }
+    /**
+     * a schedule card's show on witanime (its path, else null) and its name: searched by each of its names until one gives a title
+     * that matches, and last by its first word (witanime's search wants the start of its own spelling: "Ranma ½ (2024) 3rd Season"
+     * finds nothing, "Ranma" finds "Ranma1/2 3rd Season") (app.js airing)
+     */
+    suspend fun airing(route: String): Pair<String?, String> {
+        val s = runCatching { airTimes() }.getOrNull()?.find { it.route == route }
+        val names = (runCatching { airNames(route) }.getOrDefault(emptyList()) + (s?.title ?: route.replace('-', ' '))).distinct().take(4)
+        val w = Manga.norm(names[0]).split(' ')
+        for (q in (names + if (w[0].length >= 5) w[0] else w.take(2).joinToString(" ")).filter { it.isNotBlank() }) {
+            val best = runCatching { search(q).first().items }.getOrDefault(emptyList()).map { i -> names.maxOf { airScore(i.title, it) } to i }.maxByOrNull { it.first }
+            if (best != null && best.first >= .6) return best.second.path to names[0]
+        }
+        return null to (s?.title ?: names[0])
+    }
 }
+
+data class Air(val route: String, val title: String, val at: Long, val poster: String, val ep: String)

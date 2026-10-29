@@ -252,7 +252,7 @@ object Downloads {
     }
 
     private var sentToSettings = false // once a run: not on every download
-    private fun askNotifications() { // the progress shows as a notification (Android 13+: hidden without this)
+    fun askNotifications(why: String = "dlNotifAsk") { // the progress shows as a notification (Android 13+: hidden without this); also new episodes' (Alerts)
         val act = Net.activity
         if (androidx.core.app.NotificationManagerCompat.from(act).areNotificationsEnabled()) return
         val prefs = Store["prefs"]
@@ -263,7 +263,7 @@ object Downloads {
             ActivityCompat.requestPermissions(act, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
         } else if (!sentToSettings) {
             sentToSettings = true
-            toast(t("dlNotifAsk"))
+            toast(t(why))
             runCatching { act.startActivity(android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, act.packageName)) }
         }
     }

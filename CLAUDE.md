@@ -43,7 +43,7 @@ Java no longer ship, except `DownloadService` (the download notification), which
 ## Data
 
 - **Sources**: witanime.site (anime, the main source), eva.animerco.org (backup servers), appswat.com + mangatek.com (manga),
-  myseed/arabseed/egydead (movies, which hop between domains), cima.my-cima.net and wecima.social (backup servers),
+  myseed/arabseed/egydead (movies, which hop between domains), cima.my-cima.net and wecima.singles (backup servers),
   animeschedule.net (air times), kitsu.io + IMDb suggest (search suggestions).
 - **Adding a host**: update the allowlist in `main.js`, the `fetch` allowlist in `mobile.js` (and its constants at the top),
   `ImageCache.HOSTS` if it serves images, and the CSP in `index.html` if needed.

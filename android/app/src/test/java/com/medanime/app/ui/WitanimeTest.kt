@@ -25,6 +25,15 @@ class WitanimeTest {
     }
 
     @Test
+    fun episodeNames() = kotlinx.coroutines.runBlocking {
+        Pages.dir = kotlin.io.path.createTempDirectory().toFile()
+        val d = Witanime.details(doc("/anime/one-piece/"), "/anime/one-piece/")
+        val info = Witanime.episodeInfo(listOf(d.title) + d.alt.split(Regex("\\s*[,،]\\s*")))
+        println("${d.title} | ${info.size} named | 1: ${info[1]}")
+        assertTrue("kitsu names", info.size > 1000 && info[1]?.name?.contains("Luffy") == true && info[1]!!.thumb.startsWith("https://"))
+    }
+
+    @Test
     fun cinema() {
         val doc = Jsoup.parse(http.newCall(Request.Builder().url(Cinema.ED + "/category/foreign-movies/").header("User-Agent", UA).build()).execute().body!!.string(), Cinema.ED)
         val cards = Cinema.cards(doc)

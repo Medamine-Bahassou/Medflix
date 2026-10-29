@@ -53,7 +53,7 @@ private class HomeData(val anime: HomePage?, val hot: List<Card>?, val latest: L
 
 @Composable
 fun HomeScreen(nav: Nav) {
-    val (l, refresh) = loadedOnce("home") { f ->
+    val (l, refresh) = loadedOnce("home", quiet = true) { f ->
         coroutineScope {
             val a = async { runCatching { Witanime.home(f).first() }.getOrNull() }
             val hot = async { runCatching { Manga.hot(f) }.getOrNull() }
@@ -80,9 +80,9 @@ fun HomeScreen(nav: Nav) {
 /** Anime: witanime's series, films and rows (app.js animeHome) */
 @Composable
 fun AnimeScreen(nav: Nav) {
-    val (l, refresh) = loaded("anime") { Witanime.home(it) }
+    val (l, refresh) = loaded("anime", quiet = true) { Witanime.home(it) }
     SectionPage(l, refresh, nav, ::animeSlides) { d ->
-        item { Chips(listOf(t("series") to Screen.Grid(t("series"), "/browse"), t("movies") to Screen.Grid(t("movies"), "/movies")), nav) }
+        item { Chips(listOf(t("series") to Screen.Grid(t("series"), "/browse"), t("movies") to Screen.Grid(t("movies"), "/movies"), t("schedule") to Screen.Schedule), nav) }
         item { CardRowView(t("continueWatching"), continued(setOf("anime")), nav) }
         items(d.rows, { it.title }) { CardRowView(it.title, it.items, nav, Screen.Section(it.title)) }
     }
@@ -97,6 +97,66 @@ fun SectionScreen(name: String, nav: Nav) = Column {
         base != null -> CardGrid(base, nav)
         name == Witanime.NEW_EPISODES -> PagedGrid(name, { Witanime.newEpisodes(1, it) }, { Witanime.newEpisodes(it).first() }, nav)
         else -> PagedGrid(name, { f -> kotlinx.coroutines.flow.flow { emit(Listing(Witanime.home(f).first().rows.find { it.title == name }?.items ?: emptyList(), 1)) } }, { Listing(emptyList(), 1) }, nav)
+    }
+}
+
+// ---------- the anime schedule (app.js schedule / airing) ----------
+private var schedQ by mutableStateOf("") // stays through refreshes and coming back from a show
+
+/**
+ * today and the 6 days after, each show at its air time (in the phone's time zone). The timetable runs Monday to Sunday:
+ * shows of the days already past this week are listed at their next airing, a week on. Its search box turns the day rows
+ * into one list of the matching shows, each with its day and time (all of the query's words in the title, any order)
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ScheduleScreen(nav: Nav) = Column {
+    PageTitle(t("schedule"), nav)
+    TextField(schedQ, { schedQ = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), placeholder = { Text(t("schedSearch")) }, singleLine = true,
+        leadingIcon = { Icon(Ic.search, null, Modifier.size(20.dp)) }, trailingIcon = { if (schedQ.isNotEmpty()) IconButton({ schedQ = "" }) { Icon(Ic.x, t("clear"), Modifier.size(18.dp)) } },
+        shape = RoundedCornerShape(6.dp), colors = TextFieldDefaults.colors(focusedContainerColor = CardC, unfocusedContainerColor = CardC, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, cursorColor = Red))
+    val (l, refresh) = loadedOnce("schedule") { Witanime.airTimes(it) }
+    PullToRefreshBox(l.busy && l.data != null, refresh) {
+        Body(l, refresh) { shows ->
+            val loc = java.util.Locale(Store.lang)
+            fun day(ms: Long) = java.util.Calendar.getInstance().apply { timeInMillis = ms; set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0) }.timeInMillis
+            val today = day(System.currentTimeMillis())
+            val all = shows.map { if (day(it.at) < today) it.copy(at = it.at + 7 * 86_400_000L) else it }.sortedBy { it.at }
+            val time = { s: Air -> java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT, loc).format(java.util.Date(s.at)) + if (s.ep.isNotEmpty()) " · ${t("epShort")} ${s.ep}" else "" }
+            val dayName = { ms: Long -> java.text.SimpleDateFormat("EEEE d MMMM", loc).format(java.util.Date(ms)) + if (day(ms) == today) " · ${t("today")}" else "" }
+            val ws = fold(schedQ).split(' ').filter { it.isNotEmpty() }
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+                if (ws.isEmpty()) items(all.groupBy { day(it.at) }.toList(), { it.first }) { (d, l) ->
+                    CardRowView(dayName(d), l.map { Card("/airing/${it.route}", "anime", it.title, it.poster, "", "", time(it), null, "/airing/${it.route}", open = Screen.Airing(it.route)) }, nav)
+                } else {
+                    val hits = all.filter { s -> fold(s.title).let { f -> ws.all { it in f } } }
+                    if (hits.isEmpty()) item { Empty(t("schedNone"), t("schedNoneHint")) }
+                    items(hits, { it.route }) { s ->
+                        Row(Modifier.fillMaxWidth().clickable { nav.go(Screen.Airing(s.route)) }.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            AsyncImage(s.poster, null, Modifier.width(48.dp).aspectRatio(2 / 3f).clip(RoundedCornerShape(4.dp)), contentScale = ContentScale.Crop)
+                            Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                                Text(s.title, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text("${dayName(s.at)} · ${time(s)}", color = Muted, fontSize = 12.sp)
+                            }
+                            Icon(Ic.next, null, Modifier.size(18.dp), tint = Muted)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** a schedule card: its show on witanime, which replaces this page (back returns to the schedule), else "not here yet" */
+@Composable
+fun AiringScreen(route: String, nav: Nav) {
+    val (l, retry) = loadedOnce(route) { Witanime.airing(route) }
+    Body(l, retry) { (path, title) ->
+        if (path != null) return@Body LaunchedEffect(path) { nav.replace(Screen.Title(path)) }
+        Column {
+            PageTitle(title, nav)
+            Empty(title, t("notOnSite")) { OutlinedButton(nav.back) { Text(t("schedule"), color = Color.White) } }
+        }
     }
 }
 
@@ -230,7 +290,8 @@ fun MyListScreen(nav: Nav) {
 }
 
 // ---------- the details page shared by anime, manga and films (app.js det-hero) ----------
-class Numbered(val label: String, val seen: Boolean, val last: Boolean, val open: Screen, val id: String = label, val saved: Boolean = false, val read: Boolean = seen) // id: what picking it hands the actions; read: the ✓ (manga: to the last page, not just opened)
+class Numbered(val label: String, val seen: Boolean, val last: Boolean, val open: Screen, val id: String = label, val saved: Boolean = false, val read: Boolean = seen,
+               val thumb: String = "", val name: String = "") // id: what picking it hands the actions; read: the ✓ (manga: to the last page, not just opened); thumb: drawn as rows (anime, series)
 
 /**
  * banner and poster, titles, chips (red: true), story, buttons, info; then a numbered list (episodes, chapters) with
@@ -251,9 +312,59 @@ fun DetailPage(banner: String, poster: String, title: String, alt: String, chips
         Box(Modifier.fillMaxSize().background(Color.Black).clickable { big = false }) { AsyncImage(poster, title, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
     }
     val shown = (if (rev) list.reversed() else list).filter { filter.isEmpty() || it.label.startsWith(filter) }
+    var page by rememberSaveable { mutableStateOf(false) } // the list on a page of its own: a long one buried the details and what's after it
+    androidx.activity.compose.BackHandler(page) { page = false; picks.clear() }
+    val details = androidx.compose.foundation.lazy.rememberLazyListState() // back from the list: the details where they were
     BoxWithConstraints {
-        val cols = (maxWidth / 72.dp).toInt().coerceAtLeast(4)
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+        val rows = list.firstOrNull()?.thumb?.isNotEmpty() == true // episodes: a row each, its still beside its number and name
+        val cols = if (rows) (maxWidth / 340.dp).toInt().coerceAtLeast(1) else (maxWidth / 72.dp).toInt().coerceAtLeast(4)
+        if (page && listTitle != null) Column {
+            Row(Modifier.fillMaxWidth().padding(end = 16.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton({ page = false; picks.clear() }) { Icon(Ic.back, t("back"), Modifier.size(22.dp)) }
+                Text(title, fontWeight = FontWeight.Bold, fontSize = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            // opened at the one watched last (the list as first drawn: unfiltered, unreversed)
+            val at = remember { list.indexOfFirst { it.last }.let { if (it < 0 || rev || filter.isNotEmpty()) 0 else it / cols } }
+            // fixed above the list: the jump box and reverse stay at hand however far down
+            if (picks.on && acts != null) SelectBar(picks, { shown.map { it.id } }, acts, run)
+            else Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("$listTitle  ", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text("${list.size}", color = Muted, modifier = Modifier.weight(1f))
+                if (list.size > cols) {
+                    OutlinedTextField(filter, { filter = it.filter { c -> c.isDigit() || c == '.' } }, Modifier.width(130.dp).height(52.dp), placeholder = { Text(jump, fontSize = 12.sp) },
+                        singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), textStyle = LocalTextStyle.current.copy(fontSize = 13.sp))
+                    IconButton({ rev = !rev }) { Icon(Ic.sort, t("reverse"), Modifier.size(20.dp)) }
+                }
+            }
+            LazyColumn(Modifier.fillMaxSize(), androidx.compose.foundation.lazy.rememberLazyListState(at), PaddingValues(bottom = 24.dp)) {
+                items(shown.chunked(cols)) { line ->
+                    Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        line.forEach { e ->
+                            val on = picks.has(e.id)
+                            val tile = Modifier.weight(1f).clip(RoundedCornerShape(4.dp)).background(if (on) Color(0x55E50914) else CardC)
+                                .then(if (e.last || on) Modifier.border(if (on) 2.dp else 1.dp, Red, RoundedCornerShape(4.dp)) else Modifier)
+                                .combinedClickable(onLongClick = { if (acts != null) { if (picks.on) picks.toggle(e.id) else picks.start(e.id) } }) { if (picks.on) picks.toggle(e.id) else nav.go(e.open) }
+                            if (rows) Row(tile.padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box {
+                                    AsyncImage(e.thumb, null, Modifier.width(112.dp).aspectRatio(16 / 9f).clip(RoundedCornerShape(4.dp)).background(Bg).graphicsLayer { alpha = if (e.seen) .45f else 1f }, contentScale = ContentScale.Crop)
+                                    if (e.saved) Icon(Ic.download, null, Modifier.align(Alignment.TopEnd).padding(4.dp).size(12.dp)) // downloaded
+                                }
+                                Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                                    Text(if (e.label.firstOrNull()?.isDigit() == true) "${t("ep")} ${e.label}" else e.label, color = if (e.seen) Muted else Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                    if (e.name.isNotEmpty()) Text(e.name, color = Muted, fontSize = 12.sp, lineHeight = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                }
+                                if (e.read) Icon(Ic.check, t("chRead"), Modifier.padding(end = 6.dp).size(14.dp), tint = Red) // watched
+                            } else Box(tile.height(42.dp), Alignment.Center) {
+                                Text(e.label, color = if (e.seen) Muted else Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                if (e.saved) Icon(Ic.download, null, Modifier.align(Alignment.TopEnd).padding(3.dp).size(10.dp), tint = Muted) // downloaded
+                                if (e.read) Icon(Ic.check, t("chRead"), Modifier.align(Alignment.TopStart).padding(3.dp).size(10.dp), tint = Red) // watched / read: too small for the read pill
+                            }
+                        }
+                        repeat(cols - line.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+            }
+        } else LazyColumn(Modifier.fillMaxSize(), details, PaddingValues(bottom = 24.dp)) {
             item {
                 Box { // the poster sits over the banner's lower edge
                     Box(Modifier.fillMaxWidth().height(240.dp)) {
@@ -284,33 +395,13 @@ fun DetailPage(banner: String, poster: String, title: String, alt: String, chips
                 }
             }
             before()
-            if (listTitle != null) {
-                if (picks.on && acts != null) stickyHeader { SelectBar(picks, { shown.map { it.id } }, acts, run) }
-                else item {
-                    Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("$listTitle  ", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                        Text("${list.size}", color = Muted, modifier = Modifier.weight(1f))
-                        if (list.size > cols) {
-                            OutlinedTextField(filter, { filter = it.filter { c -> c.isDigit() || c == '.' } }, Modifier.width(130.dp).height(52.dp), placeholder = { Text(jump, fontSize = 12.sp) },
-                                singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), textStyle = LocalTextStyle.current.copy(fontSize = 13.sp))
-                            IconButton({ rev = !rev }) { Icon(Ic.sort, t("reverse"), Modifier.size(20.dp)) }
-                        }
-                    }
-                }
-                items(shown.chunked(cols)) { line ->
-                    Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        line.forEach { e ->
-                            val on = picks.has(e.id)
-                            Box(Modifier.weight(1f).height(42.dp).clip(RoundedCornerShape(4.dp)).background(if (on) Color(0x55E50914) else CardC)
-                                .then(if (e.last || on) Modifier.border(if (on) 2.dp else 1.dp, Red, RoundedCornerShape(4.dp)) else Modifier)
-                                .combinedClickable(onLongClick = { if (acts != null) { if (picks.on) picks.toggle(e.id) else picks.start(e.id) } }) { if (picks.on) picks.toggle(e.id) else nav.go(e.open) }, Alignment.Center) {
-                                Text(e.label, color = if (e.seen) Muted else Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                                if (e.saved) Icon(Ic.download, null, Modifier.align(Alignment.TopEnd).padding(3.dp).size(10.dp), tint = Muted) // downloaded
-                                if (e.read) Icon(Ic.check, t("chRead"), Modifier.align(Alignment.TopStart).padding(3.dp).size(10.dp), tint = Red) // watched / read: too small for the read pill
-                            }
-                        }
-                        repeat(cols - line.size) { Spacer(Modifier.weight(1f)) }
-                    }
+            if (listTitle != null) item { // the list's row: its page
+                Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(CardC).clickable { page = true }.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text("$listTitle  ", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Text("${list.size}", color = Muted, modifier = Modifier.weight(1f))
+                    list.find { it.last }?.let { Text(if (it.label.firstOrNull()?.isDigit() == true) "${t("ep")} ${it.label}" else it.label, color = Red, fontSize = 13.sp) } // where you are
+                    Icon(Ic.next, null, Modifier.padding(start = 8.dp).size(16.dp), tint = Muted)
                 }
             }
             after()
@@ -337,11 +428,14 @@ fun ListButton(path: String, title: String, poster: String, type: String) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TitleScreen(path: String, nav: Nav) {
-    val (l, refresh) = loaded(path) { Witanime.details(path, it) }
+    val (l, refresh) = loaded(path, quiet = true) { Witanime.details(path, it) }
     val open = openUrl()
     PullToRefreshBox(l.busy && l.data != null, refresh) {
         Body(l, refresh) { d ->
             Store.version.intValue
+            val info by produceState(emptyMap<Int, EpInfo>(), d.title) { // names are extras: the numbers stand without them
+                value = runCatching { Witanime.episodeInfo(listOf(d.title) + d.alt.split(Regex("\\s*[,،]\\s*"))) }.getOrDefault(emptyMap())
+            }
             val h = Store["history"].optJSONObject(path)
             val last = h?.optString("epPath")
             val first = last ?: d.episodes.firstOrNull()?.path
@@ -349,9 +443,11 @@ fun TitleScreen(path: String, nav: Nav) {
             DetailPage(d.banner, d.poster, d.title, d.alt, d.tags.mapIndexed { i, c -> c to (i == 2) } + d.genres.map { it to false }, d.desc, {
                 if (first != null) RedButton(if (h != null) t("resume", h.optString("ep")) else t("play")) { nav.go(Screen.Play(first)) }
                 ListButton(path, d.title, d.poster, type)
+                if (type == "anime") NotifyButton(path, d.title, d.poster, d.episodes.lastOrNull()?.path ?: "")
                 if (d.trailer.isNotEmpty()) GhostButton(t("trailer"), Ic.play) { open(d.trailer) }
             }, d.info, nav, if (d.episodes.size > 1 || type == "anime") t("episodes") else null,
-                d.episodes.map { Numbered(it.ep, Store["seen"].has(it.path), it.path == last, Screen.Play(it.path), it.path, com.medanime.app.Downloads.done(it.path)) },
+                d.episodes.map { Numbered(it.ep, Store["seen"].has(it.path), it.path == last, Screen.Play(it.path), it.path, com.medanime.app.Downloads.done(it.path),
+                    thumb = info[it.ep.toIntOrNull()]?.thumb?.ifEmpty { null } ?: d.banner.ifEmpty { d.poster }, name = info[it.ep.toIntOrNull()]?.name.orEmpty()) },
                 after = { item { CardRowView(t("moreLike"), d.related, nav) } },
                 acts = { ids -> listOfNotNull("seen" to t("markWatched"), "unseen" to t("markUnwatched"), if (ids.any { !com.medanime.app.Downloads.done(it) }) "dl" to t("downloadShort") else null) },
                 run = { v, ids ->

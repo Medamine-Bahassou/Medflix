@@ -35,6 +35,12 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- new episodes and chapters of followed titles, checked in the background: see ui/Alerts.kt -->
+        <service
+            android:name=".ui.Alerts"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -55,6 +61,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- the new-episodes check (Alerts) stays scheduled after a reboot -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- the visible MEDFLIX folder (downloads + saved settings), kept across reinstalls -->
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />

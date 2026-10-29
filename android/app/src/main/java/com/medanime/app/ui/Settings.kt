@@ -44,70 +44,114 @@ fun requestStorage() {
 }
 
 @Composable
-private fun Card(title: String, hint: String? = null, content: @Composable ColumnScope.() -> Unit) =
+private fun Card(title: String?, hint: String? = null, content: @Composable ColumnScope.() -> Unit) =
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).clip(RoundedCornerShape(8.dp)).background(CardC).padding(16.dp)) {
-        Text(title, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+        if (title != null) Text(title, fontWeight = FontWeight.Bold, fontSize = 17.sp)
         if (hint != null) Text(hint, Modifier.padding(top = 4.dp, bottom = 8.dp), color = Muted, fontSize = 13.sp)
         content()
     }
 
-/** settings (app.js settingsView): the dock, the MEDFLIX folder, language, updates */
+/** a settings menu row: a page of its own */
 @Composable
-fun SettingsScreen(nav: Nav) {
+private fun Part(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, value: String, tint: Color = Red, open: () -> Unit) =
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).clickable(onClick = open).padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, Modifier.size(22.dp), tint = tint)
+        Text(title, Modifier.weight(1f).padding(horizontal = 12.dp))
+        Text(value, color = Muted, fontSize = 13.sp)
+        Icon(Ic.next, null, Modifier.padding(start = 6.dp).size(16.dp), tint = Muted)
+    }
+
+/**
+ * settings (app.js settingsView): a short menu, the long parts (dock, MEDFLIX folder, notifications) on pages of their own
+ * (part), so the page isn't one endless scroll; language and updates fit on it
+ */
+@Composable
+fun SettingsScreen(part: String, nav: Nav) {
     Store.version.intValue
     val scope = rememberCoroutineScope()
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
-        PageTitle(t("settings"), nav)
         val dock = Store.dock()
-        Card(t("dockTitle"), t("dockHint")) {
-            Text("${t("inDock")}  ${dock.size}/4", Modifier.padding(vertical = 6.dp), color = Muted, fontSize = 13.sp)
-            dock.forEachIndexed { i, id ->
-                Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(NAV.getValue(id).second(), null, Modifier.size(22.dp), tint = Red)
-                    Text(navLabel(id), Modifier.weight(1f).padding(horizontal = 12.dp))
-                    val move = { j: Int -> Store.setDock(dock.toMutableList().apply { add(j, removeAt(i)) }) }
-                    IconButton({ move(i - 1) }, enabled = i > 0) { Icon(Ic.caretUp, t("moveUp"), Modifier.size(18.dp)) }
-                    IconButton({ move(i + 1) }, enabled = i < dock.size - 1) { Icon(Ic.caretDown, t("moveDown"), Modifier.size(18.dp)) }
-                    IconButton({ if (dock.size <= 1) toast(t("dockMin")) else Store.setDock(dock - id) }) { Icon(Ic.minus, t("removeDock"), Modifier.size(18.dp)) }
+        val n = Store["notify"]
+        when (part) {
+            "" -> {
+                PageTitle(t("settings"), nav)
+                Card(null) {
+                    Part(Ic.home, t("dockTitle"), "⁦${dock.size}/4⁩") { nav.go(Screen.Settings("dock")) }
+                    Part(Ic.folder, t("storage"), "", if (Store.granted()) Red else Muted) { nav.go(Screen.Settings("storage")) }
+                    Part(Ic.eyeSlash, t("hiddenTitle"), "⁦${Store["hidden"].length()}⁩") { nav.go(Screen.Hidden) }
+                    Part(Ic.bell, t("notifyTitle"), "⁦${n.keys().asSequence().count { it != "movies" }}⁩") { nav.go(Screen.Settings("notify")) }
+                }
+                Card(t("language")) { LangSwitch(Modifier.padding(top = 8.dp)) }
+                Card(t("updateTitle")) {
+                    var busy by remember { mutableStateOf(false) }
+                    var found by remember { mutableStateOf<Updater.Release?>(null) }
+                    Text("Build ${BuildConfig.BUILD}", color = Muted, fontSize = 13.sp, modifier = Modifier.padding(vertical = 6.dp))
+                    OutlinedButton({
+                        busy = true
+                        scope.launch {
+                            val u = runCatching { Updater.check() }.getOrNull()
+                            busy = false
+                            if (u == null) toast(if (Store.lang == "ar") "أنت على آخر إصدار" else "You're on the latest version") else found = u
+                        }
+                    }, enabled = !busy) { Icon(Ic.refresh, null, Modifier.size(16.dp), tint = Color.White); Spacer(Modifier.width(6.dp)); Text(if (Store.lang == "ar") "البحث عن تحديث" else "Check for updates", color = Color.White) }
+                    found?.let { u -> UpdateSheet(u) { found = null } }
                 }
             }
-            Text(t("available"), Modifier.padding(top = 12.dp, bottom = 6.dp), color = Muted, fontSize = 13.sp)
-            NAV.keys.filter { it !in dock }.forEach { id ->
-                Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(NAV.getValue(id).second(), null, Modifier.size(22.dp), tint = Muted)
-                    Text(navLabel(id), Modifier.weight(1f).padding(horizontal = 12.dp), color = Color(0xFFCCCCCC))
-                    IconButton({ if (dock.size >= 4) toast(t("dockFull")) else Store.setDock(dock + id) }) { Icon(Ic.plus, t("addDock"), Modifier.size(18.dp)) }
+            "dock" -> {
+                PageTitle(t("dockTitle"), nav)
+                Card(null, t("dockHint")) {
+                    Text("${t("inDock")}  ${dock.size}/4", Modifier.padding(vertical = 6.dp), color = Muted, fontSize = 13.sp)
+                    dock.forEachIndexed { i, id ->
+                        Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(NAV.getValue(id).second(), null, Modifier.size(22.dp), tint = Red)
+                            Text(navLabel(id), Modifier.weight(1f).padding(horizontal = 12.dp))
+                            val move = { j: Int -> Store.setDock(dock.toMutableList().apply { add(j, removeAt(i)) }) }
+                            IconButton({ move(i - 1) }, enabled = i > 0) { Icon(Ic.caretUp, t("moveUp"), Modifier.size(18.dp)) }
+                            IconButton({ move(i + 1) }, enabled = i < dock.size - 1) { Icon(Ic.caretDown, t("moveDown"), Modifier.size(18.dp)) }
+                            IconButton({ if (dock.size <= 1) toast(t("dockMin")) else Store.setDock(dock - id) }) { Icon(Ic.minus, t("removeDock"), Modifier.size(18.dp)) }
+                        }
+                    }
+                    Text(t("available"), Modifier.padding(top = 12.dp, bottom = 6.dp), color = Muted, fontSize = 13.sp)
+                    NAV.keys.filter { it !in dock }.forEach { id ->
+                        Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(NAV.getValue(id).second(), null, Modifier.size(22.dp), tint = Muted)
+                            Text(navLabel(id), Modifier.weight(1f).padding(horizontal = 12.dp), color = Color(0xFFCCCCCC))
+                            IconButton({ if (dock.size >= 4) toast(t("dockFull")) else Store.setDock(dock + id) }) { Icon(Ic.plus, t("addDock"), Modifier.size(18.dp)) }
+                        }
+                    }
                 }
             }
-        }
-        Card(t("storage"), t("storageHint")) {
-            val on = Store.granted()
-            Row(Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = ::openFolder).padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) { // tap: the folder in the file manager
-                Icon(Ic.folder, null, Modifier.size(22.dp), tint = if (on) Red else Muted)
-                Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                    Text(Store.shared.absolutePath, fontSize = 13.sp, color = if (on) Red else Color.White, style = LocalTextStyle.current.copy(textDirection = androidx.compose.ui.text.style.TextDirection.Ltr)) // a path reads left to right in Arabic too
-                    Text(if (on) t("storageOn") else t("storageOff"), color = Muted, fontSize = 12.sp)
+            "storage" -> {
+                PageTitle(t("storage"), nav)
+                Card(null, t("storageHint")) {
+                    val on = Store.granted()
+                    Row(Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = ::openFolder).padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) { // tap: the folder in the file manager
+                        Icon(Ic.folder, null, Modifier.size(22.dp), tint = if (on) Red else Muted)
+                        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                            Text(Store.shared.absolutePath, fontSize = 13.sp, color = if (on) Red else Color.White, style = LocalTextStyle.current.copy(textDirection = androidx.compose.ui.text.style.TextDirection.Ltr)) // a path reads left to right in Arabic too
+                            Text(if (on) t("storageOn") else t("storageOff"), color = Muted, fontSize = 12.sp)
+                        }
+                        if (!on) Button(::requestStorage, colors = ButtonDefaults.buttonColors(Red)) { Text(t("storageAllow")) }
+                    }
                 }
-                if (!on) Button(::requestStorage, colors = ButtonDefaults.buttonColors(Red)) { Text(t("storageAllow")) }
             }
-        }
-        Card(t("hiddenTitle"), t("hiddenHint").replace("✕", "…")) {
-            TextButton({ nav.go(Screen.Hidden) }) { Icon(Ic.eyeSlash, null, Modifier.size(18.dp), tint = Color.White); Spacer(Modifier.width(8.dp)); Text(t("openHidden", Store["hidden"].length()), color = Color.White) }
-        }
-        Card(t("language")) { LangSwitch(Modifier.padding(top = 8.dp)) }
-        Card(t("updateTitle")) {
-            var busy by remember { mutableStateOf(false) }
-            var found by remember { mutableStateOf<Updater.Release?>(null) }
-            Text("Build ${BuildConfig.BUILD}", color = Muted, fontSize = 13.sp, modifier = Modifier.padding(vertical = 6.dp))
-            OutlinedButton({
-                busy = true
-                scope.launch {
-                    val u = runCatching { Updater.check() }.getOrNull()
-                    busy = false
-                    if (u == null) toast(if (Store.lang == "ar") "أنت على آخر إصدار" else "You're on the latest version") else found = u
+            "notify" -> {
+                PageTitle(t("notifyTitle"), nav)
+                Card(null, t("notifyHint")) { // the new films switch, then each followed title (✕ stops it)
+                    Row(Modifier.fillMaxWidth().clickable(onClick = Alerts::toggleMovies), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Ic.cinema, null, Modifier.size(22.dp), tint = Red)
+                        Text(t("notifyMovies"), Modifier.weight(1f).padding(horizontal = 12.dp))
+                        Switch(Alerts.moviesOn(), { Alerts.toggleMovies() }, colors = SwitchDefaults.colors(checkedTrackColor = Red))
+                    }
+                    n.keys().asSequence().filter { it != "movies" }.toList().forEach { p ->
+                        Row(Modifier.fillMaxWidth().clickable { nav.go(Alerts.screen(p)) }, verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Ic.bellFill, null, Modifier.size(22.dp), tint = Red)
+                            Text(n.getJSONObject(p).optString("title"), Modifier.weight(1f).padding(horizontal = 12.dp), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            IconButton({ Alerts.toggle(p, "", "", "") }) { Icon(Ic.x, t("remove"), Modifier.size(18.dp)) }
+                        }
+                    }
                 }
-            }, enabled = !busy) { Icon(Ic.refresh, null, Modifier.size(16.dp), tint = Color.White); Spacer(Modifier.width(6.dp)); Text(if (Store.lang == "ar") "البحث عن تحديث" else "Check for updates", color = Color.White) }
-            found?.let { u -> UpdateSheet(u) { found = null } }
+            }
         }
     }
 }

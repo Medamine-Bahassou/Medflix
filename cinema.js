@@ -1,10 +1,10 @@
-// Movies section: ArabSeed / MySeed (m.myseed.pics) films and series (WordPress, server-rendered pages, no Cloudflare challenge),
+// Movies section: ArabSeed / MySeed (m.myseed.tv) films and series (WordPress, server-rendered pages, no Cloudflare challenge),
 // with selectors also covering EgyDead.
 // No anime here: witanime already has every anime title, and the site files them under "انمي" categories/titles,
 // so those cards are dropped wherever they show up (lists, related, search).
 // A film's slug is its root path ("by-any-means"); a series' carries its folder ("serie/x", "season/x-s02", "episode/x-s02e01").
 // Routes: #/cinema, #/cinema/browse/<cat>, #/cinema/<slug>, #/cinema/<slug>/watch (an episode slug plays straight away)
-const ED = 'https://m.myseed.pics';
+const ED = 'https://m.myseed.tv';
 const ECATS = [ // [id, listing path, ar, en]
   ['all', '/recently/', 'أحدث الأفلام', 'Latest movies'], // everything just added, newest first: its films (see edList); /movies/ is a hub that opens on Arabic films
   ['english', '/category/foreign-movies/', 'أفلام أجنبية', 'Foreign movies'],
@@ -155,10 +155,31 @@ const edBase = (m, slug) => `${m.origin}/${edPath(slug).split('/').map(encodeURI
 // myseed's link only plays for the browser the watch page was made for (its user agent), and not for long. The site
 // keeps that page cached, made for whoever asked first ("Link expired" for everyone else): it's asked for anew, past the
 // cache and as the player asks, each time myseed is played rather than taken from the saved answer
-async function myseedNow(m, slug) {
-  const tok = (await api.fetch(`${edBase(m, slug)}/watch/?_=${Date.now()}`, null, true)).match(/vids\.php\?t=([A-Za-z0-9]+)/)?.[1];
+// (quality: one the page doesn't list is asked for as its menu asks)
+async function myseedNow(m, slug, quality = '') {
+  const html = await api.fetch(`${edBase(m, slug)}/watch/?_=${Date.now()}`, null, true);
+  const direct = parse(html).querySelector('.servers__list li[data-direct-arabseed="1"]');
+  const link = !quality || !direct || direct.dataset.qu === quality ? html
+    : JSON.parse(await api.fetch(`${m.origin}/get__watch__server/`, { post_id: direct.dataset.post, quality, server: direct.dataset.server, csrf_token: seedCsrf(html) }, true)).server || '';
+  const tok = link.match(/vids\.php\?t=([A-Za-z0-9]+)/)?.[1];
   if (!tok) throw new Error('no myseed link');
   return myseedUrl(tok, m.origin);
+}
+
+// the watch page's own calls (an XHR from the site, with the page's csrf token; main.js sends a form as one)
+const seedCsrf = html => html.match(/csrf__token'\s*:\s*"([^"]+)/)?.[1] || '';
+// the watch page lists one quality's servers (480p); its menu asks for the others (720p, 1080p), then each server's link on its own
+async function otherQualities(origin, html, doc) {
+  const csrf = seedCsrf(html), post = doc.querySelector('.servers__list li[data-post]')?.dataset.post;
+  if (!csrf || !post) return [];
+  const shown = new Set([...doc.querySelectorAll('.servers__list li[data-qu]')].map(li => li.dataset.qu));
+  const xhr = async (what, form) => JSON.parse(await api.fetch(`${origin}/${what}/`, form));
+  return (await Promise.all([...doc.querySelectorAll('.qualities__list li[data-quality]')].map(li => li.dataset.quality).filter(q => q && !shown.has(q)).map(async quality => {
+    const form = { post_id: post, quality, csrf_token: csrf };
+    const lis = await xhr('get__quality__servers', form).then(r => [...parse(r.html || '').querySelectorAll('li[data-server]')]).catch(() => []);
+    return Promise.all(lis.map(li => xhr('get__watch__server', { ...form, server: li.dataset.server })
+      .then(r => r.server ? { label: li.dataset.serverName || txt(li) || t('server'), quality, url: r.server } : null).catch(() => null)));
+  }))).flat().filter(Boolean);
 }
 
 // the watch page (the title's page + watch/) and download page (+ download/): stream servers and download links
@@ -168,12 +189,13 @@ async function seedWatch(m, slug) {
   const doc = parse(wHtml), dDoc = dHtml ? parse(dHtml) : doc;
   const list = '.serversList li[data-link], .mob-servers li[data-link], .servers__list li[data-link]';
   if (!doc.querySelector('.serversList, .mob-servers, .servers__list')) throw new Error(`not the watch page: ${txt(doc.querySelector('title')) || 'empty'}`);
-  const raw = [...doc.querySelectorAll(list)].map(li => ({
+  const raw = [...[...doc.querySelectorAll(list)].map(li => ({
     label: txt(li) || t('server'),
-    quality: li.closest('[data-quality]')?.dataset.quality || li.dataset.quality || '',
+    quality: li.dataset.qu || li.closest('[data-quality]')?.dataset.quality || li.dataset.quality || '',
     url: li.dataset.link || '',
-  })).filter(s => s.url && !DEAD_HOSTS.test(new URL(s.url, m.origin).hostname)); // gone hosts: not offered, nor unwrapped (MegaMax's lookup of one hangs till it times out)
-  const servers = (await Promise.all(raw.map(s => unwrapServer(s, m.origin)))).flat().sort((a, b) => hostRank(a.label) - hostRank(b.label));
+  })), ...await otherQualities(m.origin, wHtml, doc)].filter(s => s.url && !DEAD_HOSTS.test(new URL(s.url, m.origin).hostname)); // gone hosts: not offered, nor unwrapped (MegaMax's lookup of one hangs till it times out)
+  const servers = (await Promise.all(raw.map(s => unwrapServer(s, m.origin)))).flat()
+    .sort((a, b) => hostRank(a.label) - hostRank(b.label) || (parseInt(b.quality) || 0) - (parseInt(a.quality) || 0)); // each host's best quality first
   const downloads = [
     ...[...doc.querySelectorAll('.donwload-servers-list li')].map(li => ({ label: txt(li.querySelector('.ser-name')), quality: txt(li.querySelector('.server-info')), url: li.querySelector('a.ser-link')?.getAttribute('href') || '' })),
     ...[...dDoc.querySelectorAll('a.download__item[href]')].map(a => {
@@ -331,8 +353,8 @@ async function cinemaTitle(slug, force) {
       </div>
     </div>
     ${m.seasons.length > 1 ? `<div class="section"><h2>${t('seasons')}</h2><div class="fchips">${m.seasons.map(s => `<a class="fchip ${s.path === path ? 'on' : ''}" href="#${s.path}" dir="auto">${esc(s.title.match(/(الموسم|الجزء)\s+\S+/)?.[0] || s.title)}</a>`).join('')}</div></div>` : ''}
-    ${eps.length ? `<div class="section"><h2>${t('episodes')} <small>${eps.length}</small></h2><div class="eps">${eps.map(e =>
-      `<a class="ep ${store.seen['/cinema/' + e.slug] ? 'seen' : ''} ${h?.slug === e.slug ? 'last' : ''}" href="${edHref(e.slug)}">${t('ep')} ${esc(e.n)}</a>`).join('')}</div></div>` : ''}
+    ${eps.length ? `<div class="section"><h2>${t('episodes')} <small>${eps.length}</small></h2><div class="eps list">${eps.map(e => // the site gives no episode names or stills
+      epRow(e.n, null, m.banner || m.poster, edHref(e.slug), store.seen['/cinema/' + e.slug], h?.slug === e.slug)).join('')}</div></div>` : ''}
     ${row(t('moreLike'), dubbed(m.related))}`;
   $('#fav').onclick = e => { const on = toggleList({ path, title: m.title, poster: m.poster, type: 'cinema' }); e.currentTarget.innerHTML = on ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList'); };
   pageRefresh = () => cinemaTitle(slug, true);
@@ -426,7 +448,7 @@ async function cinemaPlay(slug) {
     const s = cur = w.servers[i]; draw();
     store.prefs.edServer = cur.label; persist('prefs');
     stream = null; api.player(null); stage.innerHTML = '<div class="spin"></div>'; showPlayBar(false);
-    const url = s.label === 'myseed' ? await myseedNow(m, slug).catch(e => (console.error(e), s.url)) : s.url;
+    const url = s.label === 'myseed' ? await myseedNow(m, slug, s.quality).catch(e => (console.error(e), s.url)) : s.url;
     if (cur !== s || !here()) return; // another server picked, or the page left, meanwhile
     stream = url; place(); showPlayBar(true);
   };
