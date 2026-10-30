@@ -54,10 +54,12 @@ object Downloads {
     fun all(): JSONObject = Store["downloads"]
     fun of(id: String): JSONObject? = all().optJSONObject(id)
     fun done(id: String) = of(id)?.optString("state") == "done"
+    fun busy() = all().keys().asSequence().any { of(it)?.optString("state") == "active" } // a show's next starts as one ends: no gap
     private fun dir() = if (Store.granted()) File(Store.shared, "Downloads") else File(app.getExternalFilesDir(Environment.DIRECTORY_MOVIES), "MedAnime")
 
     /** on launch: what was cut off when the app last closed goes back in the queue */
     fun init(c: Context) {
+        if (::app.isInitialized) return // the same process (a background check got here first, or the activity was recreated): those are still running
         app = c.applicationContext
         all().keys().asSequence().mapNotNull { of(it) }.filter { it.optString("state") == "active" }.forEach { it.put("state", "queued") }
         pump()
@@ -90,7 +92,7 @@ object Downloads {
         if (!quiet) toast(t("dlPreparing"))
     }
     /** a series' chapters, oldest first: their page images */
-    fun chapters(serieId: String, title: String, poster: String, chs: List<Ch>) {
+    fun chapters(serieId: String, title: String, poster: String, chs: List<Ch>, quiet: Boolean = false) {
         var added = 0
         unhold("/manga/series/$serieId")
         for (c in chs) {
@@ -100,7 +102,7 @@ object Downloads {
                 .put("ep", c.n).put("poster", poster).put("state", "queued").put("received", 0).put("total", 0).put("at", System.currentTimeMillis() + added++))
         }
         save()
-        toast(if (added > 0) t("dlQueuedN", added) else t("dlDone"))
+        if (!quiet) toast(if (added > 0) t("dlQueuedN", added) else t("dlDone"))
         askNotifications()
         pump()
     }
@@ -258,6 +260,7 @@ object Downloads {
 
     private var sentToSettings = false // once a run: not on every download
     fun askNotifications(why: String = "dlNotifAsk") { // the progress shows as a notification (Android 13+: hidden without this); also new episodes' (Alerts)
+        if (!Net.hasWindow()) return // a background check (Alerts): no screen to ask on
         val act = Net.activity
         if (androidx.core.app.NotificationManagerCompat.from(act).areNotificationsEnabled()) return
         val prefs = Store["prefs"]

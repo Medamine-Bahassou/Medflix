@@ -143,6 +143,18 @@ class NativeActivity : ComponentActivity() {
         setContent { App() }
     }
     override fun onNewIntent(intent: android.content.Intent) { super.onNewIntent(intent); opening.value = intent.getStringExtra("open") } // a notification tapped
+    // a player page up: leaving the app (home, another app) keeps its video playing in a small window (Android 8+)
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (pipLeave != null && android.os.Build.VERSION.SDK_INT >= 26 && packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE))
+            runCatching { enterPictureInPictureMode(android.app.PictureInPictureParams.Builder().setAspectRatio(android.util.Rational(16, 9)).build()) }
+    }
+    override fun onPictureInPictureModeChanged(on: Boolean, c: android.content.res.Configuration) {
+        super.onPictureInPictureModeChanged(on, c)
+        inPip.value = on
+        // its window closed (✕, or dragged away): the activity is stopped by then. The player page goes, and its sound with it
+        if (!on && lifecycle.currentState == Lifecycle.State.CREATED) pipLeave?.invoke()
+    }
 }
 
 /** Coil's loader, for the app and for the background check's notifications (Alerts), whichever starts first */
@@ -394,7 +406,7 @@ fun Empty(title: String, hint: String, action: @Composable () -> Unit = {}) =
 fun noNames(m: String?) = (m ?: "").replace(Regex("https?://\\S+|\\b[\\w.-]*(wit ?anime|anime ?rco|egy ?dead|my ?seed|arab ?seed|appswat|mesh ?manga|manga ?swat|manga ?tek|anime ?schedule|mega ?max)[\\w.-]*", RegexOption.IGNORE_CASE),
     t("theSite"))
 
-fun toast(msg: String) = Toast.makeText(Net.activity, msg, Toast.LENGTH_SHORT).show()
+fun toast(msg: String) { if (Net.hasWindow()) Toast.makeText(Net.activity, msg, Toast.LENGTH_SHORT).show() } // none from a background check (Alerts)
 
 private fun listType(c: Card) = if (c.type == "episode") (if (c.showPath.startsWith("/movie")) "movie" else "anime") else c.type
 fun listToggle(c: Card) {

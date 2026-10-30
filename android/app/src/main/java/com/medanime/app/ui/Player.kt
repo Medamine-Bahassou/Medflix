@@ -134,6 +134,10 @@ fun castTo(title: String, file: String?, page: String?) {
     })
 }
 
+// picture-in-picture (NativeActivity): offered while a player page is up (pipLeave: leaves it); in its window, only the video
+val inPip = mutableStateOf(false)
+var pipLeave: (() -> Unit)? = null
+
 /**
  * a player page: back and the title, then a bar with the server menu, download, cast, fullscreen and previous / next; the
  * video below. Fullscreen (ours: some hosts' own only fill their box) hides the rest, landscape; back leaves it.
@@ -157,18 +161,19 @@ fun PlayerChrome(title: String, sub: String, nav: Nav, servers: List<Pair<String
         // landscape; it stays upright until the player page closes
         onDispose { if (on) { bars.show(WindowInsetsCompat.Type.systemBars()); act.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT } }
     }
-    DisposableEffect(Unit) { onDispose { act.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED } } // the page closed: rotation as the phone likes
+    DisposableEffect(Unit) { pipLeave = nav.back; onDispose { pipLeave = null; act.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED } } // the page closed: rotation as the phone likes
+    val bare = full || inPip.value
     BackHandler(full) { full = false }
     Column(Modifier.fillMaxSize().background(Color.Black)) {
         // (conditional rows above the video: it keeps its place in the tree, so its WebView and video carry on)
-        if (!full) Row(Modifier.fillMaxWidth().padding(end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (!bare) Row(Modifier.fillMaxWidth().padding(end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(nav.back) { Icon(Ic.back, t("back"), Modifier.size(22.dp)) }
             Column(Modifier.weight(1f).then(if (onTitle != null) Modifier.clickable(onClick = onTitle) else Modifier)) {
                 Text(title, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (sub.isNotEmpty()) Text(sub, color = Muted, fontSize = 12.sp, maxLines = 1)
             }
         }
-        if (!full) Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (!bare) Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             if (servers != null) ServerMenu(servers, cur, busy, pick)
             Spacer(Modifier.weight(1f))
             actions()

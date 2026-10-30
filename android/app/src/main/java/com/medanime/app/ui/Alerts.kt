@@ -19,8 +19,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
 
@@ -38,7 +40,10 @@ class Alerts : JobService() {
         Pages.dir = File(filesDir, "pages")
         Net.wvUa // read here, on the main thread
         setImageLoader(this) // the posters, from the app's image cache when they're there
-        scope.launch { runCatching { check(this@Alerts) }; jobFinished(p, false) }
+        com.medanime.app.Downloads.init(this)
+        // an episode it queued: the job stays until it's fetched (Android 12+ won't start the download service from the background,
+        // and the process may go once the job ends). Android stops a job after ~10 min: the app picks it up again on launch
+        scope.launch { if (runCatching { check(this@Alerts) }.getOrDefault(false)) while (com.medanime.app.Downloads.busy()) delay(5_000); jobFinished(p, false) }
         return true
     }
 
@@ -86,6 +91,11 @@ class Alerts : JobService() {
             }.onFailure { if (!quiet) toast(noNames(it.message)) }
         }
         fun moviesOn() = on("movies")
+        /** auto-download: a title's own choice, else the setting; only what the app downloads itself (the films' sites' open in the browser) */
+        fun canDl(path: String) = path.startsWith("/anime/") || path.startsWith("/manga/series/")
+        fun autoDl(path: String) = canDl(path) && (Store["notify"].optJSONObject(path)?.let { if (it.has("dl")) it.optBoolean("dl") else null } ?: Store["prefs"].optBoolean("autoDl"))
+        fun toggleDl(path: String) { Store["notify"].optJSONObject(path)?.put("dl", !autoDl(path)); Store.persist("notify") }
+        fun toggleAutoDl() { Store["prefs"].put("autoDl", !Store["prefs"].optBoolean("autoDl")); Store.persist("prefs") }
         fun toggleMovies() {
             val n = Store["notify"]
             if (n.has("movies")) n.remove("movies") else n.put("movies", JSONObject())
@@ -93,24 +103,33 @@ class Alerts : JobService() {
             if (n.has("movies")) com.medanime.app.Downloads.askNotifications("notifyAsk")
         }
 
-        // a title's newest episode or chapter: its id, and how the notification names it
-        private suspend fun newest(path: String): Pair<String, String>? = when {
-            path.startsWith("/manga/series/") -> Manga.full(path.substringAfterLast('/'), true).chs.firstOrNull()?.let { it.id to t("newCh", Manga.chNum(it.n)) } // newest first
-            path.startsWith("/cinema/") -> Cinema.movie(path.removePrefix("/cinema/"), true).episodes.lastOrNull()?.let { it.slug to t("newEp", it.n) }
-            else -> Witanime.details(path, true).first().episodes.lastOrNull()?.let { it.path to t("newEp", it.ep) }
+        // a title's newest episode or chapter: its id, how the notification names it, and its download (auto-download)
+        private suspend fun newest(path: String, o: JSONObject): Triple<String, String, () -> Unit>? = when {
+            path.startsWith("/manga/series/") -> Manga.full(path.substringAfterLast('/'), true).chs.firstOrNull()?.let { // newest first
+                Triple(it.id, t("newCh", Manga.chNum(it.n)), { com.medanime.app.Downloads.chapters(path.substringAfterLast('/'), o.optString("title"), o.optString("poster"), listOf(it), quiet = true) }) }
+            path.startsWith("/cinema/") -> Cinema.movie(path.removePrefix("/cinema/"), true).episodes.lastOrNull()?.let { Triple(it.slug, t("newEp", it.n), {}) }
+            else -> Witanime.details(path, true).first().episodes.lastOrNull()?.let {
+                Triple(it.path, t("newEp", it.ep), { com.medanime.app.Downloads.episode(it.path, path, o.optString("title"), it.ep, o.optString("poster"), Store["prefs"].optString("dlQuality"), quiet = true) }) }
         }
 
-        suspend fun check(c: Context) {
+        /** true: it queued a download */
+        suspend fun check(c: Context): Boolean {
             val n = Store["notify"]
+            var queued = false
             for (path in n.keys().asSequence().toList()) {
                 val o = n.optJSONObject(path) ?: continue
                 if (path == "movies") { runCatching { films(c, o) }; continue }
-                val (id, label) = runCatching { newest(path) }.getOrNull() ?: continue // offline, or the site down: next time
+                val (id, label, dl) = runCatching { newest(path, o) }.getOrNull() ?: continue // offline, or the site down: next time
                 if (id == o.optString("last")) continue
-                if (o.optString("last").isNotEmpty()) post(c, path, o.optString("title"), label, o.optString("poster"))
+                if (o.optString("last").isNotEmpty()) {
+                    post(c, path, o.optString("title"), label, o.optString("poster"))
+                    // shortcut: only the newest is fetched, so two out within one check (an hour) get just the last; queue each between last and id if that matters
+                    if (autoDl(path)) { withContext(Dispatchers.Main) { dl() }; queued = true }
+                }
                 o.put("last", id)
             }
             Store.persist("notify")
+            return queued
         }
 
         private suspend fun films(c: Context, o: JSONObject) {
