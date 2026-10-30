@@ -143,7 +143,6 @@ fun MangaSeriesScreen(id: String, nav: Nav) {
                     Stat(Ic.star, if (s.rating.isEmpty()) "–" else "${s.rating}/10", t("views", "%,d".format(s.views)))
                     ListButton("/manga/series/$id", s.title, s.poster, "manga")
                     NotifyButton("/manga/series/$id", s.title, s.poster, full.chs.firstOrNull()?.id ?: "")
-                    AutoDlButton("/manga/series/$id", s.title, s.poster, full.chs.firstOrNull()?.id ?: "")
                 }, emptyList(), nav, t("chapters"),
                 full.chs.map { Numbered(it.n, seen.has(it.id), r?.optString("chapterId") == it.id, Screen.MangaRead(it.id), it.id, com.medanime.app.Downloads.done("manga:${it.id}"), seen.optInt(it.id) == 2) }, t("jumpCh"),
                 // several chapters: mark them read or unread, download them, or delete their saved copies (manga.js acts)
@@ -158,7 +157,8 @@ fun MangaSeriesScreen(id: String, nav: Nav) {
                         "del" -> ids.forEach { com.medanime.app.Downloads.delete("manga:$it") }
                     }
                     Store.persist("mangaSeen")
-                }, unit = t("chapter"), play = start?.let { (cid, label) -> label to { nav.go(Screen.MangaRead(cid)) } })
+                }, unit = t("chapter"),
+                menu = listOf(MenuItem(t("autoDlShort"), Ic.download, Alerts.autoDl("/manga/series/$id")) { Alerts.toggleDl("/manga/series/$id", s.title, s.poster, full.chs.firstOrNull()?.id ?: "") }), play = start?.let { (cid, label) -> label to { nav.go(Screen.MangaRead(cid)) } })
         }
     }
 }

@@ -40,6 +40,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 
 private fun animeSlides(d: HomePage) = d.hero.map { Slide(it.banner, it.title, it.desc, Screen.Title(it.path), it.watch.takeIf { w -> w.isNotEmpty() }?.let { w -> Screen.Play(w) }) }
@@ -300,7 +301,7 @@ fun DetailPage(banner: String, poster: String, title: String, alt: String, chips
                buttons: @Composable FlowRowScope.() -> Unit, info: List<Pair<String, String>>, nav: Nav,
                listTitle: String? = null, list: List<Numbered> = emptyList(), jump: String = t("jump"), before: LazyListScope.() -> Unit = {}, after: LazyListScope.() -> Unit = {},
                acts: ((List<String>) -> List<Pair<String, String>>)? = null, run: (String, List<String>) -> Unit = { _, _ -> },
-               unit: String = t("ep"), play: Pair<String, () -> Unit>? = null) {
+               unit: String = t("ep"), play: Pair<String, () -> Unit>? = null, menu: List<MenuItem> = emptyList()) {
     val picks = remember { Picks() } // long-press a row to pick several (acts: what can be done to them)
     var filter by rememberSaveable { mutableStateOf("") }
     var rev by rememberSaveable { mutableStateOf(false) }
@@ -316,16 +317,45 @@ fun DetailPage(banner: String, poster: String, title: String, alt: String, chips
     // the list opens at the one watched last (seasons above it: that row shows second, the one before it for context)
     val rows = androidx.compose.foundation.lazy.rememberLazyListState(list.indexOfFirst { it.last }.coerceAtLeast(0))
     val label = { e: Numbered -> if (e.label.firstOrNull()?.isDigit() == true) "$unit ${e.label}" else e.label }
+    var searching by rememberSaveable { mutableStateOf(false) } // the jump box, in place of the title
+    var dots by remember { mutableStateOf(false) }
+    val toList = { scope.launch { pager.animateScrollToPage(1) } }
+    // the ⋮ menu: the list's tools (jump, reverse, pick several), then the page's own (auto-download, trailer)
+    val items = (if (listTitle == null || list.size < 2) emptyList() else listOfNotNull(
+        MenuItem(jump, Ic.search) { searching = true; toList() },
+        MenuItem(t("reverse"), Ic.sort, rev) { rev = !rev; toList() },
+        if (acts != null) MenuItem(t("select"), Ic.check) { picks.set = emptySet(); toList() } else null,
+    )) + menu
+    // a new order or a number typed: from its top (not on opening: that's at the one watched last)
+    LaunchedEffect(Unit) { snapshotFlow { filter to rev }.drop(1).collect { rows.scrollToItem(0) } }
+    androidx.activity.compose.BackHandler(searching) { searching = false; filter = "" }
     Box(Modifier.fillMaxSize()) {
         Column {
-            Row(Modifier.fillMaxWidth().padding(end = 8.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(nav.back) { Icon(Ic.back, t("back"), Modifier.size(22.dp)) }
-                Text(title, Modifier.weight(1f), fontWeight = FontWeight.Bold, fontSize = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (pager.currentPage == 1 && list.size > 1) IconButton({ rev = !rev }) { Icon(Ic.sort, t("reverse"), Modifier.size(20.dp), tint = if (rev) Red else Color.White) }
+            Row(Modifier.fillMaxWidth().padding(end = 4.dp, top = 4.dp).heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (searching) {
+                    val focus = remember { FocusRequester() }
+                    LaunchedEffect(Unit) { focus.requestFocus() }
+                    IconButton({ searching = false; filter = "" }) { Icon(Ic.x, t("cancel"), Modifier.size(22.dp)) }
+                    TextField(filter, { filter = it.filter { c -> c.isDigit() || c == '.' } }, Modifier.weight(1f).focusRequester(focus), placeholder = { Text(jump) }, singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent, focusedIndicatorColor = Red, unfocusedIndicatorColor = Muted, cursorColor = Red))
+                } else {
+                    IconButton(nav.back) { Icon(Ic.back, t("back"), Modifier.size(22.dp)) }
+                    Text(title, Modifier.weight(1f), fontWeight = FontWeight.Bold, fontSize = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                if (items.isNotEmpty()) Box {
+                    IconButton({ dots = true }) { Icon(Ic.dots, t("more"), Modifier.size(22.dp)) }
+                    DropdownMenu(dots, { dots = false }, containerColor = CardC) {
+                        items.forEach { m ->
+                            DropdownMenuItem({ Text(m.label) }, { dots = false; m.go() }, leadingIcon = { Icon(m.icon, null, Modifier.size(18.dp), tint = if (m.on) Red else Color.White) },
+                                trailingIcon = { if (m.on) Icon(Ic.check, null, Modifier.size(16.dp), tint = Red) })
+                        }
+                    }
+                }
             }
             if (listTitle != null) SecondaryTabRow(pager.currentPage, containerColor = Bg, contentColor = Color.White,
                 indicator = { TabRowDefaults.SecondaryIndicator(Modifier.tabIndicatorOffset(pager.currentPage, matchContentSize = false), color = Red) }, divider = { HorizontalDivider(color = Color(0x1AFFFFFF)) }) {
-                listOf(t("details"), listTitle).forEachIndexed { i, s ->
+                listOf(t("details"), "$listTitle ${list.size}").forEachIndexed { i, s ->
                     Tab(pager.currentPage == i, { scope.launch { pager.animateScrollToPage(i) } }, text = { Text(s, fontWeight = FontWeight.SemiBold) }, selectedContentColor = Color.White, unselectedContentColor = Muted)
                 }
             }
@@ -365,13 +395,7 @@ fun DetailPage(banner: String, poster: String, title: String, alt: String, chips
                     if (listTitle == null) before()
                     after()
                 } else Column(Modifier.fillMaxSize()) {
-                    // fixed above the list: the jump box stays at hand however far down
                     if (picks.on && acts != null) SelectBar(picks, { shown.map { it.id } }, acts, run)
-                    else if (list.size > 12) Row(Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("${list.size}", color = Muted, modifier = Modifier.weight(1f))
-                        OutlinedTextField(filter, { filter = it.filter { c -> c.isDigit() || c == '.' } }, Modifier.width(150.dp).height(52.dp), placeholder = { Text(jump, fontSize = 12.sp) },
-                            singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), textStyle = LocalTextStyle.current.copy(fontSize = 13.sp))
-                    }
                     LazyColumn(Modifier.fillMaxSize(), rows, PaddingValues(bottom = 96.dp)) {
                         before()
                         items(shown) { e ->
@@ -404,6 +428,9 @@ fun DetailPage(banner: String, poster: String, title: String, alt: String, chips
         }
     }
 }
+
+/** an entry of a title page's ⋮ menu; on: what it sets is set (a check, the icon red) */
+class MenuItem(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val on: Boolean = false, val go: () -> Unit)
 
 /** a figure in the actions row: an icon over its value, and what it counts under it (a rating and its votes) */
 @Composable
@@ -466,11 +493,12 @@ fun TitleScreen(path: String, nav: Nav) {
             DetailPage(d.banner, d.poster, d.title, d.alt, listOfNotNull(airChip) + d.tags.mapIndexed { i, c -> c to (i == 2) } + d.genres.map { it to false }, d.desc, {
                 ListButton(path, d.title, d.poster, type)
                 if (type == "anime") NotifyButton(path, d.title, d.poster, d.episodes.lastOrNull()?.path ?: "")
-                if (type == "anime") AutoDlButton(path, d.title, d.poster, d.episodes.lastOrNull()?.path ?: "")
-                if (d.trailer.isNotEmpty()) Action(t("trailer"), Ic.play) { nav.go(Screen.Trailer(d.trailer, d.title)) }
             }, d.info, nav, if (d.episodes.size > 1 || type == "anime") t("episodes") else null,
                 d.episodes.map { Numbered(it.ep, Store["seen"].has(it.path), it.path == last, Screen.Play(it.path), it.path, com.medanime.app.Downloads.done(it.path),
                     thumb = info[it.ep.toIntOrNull()]?.thumb?.ifEmpty { null } ?: d.banner.ifEmpty { d.poster }, name = info[it.ep.toIntOrNull()]?.name.orEmpty()) },
+                menu = listOfNotNull(
+                    if (type == "anime") MenuItem(t("autoDlShort"), Ic.download, Alerts.autoDl(path)) { Alerts.toggleDl(path, d.title, d.poster, d.episodes.lastOrNull()?.path ?: "") } else null,
+                    if (d.trailer.isNotEmpty()) MenuItem(t("trailer"), Ic.play) { nav.go(Screen.Trailer(d.trailer, d.title)) } else null),
                 play = first?.let { (if (h != null) t("resume", h.optString("ep")) else t("play")) to { nav.go(Screen.Play(it)) } },
                 after = { item { CardRowView(t("moreLike"), d.related, nav) } },
                 acts = { ids -> listOfNotNull("seen" to t("markWatched"), "unseen" to t("markUnwatched"), if (ids.any { !com.medanime.app.Downloads.done(it) }) "dl" to t("downloadShort") else null) },

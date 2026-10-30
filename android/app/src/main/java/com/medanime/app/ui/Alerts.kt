@@ -190,9 +190,3 @@ fun androidx.compose.foundation.layout.FlowRowScope.NotifyButton(path: String, t
     val on = Alerts.on(path)
     Action(if (on) t("notifying") else t("notify"), if (on) Ic.bellFill else Ic.bell, on) { Alerts.toggle(path, title, poster, last) }
 }
-/** a title's auto-download switch: its new episodes or chapters downloaded as they come out, whether it notifies or not */
-@androidx.compose.runtime.Composable
-fun androidx.compose.foundation.layout.FlowRowScope.AutoDlButton(path: String, title: String, poster: String, last: String) {
-    Store.version.intValue
-    Action(t("autoDlShort"), Ic.download, Alerts.autoDl(path)) { Alerts.toggleDl(path, title, poster, last) }
-}
