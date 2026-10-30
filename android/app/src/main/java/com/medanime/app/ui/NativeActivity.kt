@@ -16,6 +16,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
@@ -272,12 +274,14 @@ private fun Drawer(top: Screen, tab: (Screen) -> Unit, feedback: () -> Unit) {
             NavigationDrawerItem({ Text(navLabel(id), fontSize = 15.sp) }, section(top) == id, { tab(s) }, Modifier.padding(horizontal = 12.dp), { Icon(icon, null, Modifier.size(22.dp)) },
                 colors = NavigationDrawerItemDefaults.colors(selectedContainerColor = Color(0x33E50914), selectedIconColor = Red, selectedTextColor = Color.White, unselectedIconColor = Color(0xFFCCCCCC), unselectedTextColor = Color(0xFFCCCCCC)))
         }
-        NAV.forEach { (id, v) -> item(id, v.first, v.second()) }
-        HorizontalDivider(Modifier.padding(vertical = 12.dp, horizontal = 24.dp), color = Color(0x22FFFFFF))
-        item("settings", Screen.Settings(), Ic.settings)
-        NavigationDrawerItem({ Text(t("feedback"), fontSize = 15.sp) }, false, feedback, Modifier.padding(horizontal = 12.dp), { Icon(Ic.info, null, Modifier.size(22.dp)) },
-            colors = NavigationDrawerItemDefaults.colors(unselectedIconColor = Color(0xFFCCCCCC), unselectedTextColor = Color(0xFFCCCCCC)))
-        Spacer(Modifier.weight(1f))
+        // the rows scroll and the language stays pinned below them: on shorter phones they no longer fit with it
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+            NAV.forEach { (id, v) -> item(id, v.first, v.second()) }
+            HorizontalDivider(Modifier.padding(vertical = 12.dp, horizontal = 24.dp), color = Color(0x22FFFFFF))
+            item("settings", Screen.Settings(), Ic.settings)
+            NavigationDrawerItem({ Text(t("feedback"), fontSize = 15.sp) }, false, feedback, Modifier.padding(horizontal = 12.dp), { Icon(Ic.info, null, Modifier.size(22.dp)) },
+                colors = NavigationDrawerItemDefaults.colors(unselectedIconColor = Color(0xFFCCCCCC), unselectedTextColor = Color(0xFFCCCCCC)))
+        }
         LangSwitch(Modifier.padding(24.dp))
     }
 }
