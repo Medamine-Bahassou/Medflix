@@ -196,7 +196,7 @@ fun FeedbackSheet(done: () -> Unit) {
                         runCatching {
                             val r = Net.fetch("https://api.web3forms.com/submit", mapOf("Accept" to "application/json"), form = mapOf("access_key" to "197ce167-d8f2-4479-ae56-1ebfcdd5b787",
                                 "subject" to "Medflix feedback (android ${BuildConfig.BUILD})", "email" to email.trim(), "message" to msg.trim()))
-                            check(org.json.JSONObject(r.body).optBoolean("success")) { "HTTP ${r.status}" } // its answer is JSON either way
+                            check(r.status == 200) { "HTTP ${r.status}" } // a form post gets an HTML page back, not JSON: refusals are 4xx
                         }.onSuccess { toast(t("feedbackSent")); done() }.onFailure { sending = false; toast(t("feedbackFailed")) } // kept open: the text isn't lost
                     }
                 }, enabled = !sending && msg.isNotBlank(), colors = ButtonDefaults.buttonColors(Red)) { Text(t(if (sending) "feedbackSending" else "feedbackSend")) }
