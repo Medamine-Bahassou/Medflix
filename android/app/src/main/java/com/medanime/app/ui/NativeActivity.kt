@@ -138,6 +138,7 @@ class NativeActivity : ComponentActivity() {
         setImageLoader(this)
         // servers' answers (store.streams) are forgotten after 90 days (app.js STREAMS_KEEP)
         Store["streams"].let { st -> st.keys().asSequence().toList().forEach { k -> if (System.currentTimeMillis() - (st.optJSONObject(k)?.optLong("at") ?: 0) > 90 * 24 * 3600_000L) st.remove(k) } }
+        Alerts.migrate() // auto-download: from the notifications' switches to the titles' own
         Alerts.schedule(this)
         opening.value = intent.getStringExtra("open")
         setContent { App() }
@@ -162,11 +163,22 @@ fun setImageLoader(c: android.content.Context) {
     // posters as the WebView fetched them: its user agent and Cloudflare cookies, and no Referer (witanime 403s hotlinks);
     // MangaTek's Cloudflare lets Chrome through, not the WebView (ImageCache)
     val images = Net.client.newBuilder().addInterceptor {
-        it.proceed(it.request().newBuilder().header("User-Agent", if ("mangatek.com" in it.request().url.host) UA else Net.wvUa).build())
+        val req = it.request().newBuilder().header("User-Agent", if ("mangatek.com" in it.request().url.host) UA else Net.wvUa).build()
+        var r = it.proceed(req)
+        for (i in 0 until 2) { if (r.code != 429 && r.code != 503) break; r.close(); Thread.sleep(1000L shl i); r = it.proceed(req) } // a grid's burst, rate-limited: once more, later
+        // a page sent in place of the image (a block, an error page, as 200) fails here: Coil keeps any 2xx for good and never asks again
+        if (r.isSuccessful && r.body?.contentType()?.type == "text") { r.close(); throw java.io.IOException("not an image: ${req.url}") }
+        r
     }.build()
     // kept for good, as ImageCache did: in the app's files (Android empties its cache folder), with no practical size cap
     SingletonImageLoader.setSafe { ImageLoader.Builder(it).components { add(OkHttpNetworkFetcherFactory(callFactory = { images })) }
         .diskCache { coil3.disk.DiskCache.Builder().directory(File(c.filesDir, "images-cache").toOkioPath()).maxSizeBytes(Long.MAX_VALUE / 4).build() }
+        // a saved copy that won't open (one kept before the check above) goes, so the next look downloads it again
+        .eventListener(object : coil3.EventListener() {
+            override fun onError(request: coil3.request.ImageRequest, result: coil3.request.ErrorResult) {
+                (request.diskCacheKey ?: request.data as? String)?.let { k -> SingletonImageLoader.get(c).diskCache?.remove(k) }
+            }
+        })
         .crossfade(true).build() }
 }
 

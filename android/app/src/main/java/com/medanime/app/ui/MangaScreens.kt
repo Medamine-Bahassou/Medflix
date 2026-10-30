@@ -137,12 +137,13 @@ fun MangaSeriesScreen(id: String, nav: Nav) {
             val seen = Store["mangaSeen"]
             val start = r?.let { it.optString("chapterId") to t("resumeCh", Manga.chNum(it.opt("n"))) } ?: full.chs.lastOrNull()?.let { it.id to t("read") }
             DetailPage(s.cover, s.poster, s.title, s.alt,
-                listOfNotNull(s.type.takeIf { it.isNotEmpty() }?.let { Manga.typeName(it) to false }, s.status.takeIf { it.isNotEmpty() }?.let { Manga.label(Manga.STATUS, it) to false },
-                    s.rating.takeIf { it.isNotEmpty() }?.let { "★ $it" to true }, t("views", "%,d".format(s.views)) to false) + s.genres.map { it to false },
+                // type and status under the title; the rating and views lead the actions row
+                listOfNotNull(s.type.takeIf { it.isNotEmpty() }?.let { Manga.typeName(it) to true }, s.status.takeIf { it.isNotEmpty() }?.let { Manga.label(Manga.STATUS, it) to true }) + s.genres.map { it to false },
                 s.story, {
-                    start?.let { (cid, label) -> PlayButton(label) { nav.go(Screen.MangaRead(cid)) } }
+                    Stat(Ic.star, if (s.rating.isEmpty()) "–" else "${s.rating}/10", t("views", "%,d".format(s.views)))
                     ListButton("/manga/series/$id", s.title, s.poster, "manga")
                     NotifyButton("/manga/series/$id", s.title, s.poster, full.chs.firstOrNull()?.id ?: "")
+                    AutoDlButton("/manga/series/$id", s.title, s.poster, full.chs.firstOrNull()?.id ?: "")
                 }, emptyList(), nav, t("chapters"),
                 full.chs.map { Numbered(it.n, seen.has(it.id), r?.optString("chapterId") == it.id, Screen.MangaRead(it.id), it.id, com.medanime.app.Downloads.done("manga:${it.id}"), seen.optInt(it.id) == 2) }, t("jumpCh"),
                 // several chapters: mark them read or unread, download them, or delete their saved copies (manga.js acts)
@@ -157,7 +158,7 @@ fun MangaSeriesScreen(id: String, nav: Nav) {
                         "del" -> ids.forEach { com.medanime.app.Downloads.delete("manga:$it") }
                     }
                     Store.persist("mangaSeen")
-                })
+                }, unit = t("chapter"), play = start?.let { (cid, label) -> label to { nav.go(Screen.MangaRead(cid)) } })
         }
     }
 }

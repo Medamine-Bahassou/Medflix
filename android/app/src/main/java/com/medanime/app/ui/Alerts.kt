@@ -91,11 +91,29 @@ class Alerts : JobService() {
             }.onFailure { if (!quiet) toast(noNames(it.message)) }
         }
         fun moviesOn() = on("movies")
-        /** auto-download: a title's own choice, else the setting; only what the app downloads itself (the films' sites' open in the browser) */
+        /**
+         * auto-download: each title's own switch on its page (store.autoDl: path -> { title, poster, last }), notified or not;
+         * only what the app downloads itself (the films' sites' open in the browser)
+         */
         fun canDl(path: String) = path.startsWith("/anime/") || path.startsWith("/manga/series/")
-        fun autoDl(path: String) = canDl(path) && (Store["notify"].optJSONObject(path)?.let { if (it.has("dl")) it.optBoolean("dl") else null } ?: Store["prefs"].optBoolean("autoDl"))
-        fun toggleDl(path: String) { Store["notify"].optJSONObject(path)?.put("dl", !autoDl(path)); Store.persist("notify") }
-        fun toggleAutoDl() { Store["prefs"].put("autoDl", !Store["prefs"].optBoolean("autoDl")); Store.persist("prefs") }
+        fun autoDl(path: String) = Store["autoDl"].has(path)
+        /** last: its newest episode or chapter now, so only later ones download */
+        fun toggleDl(path: String, title: String, poster: String, last: String) {
+            val a = Store["autoDl"]
+            if (a.has(path)) a.remove(path) else a.put(path, JSONObject().put("path", path).put("title", title).put("poster", poster).put("last", last).put("at", System.currentTimeMillis()))
+            Store.persist("autoDl")
+            toast(if (a.has(path)) t("autoDlAdded", title) else t("autoDlRemoved"))
+        }
+        // once: the old switches (one for every followed title, or a title's ⬇ in the notifications list) become the titles' own
+        fun migrate() {
+            val p = Store["prefs"]; val n = Store["notify"]
+            val old = n.keys().asSequence().filter { it != "movies" }.mapNotNull { k -> n.optJSONObject(k)?.let { k to it } }.toList()
+            if (!p.has("autoDl") && old.none { it.second.has("dl") }) return
+            val a = Store["autoDl"]
+            old.forEach { (k, o) -> if (canDl(k) && (if (o.has("dl")) o.optBoolean("dl") else p.optBoolean("autoDl"))) a.put(k, JSONObject(o.toString()).apply { remove("dl") }); o.remove("dl") }
+            p.remove("autoDl")
+            Store.persist("autoDl"); Store.persist("notify"); Store.persist("prefs")
+        }
         fun toggleMovies() {
             val n = Store["notify"]
             if (n.has("movies")) n.remove("movies") else n.put("movies", JSONObject())
@@ -112,23 +130,26 @@ class Alerts : JobService() {
                 Triple(it.path, t("newEp", it.ep), { com.medanime.app.Downloads.episode(it.path, path, o.optString("title"), it.ep, o.optString("poster"), Store["prefs"].optString("dlQuality"), quiet = true) }) }
         }
 
-        /** true: it queued a download */
+        /** true: it queued a download. the followed titles and the auto-downloaded ones, each list with its own last seen */
         suspend fun check(c: Context): Boolean {
-            val n = Store["notify"]
+            migrate()
+            val n = Store["notify"]; val a = Store["autoDl"]
             var queued = false
-            for (path in n.keys().asSequence().toList()) {
-                val o = n.optJSONObject(path) ?: continue
-                if (path == "movies") { runCatching { films(c, o) }; continue }
-                val (id, label, dl) = runCatching { newest(path, o) }.getOrNull() ?: continue // offline, or the site down: next time
-                if (id == o.optString("last")) continue
-                if (o.optString("last").isNotEmpty()) {
-                    post(c, path, o.optString("title"), label, o.optString("poster"))
-                    // shortcut: only the newest is fetched, so two out within one check (an hour) get just the last; queue each between last and id if that matters
-                    if (autoDl(path)) { withContext(Dispatchers.Main) { dl() }; queued = true }
+            for (path in (n.keys().asSequence() + a.keys().asSequence()).toSet()) {
+                if (path == "movies") { n.optJSONObject(path)?.let { runCatching { films(c, it) } }; continue }
+                val o = n.optJSONObject(path); val d = a.optJSONObject(path)
+                val (id, label, dl) = runCatching { newest(path, o ?: d ?: continue) }.getOrNull() ?: continue // offline, or the site down: next time
+                if (o != null && id != o.optString("last")) {
+                    if (o.optString("last").isNotEmpty()) post(c, path, o.optString("title"), label, o.optString("poster"))
+                    o.put("last", id)
                 }
-                o.put("last", id)
+                // shortcut: only the newest is fetched, so two out within one check (an hour) get just the last; queue each between last and id if that matters
+                if (d != null && id != d.optString("last")) {
+                    if (d.optString("last").isNotEmpty() && canDl(path)) { withContext(Dispatchers.Main) { dl() }; queued = true }
+                    d.put("last", id)
+                }
             }
-            Store.persist("notify")
+            Store.persist("notify"); Store.persist("autoDl")
             return queued
         }
 
@@ -168,4 +189,10 @@ fun androidx.compose.foundation.layout.FlowRowScope.NotifyButton(path: String, t
     Store.version.intValue
     val on = Alerts.on(path)
     Action(if (on) t("notifying") else t("notify"), if (on) Ic.bellFill else Ic.bell, on) { Alerts.toggle(path, title, poster, last) }
+}
+/** a title's auto-download switch: its new episodes or chapters downloaded as they come out, whether it notifies or not */
+@androidx.compose.runtime.Composable
+fun androidx.compose.foundation.layout.FlowRowScope.AutoDlButton(path: String, title: String, poster: String, last: String) {
+    Store.version.intValue
+    Action(t("autoDlShort"), Ic.download, Alerts.autoDl(path)) { Alerts.toggleDl(path, title, poster, last) }
 }

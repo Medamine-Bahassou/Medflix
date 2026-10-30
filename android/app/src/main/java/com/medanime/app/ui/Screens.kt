@@ -39,6 +39,7 @@ import coil3.compose.AsyncImage
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 
 private fun animeSlides(d: HomePage) = d.hero.map { Slide(it.banner, it.title, it.desc, Screen.Title(it.path), it.watch.takeIf { w -> w.isNotEmpty() }?.let { w -> Screen.Play(w) }) }
@@ -288,16 +289,19 @@ class Numbered(val label: String, val seen: Boolean, val last: Boolean, val open
                val thumb: String = "", val name: String = "") // id: what picking it hands the actions; read: the ✓ (manga: to the last page, not just opened); thumb: drawn as rows (anime, series)
 
 /**
- * banner and poster, titles, chips (red: true), story, buttons, info; then a numbered list (episodes, chapters) with
- * jump-to and reverse, and whatever comes before / after it (seasons, related)
+ * a title's page, laid out as the reading apps do: a bar with its name, then two tabs swiped between. details: poster and
+ * titles over the faded banner (red chips under them), the actions row, a card with the story, genres and info, then
+ * what's after (related). the list: a row each (episodes, chapters) with seen and download at hand, jump-to and reverse,
+ * and whatever comes before it (seasons). play floats over both
  */
 @OptIn(ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun DetailPage(banner: String, poster: String, title: String, alt: String, chips: List<Pair<String, Boolean>>, desc: String,
                buttons: @Composable FlowRowScope.() -> Unit, info: List<Pair<String, String>>, nav: Nav,
                listTitle: String? = null, list: List<Numbered> = emptyList(), jump: String = t("jump"), before: LazyListScope.() -> Unit = {}, after: LazyListScope.() -> Unit = {},
-               acts: ((List<String>) -> List<Pair<String, String>>)? = null, run: (String, List<String>) -> Unit = { _, _ -> }) {
-    val picks = remember { Picks() } // long-press a tile to pick several (acts: what can be done to them)
+               acts: ((List<String>) -> List<Pair<String, String>>)? = null, run: (String, List<String>) -> Unit = { _, _ -> },
+               unit: String = t("ep"), play: Pair<String, () -> Unit>? = null) {
+    val picks = remember { Picks() } // long-press a row to pick several (acts: what can be done to them)
     var filter by rememberSaveable { mutableStateOf("") }
     var rev by rememberSaveable { mutableStateOf(false) }
     var more by rememberSaveable { mutableStateOf(false) }
@@ -305,125 +309,115 @@ fun DetailPage(banner: String, poster: String, title: String, alt: String, chips
     if (big) androidx.compose.ui.window.Dialog({ big = false }, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize().background(Color.Black).clickable { big = false }) { AsyncImage(poster, title, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
     }
-    val num = { s: String -> Regex("^\\d+(\\.\\d+)?").find(s)?.value?.toDouble() } // the number itself: 1 is episode 1, not 10-19
-    val shown = (if (rev) list.reversed() else list).filter { filter.isEmpty() || num(it.label)?.let { n -> n == num(filter) } == true }
-    var page by rememberSaveable { mutableStateOf(false) } // the list on a page of its own: a long one buried the details and what's after it
-    androidx.activity.compose.BackHandler(page) { page = false; picks.clear() }
-    val details = androidx.compose.foundation.lazy.rememberLazyListState() // back from the list: the details where they were
-    BoxWithConstraints {
-        val rows = list.firstOrNull()?.thumb?.isNotEmpty() == true // episodes: a row each, its still beside its number and name
-        val cols = if (rows) (maxWidth / 340.dp).toInt().coerceAtLeast(1) else (maxWidth / 72.dp).toInt().coerceAtLeast(4)
-        if (page && listTitle != null) Column {
-            Row(Modifier.fillMaxWidth().padding(end = 16.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton({ page = false; picks.clear() }) { Icon(Ic.back, t("back"), Modifier.size(22.dp)) }
-                Text(title, fontWeight = FontWeight.Bold, fontSize = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    val shown = remember(list, rev, filter) { (if (rev) list.reversed() else list).filter { filter.isEmpty() || it.label.startsWith(filter) } }
+    val pager = androidx.compose.foundation.pager.rememberPagerState { if (listTitle != null) 2 else 1 }
+    val scope = rememberCoroutineScope()
+    val details = androidx.compose.foundation.lazy.rememberLazyListState()
+    // the list opens at the one watched last (seasons above it: that row shows second, the one before it for context)
+    val rows = androidx.compose.foundation.lazy.rememberLazyListState(list.indexOfFirst { it.last }.coerceAtLeast(0))
+    val label = { e: Numbered -> if (e.label.firstOrNull()?.isDigit() == true) "$unit ${e.label}" else e.label }
+    Box(Modifier.fillMaxSize()) {
+        Column {
+            Row(Modifier.fillMaxWidth().padding(end = 8.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(nav.back) { Icon(Ic.back, t("back"), Modifier.size(22.dp)) }
+                Text(title, Modifier.weight(1f), fontWeight = FontWeight.Bold, fontSize = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (pager.currentPage == 1 && list.size > 1) IconButton({ rev = !rev }) { Icon(Ic.sort, t("reverse"), Modifier.size(20.dp), tint = if (rev) Red else Color.White) }
             }
-            // opened at the one watched last (the list as first drawn: unfiltered, unreversed)
-            val at = remember { list.indexOfFirst { it.last }.let { if (it < 0 || rev || filter.isNotEmpty()) 0 else it / cols } }
-            // fixed above the list: the jump box and reverse stay at hand however far down
-            if (picks.on && acts != null) SelectBar(picks, { shown.map { it.id } }, acts, run)
-            else Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("$listTitle  ", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                Text("${list.size}", color = Muted, modifier = Modifier.weight(1f))
-                if (list.size > cols) OutlinedTextField(filter, { filter = it.filter { c -> c.isDigit() || c == '.' } }, Modifier.width(130.dp).height(52.dp), placeholder = { Text(jump, fontSize = 12.sp) },
-                    singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), textStyle = LocalTextStyle.current.copy(fontSize = 13.sp))
-                // the list's actions in one ⋮ menu: reverse, select, download all (what's not saved yet)
-                val left = list.filter { !it.saved }.map { it.id }
-                val dl = acts != null && left.isNotEmpty() && acts(left).any { it.first == "dl" }
-                var menu by remember { mutableStateOf(false) }
-                var dlAsk by remember { mutableStateOf(false) }
-                if (list.size > cols || acts != null) Box {
-                    IconButton({ menu = true }) { Icon(Ic.dots, t("more"), Modifier.size(22.dp)) }
-                    DropdownMenu(menu, { menu = false }, containerColor = CardC) {
-                        if (list.size > cols) DropdownMenuItem({ Text(t("reverse")) }, { menu = false; rev = !rev }, leadingIcon = { Icon(Ic.sort, null, Modifier.size(18.dp)) })
-                        if (acts != null) DropdownMenuItem({ Text(t("select")) }, { menu = false; picks.set = emptySet() }, leadingIcon = { Icon(Ic.check, null, Modifier.size(18.dp)) })
-                        if (dl) DropdownMenuItem({ Text(t("downloadAll")) }, { menu = false; dlAsk = true }, leadingIcon = { Icon(Ic.download, null, Modifier.size(18.dp)) })
-                    }
+            if (listTitle != null) SecondaryTabRow(pager.currentPage, containerColor = Bg, contentColor = Color.White,
+                indicator = { TabRowDefaults.SecondaryIndicator(Modifier.tabIndicatorOffset(pager.currentPage, matchContentSize = false), color = Red) }, divider = { HorizontalDivider(color = Color(0x1AFFFFFF)) }) {
+                listOf(t("details"), listTitle).forEachIndexed { i, s ->
+                    Tab(pager.currentPage == i, { scope.launch { pager.animateScrollToPage(i) } }, text = { Text(s, fontWeight = FontWeight.SemiBold) }, selectedContentColor = Color.White, unselectedContentColor = Muted)
                 }
-                // asked first: a long series is hundreds of downloads
-                if (dlAsk) AlertDialog({ dlAsk = false }, { TextButton({ dlAsk = false; run("dl", left) }) { Text(t("downloadShort"), color = Red) } },
-                    dismissButton = { TextButton({ dlAsk = false }) { Text(t("cancel"), color = Color.White) } }, text = { Text(t("downloadAllAsk", left.size)) }, containerColor = CardC)
             }
-            LazyColumn(Modifier.fillMaxSize(), androidx.compose.foundation.lazy.rememberLazyListState(at), PaddingValues(bottom = 24.dp)) {
-                items(shown.chunked(cols)) { line ->
-                    Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        line.forEach { e ->
-                            val on = picks.has(e.id)
-                            val tile = Modifier.weight(1f).clip(RoundedCornerShape(4.dp)).background(if (on) Color(0x55E50914) else CardC)
-                                .then(if (e.last || on) Modifier.border(if (on) 2.dp else 1.dp, Red, RoundedCornerShape(4.dp)) else Modifier)
-                                .combinedClickable(onLongClick = { if (acts != null) { if (picks.on) picks.toggle(e.id) else picks.start(e.id) } }) { if (picks.on) picks.toggle(e.id) else nav.go(e.open) }
-                            if (rows) Row(tile.padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Box {
-                                    AsyncImage(e.thumb, null, Modifier.width(112.dp).aspectRatio(16 / 9f).clip(RoundedCornerShape(4.dp)).background(Bg).graphicsLayer { alpha = if (e.seen) .45f else 1f }, contentScale = ContentScale.Crop)
-                                    if (e.saved) Icon(Ic.download, null, Modifier.align(Alignment.TopEnd).padding(4.dp).size(12.dp)) // downloaded
+            androidx.compose.foundation.pager.HorizontalPager(pager, Modifier.weight(1f), beyondViewportPageCount = 1, verticalAlignment = Alignment.Top) { p -> // both tabs stay built: a switch only slides
+                if (p == 0) LazyColumn(Modifier.fillMaxSize(), details, PaddingValues(bottom = 96.dp)) {
+                    item {
+                        Box { // the faded banner behind the poster and titles
+                            AsyncImage(banner.ifEmpty { poster }, null, Modifier.matchParentSize().graphicsLayer { alpha = .4f }, contentScale = ContentScale.Crop)
+                            Box(Modifier.matchParentSize().background(Brush.verticalGradient(0f to Color(0x66000000), 1f to Bg)))
+                            Row(Modifier.padding(16.dp)) {
+                                if (poster.isNotEmpty()) AsyncImage(poster, null, Modifier.padding(end = 14.dp).width(120.dp).aspectRatio(2 / 3f).clip(RoundedCornerShape(6.dp)).background(CardC).clickable { big = true }, contentScale = ContentScale.Crop)
+                                Column(Modifier.weight(1f).padding(top = 8.dp)) {
+                                    Text(title, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, lineHeight = 24.sp)
+                                    if (alt.isNotEmpty()) Text(alt, Modifier.padding(top = 4.dp), color = Muted, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    chips.filter { it.second }.forEach { (c, _) -> Text(c, Modifier.padding(top = 6.dp), color = Red, fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
                                 }
-                                Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                                    Text(if (e.label.firstOrNull()?.isDigit() == true) "${t("ep")} ${e.label}" else e.label, color = if (e.seen) Muted else Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                                    if (e.name.isNotEmpty()) Text(e.name, color = Muted, fontSize = 12.sp, lineHeight = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                }
-                                if (e.read) Icon(Ic.check, t("chRead"), Modifier.padding(end = 6.dp).size(14.dp), tint = Red) // watched
-                            } else Box(tile.height(42.dp), Alignment.Center) {
-                                Text(e.label, color = if (e.seen) Muted else Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                                if (e.saved) Icon(Ic.download, null, Modifier.align(Alignment.TopEnd).padding(3.dp).size(10.dp), tint = Muted) // downloaded
-                                if (e.read) Icon(Ic.check, t("chRead"), Modifier.align(Alignment.TopStart).padding(3.dp).size(10.dp), tint = Red) // watched / read: too small for the read pill
                             }
                         }
-                        repeat(cols - line.size) { Spacer(Modifier.weight(1f)) }
                     }
-                }
-            }
-        } else LazyColumn(Modifier.fillMaxSize(), details, PaddingValues(bottom = 24.dp)) {
-            item {
-                Box { // the poster sits over the banner's lower edge
-                    Box(Modifier.fillMaxWidth().height(240.dp)) {
-                        AsyncImage(banner, null, Modifier.fillMaxSize().graphicsLayer { alpha = .55f }, contentScale = ContentScale.Crop)
-                        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Transparent, 1f to Bg)))
+                    item { FlowRow(Modifier.padding(horizontal = 8.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(8.dp), content = buttons) }
+                    val tags = chips.filter { !it.second }
+                    if (desc.isNotEmpty() || tags.isNotEmpty() || info.isNotEmpty()) item {
+                        Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(CardC).padding(14.dp)) {
+                            if (desc.isNotEmpty()) Text(desc, Modifier.clickable { more = !more }, color = Color(0xFFCCCCCC), fontSize = 14.sp, lineHeight = 22.sp,
+                                maxLines = if (more) Int.MAX_VALUE else 5, overflow = TextOverflow.Ellipsis)
+                            if (tags.isNotEmpty()) FlowRow(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                tags.forEach { (c, _) -> Text(c, Modifier.border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(99.dp)).padding(horizontal = 10.dp, vertical = 3.dp), fontSize = 12.sp) }
+                            }
+                            info.chunked(2).forEach { line -> // two a row, as a table
+                                Row(Modifier.padding(top = 14.dp)) {
+                                    line.forEach { (k, v) -> Column(Modifier.weight(1f)) { Text(k, color = Muted, fontSize = 12.sp); Text(v, fontSize = 13.sp) } }
+                                    if (line.size == 1) Spacer(Modifier.weight(1f))
+                                }
+                            }
+                        }
                     }
-                    IconButton(nav.back, Modifier.padding(4.dp)) { Icon(Ic.back, null, Modifier.size(22.dp)) }
-                    Row(Modifier.padding(start = 16.dp, end = 16.dp, top = 150.dp), verticalAlignment = Alignment.Bottom) {
-                        if (poster.isNotEmpty()) AsyncImage(poster, null, Modifier.padding(end = 14.dp).width(110.dp).aspectRatio(2 / 3f).clip(RoundedCornerShape(6.dp)).background(CardC).clickable { big = true }, contentScale = ContentScale.Crop)
-                        Column {
-                            Text(title, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp, lineHeight = 26.sp)
-                            if (alt.isNotEmpty()) Text(alt, color = Muted, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    if (listTitle == null) before()
+                    after()
+                } else Column(Modifier.fillMaxSize()) {
+                    // fixed above the list: the jump box stays at hand however far down
+                    if (picks.on && acts != null) SelectBar(picks, { shown.map { it.id } }, acts, run)
+                    else if (list.size > 12) Row(Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("${list.size}", color = Muted, modifier = Modifier.weight(1f))
+                        OutlinedTextField(filter, { filter = it.filter { c -> c.isDigit() || c == '.' } }, Modifier.width(150.dp).height(52.dp), placeholder = { Text(jump, fontSize = 12.sp) },
+                            singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), textStyle = LocalTextStyle.current.copy(fontSize = 13.sp))
+                    }
+                    LazyColumn(Modifier.fillMaxSize(), rows, PaddingValues(bottom = 96.dp)) {
+                        before()
+                        items(shown) { e ->
+                            val on = picks.has(e.id)
+                            val mine = acts?.invoke(listOf(e.id)).orEmpty() // its own marks: [0] marks it seen / read, [1] unmarks it
+                            Row(Modifier.fillMaxWidth().background(if (on) Color(0x55E50914) else if (e.last) Color(0x0FFFFFFF) else Color.Transparent)
+                                .combinedClickable(onLongClick = { if (acts != null) { if (picks.on) picks.toggle(e.id) else picks.start(e.id) } }) { if (picks.on) picks.toggle(e.id) else nav.go(e.open) }
+                                .padding(start = 16.dp, end = 4.dp).heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
+                                if (e.thumb.isNotEmpty()) AsyncImage(e.thumb, null, Modifier.padding(end = 12.dp, top = 6.dp, bottom = 6.dp).width(104.dp).aspectRatio(16 / 9f).clip(RoundedCornerShape(4.dp))
+                                    .background(CardC).graphicsLayer { alpha = if (e.seen) .45f else 1f }, contentScale = ContentScale.Crop)
+                                Column(Modifier.weight(1f)) {
+                                    Text(label(e), color = if (e.last) Red else if (e.seen) Muted else Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                    if (e.name.isNotEmpty()) Text(e.name, color = Muted, fontSize = 12.sp, lineHeight = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                }
+                                if (mine.size >= 2) mine[if (e.read) 1 else 0].let { (v, what) -> IconButton({ run(v, listOf(e.id)) }) { Icon(Ic.eye, what, Modifier.size(20.dp), tint = if (e.read) Red else Muted) } }
+                                val dl = mine.find { it.first == "dl" }
+                                if (e.saved) Box(Modifier.size(48.dp), Alignment.Center) { Icon(Ic.download, null, Modifier.size(20.dp), tint = Red) } // downloaded
+                                else if (dl != null) IconButton({ run(dl.first, listOf(e.id)) }) { Icon(Ic.download, dl.second, Modifier.size(20.dp), tint = Muted) }
+                            }
+                            HorizontalDivider(color = Color(0x14FFFFFF))
                         }
                     }
                 }
             }
-            item {
-                Column(Modifier.padding(16.dp)) {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        chips.forEach { (c, red) -> Text(c, Modifier.background(if (red) Red else Color(0x1AFFFFFF), RoundedCornerShape(99.dp)).padding(horizontal = 10.dp, vertical = 3.dp), fontSize = 12.sp) }
-                    }
-                    if (desc.isNotEmpty()) Text(desc, Modifier.padding(top = 12.dp).clickable { more = !more }, color = Color(0xFFCCCCCC), fontSize = 14.sp, lineHeight = 22.sp,
-                        maxLines = if (more) Int.MAX_VALUE else 4, overflow = TextOverflow.Ellipsis)
-                    FlowRow(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = buttons)
-                    if (info.isNotEmpty()) FlowRow(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        info.forEach { (k, v) -> Column { Text(k, color = Muted, fontSize = 11.sp); Text(v, fontSize = 13.sp) } }
-                    }
-                }
-            }
-            before()
-            if (listTitle != null) item { // the list's row: its page
-                Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(CardC).clickable { page = true }.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Text("$listTitle  ", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Text("${list.size}", color = Muted, modifier = Modifier.weight(1f))
-                    list.find { it.last }?.let { Text(if (it.label.firstOrNull()?.isDigit() == true) "${t("ep")} ${it.label}" else it.label, color = Red, fontSize = 13.sp) } // where you are
-                    Icon(Ic.next, null, Modifier.padding(start = 8.dp).size(16.dp), tint = Muted)
-                }
-            }
-            after()
+        }
+        // over the list only (a film has just its details: there)
+        if (listTitle == null || pager.currentPage == 1) play?.let { (what, go) ->
+            ExtendedFloatingActionButton({ Text(what, fontWeight = FontWeight.Bold) }, { Icon(Ic.play, null, Modifier.size(18.dp)) }, go,
+                Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(16.dp), shape = RoundedCornerShape(99.dp), containerColor = Red, contentColor = Color.White)
         }
     }
 }
+
+/** a figure in the actions row: an icon over its value, and what it counts under it (a rating and its votes) */
+@Composable
+fun FlowRowScope.Stat(icon: androidx.compose.ui.graphics.vector.ImageVector, value: String, sub: String) =
+    Column(Modifier.weight(1f).padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Icon(icon, null, Modifier.size(24.dp), tint = Red)
+        Text(value, Modifier.padding(top = 4.dp), fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+        if (sub.isNotEmpty()) Text(sub, color = Muted, fontSize = 11.sp, maxLines = 1)
+    }
 
 @Composable
 fun RedButton(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) = Button(onClick, modifier, colors = ButtonDefaults.buttonColors(Red), shape = RoundedCornerShape(8.dp)) {
     Icon(Ic.play, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(label, fontWeight = FontWeight.Bold)
 }
-/** a title's page: its main action, the whole width (Android's filled button) */
-@Composable
-fun PlayButton(label: String, onClick: () -> Unit) = RedButton(label, Modifier.fillMaxWidth().height(48.dp), onClick)
 /**
  * a title's other actions, side by side under it: an icon over its name, sharing the row (as the Play Store's and Netflix's
  * apps do); on: what it does is set (in the list, notifying), the icon red
@@ -470,13 +464,14 @@ fun TitleScreen(path: String, nav: Nav) {
                 "${t("nextEp")} · ${if (a.ep.isNotEmpty()) "${t("epShort")} ${a.ep} · " else ""}$day · ${java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT, loc).format(at)}" to true
             }
             DetailPage(d.banner, d.poster, d.title, d.alt, listOfNotNull(airChip) + d.tags.mapIndexed { i, c -> c to (i == 2) } + d.genres.map { it to false }, d.desc, {
-                if (first != null) PlayButton(if (h != null) t("resume", h.optString("ep")) else t("play")) { nav.go(Screen.Play(first)) }
                 ListButton(path, d.title, d.poster, type)
                 if (type == "anime") NotifyButton(path, d.title, d.poster, d.episodes.lastOrNull()?.path ?: "")
+                if (type == "anime") AutoDlButton(path, d.title, d.poster, d.episodes.lastOrNull()?.path ?: "")
                 if (d.trailer.isNotEmpty()) Action(t("trailer"), Ic.play) { nav.go(Screen.Trailer(d.trailer, d.title)) }
             }, d.info, nav, if (d.episodes.size > 1 || type == "anime") t("episodes") else null,
                 d.episodes.map { Numbered(it.ep, Store["seen"].has(it.path), it.path == last, Screen.Play(it.path), it.path, com.medanime.app.Downloads.done(it.path),
                     thumb = info[it.ep.toIntOrNull()]?.thumb?.ifEmpty { null } ?: d.banner.ifEmpty { d.poster }, name = info[it.ep.toIntOrNull()]?.name.orEmpty()) },
+                play = first?.let { (if (h != null) t("resume", h.optString("ep")) else t("play")) to { nav.go(Screen.Play(it)) } },
                 after = { item { CardRowView(t("moreLike"), d.related, nav) } },
                 acts = { ids -> listOfNotNull("seen" to t("markWatched"), "unseen" to t("markUnwatched"), if (ids.any { !com.medanime.app.Downloads.done(it) }) "dl" to t("downloadShort") else null) },
                 run = { v, ids ->

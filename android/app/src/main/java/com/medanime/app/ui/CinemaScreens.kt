@@ -70,7 +70,6 @@ fun CinemaTitleScreen(slug: String, show: Boolean, nav: Nav) {
                 else if (h != null) Screen.CinemaPlay(h.optString("slug")) to "${t("play")} · ${t("ep")} ${h.optString("ep")}"
                 else eps.firstOrNull()?.let { Screen.CinemaPlay(it.slug) to t("play") }
             DetailPage(m.banner, m.poster, m.title, m.year, m.cat.map { it to true } + (m.tags + m.genres).map { it to false }, m.desc, {
-                play?.let { (s, label) -> PlayButton(label) { nav.go(s) } }
                 ListButton(path, m.title, m.poster, "cinema")
                 if (slug.contains('/')) NotifyButton(path, m.title, m.poster, eps.lastOrNull()?.slug ?: "") // a series' season; new films have their own switch (settings)
                 if (m.trailer.isNotEmpty()) Action(t("trailer"), Ic.play) { nav.go(Screen.Trailer(m.trailer, m.title)) }
@@ -90,7 +89,7 @@ fun CinemaTitleScreen(slug: String, show: Boolean, nav: Nav) {
                         }
                     }
                 },
-                after = { item { CardRowView(t("moreLike"), m.related, nav) } })
+                after = { item { CardRowView(t("moreLike"), m.related, nav) } }, play = play?.let { (s, label) -> label to { nav.go(s) } })
         }
     }
 }

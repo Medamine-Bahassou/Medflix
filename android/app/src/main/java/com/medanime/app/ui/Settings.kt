@@ -143,18 +143,21 @@ fun SettingsScreen(part: String, nav: Nav) {
                         Text(t("notifyMovies"), Modifier.weight(1f).padding(horizontal = 12.dp))
                         Switch(Alerts.moviesOn(), { Alerts.toggleMovies() }, colors = SwitchDefaults.colors(checkedTrackColor = Red))
                     }
-                    // new episodes and chapters downloaded as they come out: the default, and each title's ⬇ below for that one alone
-                    Row(Modifier.fillMaxWidth().clickable(onClick = Alerts::toggleAutoDl), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Ic.download, null, Modifier.size(22.dp), tint = Red)
-                        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) { Text(t("autoDl")); Text(t("autoDlHint"), color = Muted, fontSize = 12.sp) }
-                        Switch(Store["prefs"].optBoolean("autoDl"), { Alerts.toggleAutoDl() }, colors = SwitchDefaults.colors(checkedTrackColor = Red))
-                    }
                     n.keys().asSequence().filter { it != "movies" }.toList().forEach { p ->
                         Row(Modifier.fillMaxWidth().clickable { nav.go(Alerts.screen(p)) }, verticalAlignment = Alignment.CenterVertically) {
                             Icon(Ic.bellFill, null, Modifier.size(22.dp), tint = Red)
                             Text(n.getJSONObject(p).optString("title"), Modifier.weight(1f).padding(horizontal = 12.dp), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                            if (Alerts.canDl(p)) IconButton({ Alerts.toggleDl(p) }) { Icon(Ic.download, t("autoDl"), Modifier.size(18.dp), tint = if (Alerts.autoDl(p)) Red else Muted) }
                             IconButton({ Alerts.toggle(p, "", "", "") }) { Icon(Ic.x, t("remove"), Modifier.size(18.dp)) }
+                        }
+                    }
+                }
+                val a = Store["autoDl"]
+                Card(t("autoDl"), t("autoDlHint")) { // the titles downloaded as they come out, each set on its page (✕ stops it)
+                    a.keys().asSequence().toList().forEach { p ->
+                        Row(Modifier.fillMaxWidth().clickable { nav.go(Alerts.screen(p)) }, verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Ic.download, null, Modifier.size(22.dp), tint = Red)
+                            Text(a.getJSONObject(p).optString("title"), Modifier.weight(1f).padding(horizontal = 12.dp), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            IconButton({ Alerts.toggleDl(p, "", "", "") }) { Icon(Ic.x, t("remove"), Modifier.size(18.dp)) }
                         }
                     }
                 }

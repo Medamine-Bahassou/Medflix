@@ -147,6 +147,8 @@ protocol.registerSchemesAsPrivileged([{ scheme: 'medimg', privileges: { standard
 async function downloadImage(src, file) {
   const res = await session.defaultSession.fetch(src, { headers: { 'User-Agent': UA } }); // no referer: witanime blocks hotlinks
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  // a page sent in place of the image (a block, an error page, as 200) would replace the good copy for good
+  if (/^text\//.test(res.headers.get('content-type') || '')) throw new Error('not an image');
   const buf = Buffer.from(await res.arrayBuffer());
   await fs.promises.writeFile(file + '.tmp', buf);
   await fs.promises.rename(file + '.tmp', file);
