@@ -36,7 +36,7 @@ const STR = {
     dlQueued: 'في الانتظار', dlPaused: 'متوقف مؤقتًا', pauseAll: 'إيقاف الكل مؤقتًا', resumeAll: 'استئناف الكل', dlPausedAll: 'التحميلات متوقفة مؤقتًا', confirmDel: n => `حذف «\u2068${n}\u2069»؟`, confirmDelAll: n => `حذف كل تنزيلات هذا العمل (${n})؟`, confirmDelHint: 'سيُحذف الملف المحمّل من الجهاز، ولا يمكن التراجع.', showPause: 'إيقاف مؤقت', showResume: 'استئناف', dlQueuedN: n => `أُضيف ${n} للتحميل`, pagesOf: (r, n) => `${r} / ${n} صفحة`, pagesN: n => `${n} صفحة`,
     epCount: n => `${n} حلقة`, chCount: n => `${n} فصل`, dlActiveN: n => `${n} قيد التحميل`, deleteAll: 'حذف الكل', kindAnime: 'أنمي',
     markRead: 'تحديد كمقروء', markUnread: 'تحديد كغير مقروء', markPrevRead: 'تحديد الفصول السابقة كمقروءة', markWatched: 'تحديد كمُشاهَد', markUnwatched: 'تحديد كغير مُشاهَد', delDownload: 'حذف التنزيل',
-    select: 'تحديد', actions: 'إجراءات', delDownloads: 'حذف التنزيلات', confirmDelN: n => `حذف ${n} من التنزيلات؟`,
+    select: 'تحديد', downloadAll: 'تحميل الكل', downloadAllAsk: n => `تحميل كل ما لم يُحمَّل بعد (${n})؟`, actions: 'إجراءات', delDownloads: 'حذف التنزيلات', confirmDelN: n => `حذف ${n} من التنزيلات؟`,
     selectedN: n => `${n} محدد`, selectAll: 'تحديد الكل',
     schedSearch: 'ابحث عن أنمي في المواعيد…', schedNone: 'غير موجود في مواعيد هذا الأسبوع', schedNoneHint: 'جرّب اسمه بالإنجليزية أو اليابانية.',
   },
@@ -70,7 +70,7 @@ const STR = {
     dlQueued: 'Queued', dlPaused: 'Paused', pauseAll: 'Pause all', resumeAll: 'Resume all', dlPausedAll: 'Downloads are paused', confirmDel: n => `Delete “\u2068${n}\u2069”?`, confirmDelAll: n => `Delete all ${n} downloads of this show?`, confirmDelHint: 'The downloaded files are removed from this device. This can’t be undone.', showPause: 'Pause', showResume: 'Resume', dlQueuedN: n => `${n} added to downloads`, pagesOf: (r, n) => `${r} / ${n} pages`, pagesN: n => `${n} pages`,
     epCount: n => `${n} episodes`, chCount: n => `${n} chapters`, dlActiveN: n => `${n} downloading`, deleteAll: 'Delete all', kindAnime: 'Anime',
     markRead: 'Mark as read', markUnread: 'Mark as unread', markPrevRead: 'Mark earlier chapters as read', markWatched: 'Mark as watched', markUnwatched: 'Mark as unwatched', delDownload: 'Delete download',
-    select: 'Select', actions: 'Actions', delDownloads: 'Delete downloads', confirmDelN: n => `Delete ${n} downloads?`,
+    select: 'Select', downloadAll: 'Download all', downloadAllAsk: n => `Download everything not saved yet (${n})?`, actions: 'Actions', delDownloads: 'Delete downloads', confirmDelN: n => `Delete ${n} downloads?`,
     selectedN: n => `${n} selected`, selectAll: 'Select all',
     schedSearch: 'Find a show in the schedule…', schedNone: 'Not on this week’s schedule', schedNoneHint: 'Try its English or Japanese name.',
     // the site's own section titles
@@ -1205,7 +1205,7 @@ async function title(path, force) {
   const eps = $('#eps');
   let rev = false, info = {};
   const drawEps = (f = '') => eps && (eps.innerHTML = (rev ? [...d.episodes].reverse() : d.episodes)
-    .filter(e => !f || String(e.ep).startsWith(f))
+    .filter(e => !f || parseFloat(e.ep) === +f) // the number itself: 1 is episode 1, not 10-19
     .map(e => epRow(e.ep, info[+e.ep], d.banner || d.poster, playHash(e.path), store.seen[e.path], h?.epPath === e.path)).join(''));
   drawEps();
   if (eps) {

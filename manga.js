@@ -250,7 +250,7 @@ async function mangaSeries(id, force) {
       ${selBar()}
       <div class="eps" id="eps"></div></div>`;
   let rev = false;
-  const shown = (f = $('#epf').value) => (rev ? [...chs].reverse() : chs).filter(c => !f || String(c.n).startsWith(f));
+  const shown = (f = $('#epf').value) => (rev ? [...chs].reverse() : chs).filter(c => !f || parseFloat(c.n) === +f); // the number itself: 1 is chapter 1, not 10-19
   const drawChs = () => {
     const copies = savedChs(ids);
     $('#eps').innerHTML = shown().map(c => { const own = copies.get(String(c.n)); return `<a class="ep ${store.mangaSeen[c.id] || store.mangaSeen[own] ? 'seen' : ''}

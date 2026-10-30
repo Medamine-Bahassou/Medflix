@@ -305,7 +305,8 @@ fun DetailPage(banner: String, poster: String, title: String, alt: String, chips
     if (big) androidx.compose.ui.window.Dialog({ big = false }, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize().background(Color.Black).clickable { big = false }) { AsyncImage(poster, title, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
     }
-    val shown = (if (rev) list.reversed() else list).filter { filter.isEmpty() || it.label.startsWith(filter) }
+    val num = { s: String -> Regex("^\\d+(\\.\\d+)?").find(s)?.value?.toDouble() } // the number itself: 1 is episode 1, not 10-19
+    val shown = (if (rev) list.reversed() else list).filter { filter.isEmpty() || num(it.label)?.let { n -> n == num(filter) } == true }
     var page by rememberSaveable { mutableStateOf(false) } // the list on a page of its own: a long one buried the details and what's after it
     androidx.activity.compose.BackHandler(page) { page = false; picks.clear() }
     val details = androidx.compose.foundation.lazy.rememberLazyListState() // back from the list: the details where they were
@@ -324,11 +325,24 @@ fun DetailPage(banner: String, poster: String, title: String, alt: String, chips
             else Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("$listTitle  ", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 Text("${list.size}", color = Muted, modifier = Modifier.weight(1f))
-                if (list.size > cols) {
-                    OutlinedTextField(filter, { filter = it.filter { c -> c.isDigit() || c == '.' } }, Modifier.width(130.dp).height(52.dp), placeholder = { Text(jump, fontSize = 12.sp) },
-                        singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), textStyle = LocalTextStyle.current.copy(fontSize = 13.sp))
-                    IconButton({ rev = !rev }) { Icon(Ic.sort, t("reverse"), Modifier.size(20.dp)) }
+                if (list.size > cols) OutlinedTextField(filter, { filter = it.filter { c -> c.isDigit() || c == '.' } }, Modifier.width(130.dp).height(52.dp), placeholder = { Text(jump, fontSize = 12.sp) },
+                    singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), textStyle = LocalTextStyle.current.copy(fontSize = 13.sp))
+                // the list's actions in one ⋮ menu: reverse, select, download all (what's not saved yet)
+                val left = list.filter { !it.saved }.map { it.id }
+                val dl = acts != null && left.isNotEmpty() && acts(left).any { it.first == "dl" }
+                var menu by remember { mutableStateOf(false) }
+                var dlAsk by remember { mutableStateOf(false) }
+                if (list.size > cols || acts != null) Box {
+                    IconButton({ menu = true }) { Icon(Ic.dots, t("more"), Modifier.size(22.dp)) }
+                    DropdownMenu(menu, { menu = false }, containerColor = CardC) {
+                        if (list.size > cols) DropdownMenuItem({ Text(t("reverse")) }, { menu = false; rev = !rev }, leadingIcon = { Icon(Ic.sort, null, Modifier.size(18.dp)) })
+                        if (acts != null) DropdownMenuItem({ Text(t("select")) }, { menu = false; picks.set = emptySet() }, leadingIcon = { Icon(Ic.check, null, Modifier.size(18.dp)) })
+                        if (dl) DropdownMenuItem({ Text(t("downloadAll")) }, { menu = false; dlAsk = true }, leadingIcon = { Icon(Ic.download, null, Modifier.size(18.dp)) })
+                    }
                 }
+                // asked first: a long series is hundreds of downloads
+                if (dlAsk) AlertDialog({ dlAsk = false }, { TextButton({ dlAsk = false; run("dl", left) }) { Text(t("downloadShort"), color = Red) } },
+                    dismissButton = { TextButton({ dlAsk = false }) { Text(t("cancel"), color = Color.White) } }, text = { Text(t("downloadAllAsk", left.size)) }, containerColor = CardC)
             }
             LazyColumn(Modifier.fillMaxSize(), androidx.compose.foundation.lazy.rememberLazyListState(at), PaddingValues(bottom = 24.dp)) {
                 items(shown.chunked(cols)) { line ->
