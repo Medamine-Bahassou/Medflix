@@ -1,0 +1,3 @@
+# shell scripts keep LF even in a Windows checkout (autocrlf): with CRLF, WSL/Linux cannot run them (gradlew: ENOENT)
+android/gradlew text eol=lf
+*.sh text eol=lf

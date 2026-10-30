@@ -4,7 +4,7 @@ apply plugin: 'org.jetbrains.kotlin.plugin.compose'
 
 def buildStamp = new Date().format('yyyyMMddHHmm')
 // for npm run release, which tags the GitHub release with it
-tasks.register('writeBuildStamp') { doLast { file("$buildDir/build-stamp.txt").text = buildStamp } }
+tasks.register('writeBuildStamp') { doLast { file(buildDir).mkdirs(); file("$buildDir/build-stamp.txt").text = buildStamp } } // a fresh checkout has no build dir yet
 preBuild.dependsOn 'writeBuildStamp'
 
 android {

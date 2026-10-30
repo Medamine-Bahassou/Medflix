@@ -247,6 +247,13 @@ if (!window.api && window.Capacitor) (() => {
     playerSnapshot: async () => '',
     onPlayerBack() {}, // Android's back button walks the hash history on its own
     openExternal: url => /^https:\/\//.test(url) && Downloader.openUrl({ url }), // window.open is refused (MainActivity)
+    // the feedback form (app.js feedbackSheet), emailed on by web3forms (see main.js)
+    async feedback({ email = '', message = '' }) {
+      const res = await Http.request({ url: 'https://api.web3forms.com/submit', method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        data: { access_key: '197ce167-d8f2-4479-ae56-1ebfcdd5b787', subject: `Medflix feedback (android ${window.BUILD || ''})`, email, message } });
+      const r = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+      if (!r?.success) throw new Error(r?.message || 'HTTP ' + res.status);
+    },
     // a newer APK on GitHub's latest release (npm run release tags it b + this build's stamp digits): its download link
     async checkUpdate() {
       const res = await Http.request({ url: 'https://api.github.com/repos/Medamine-Bahassou/Medflix/releases/latest', method: 'GET',

@@ -357,6 +357,13 @@ ipcMain.handle('player:snapshot', async () => {
   const img = player && await player.webContents.capturePage();
   return img && !img.isEmpty() ? img.toDataURL() : ''; // empty while the view isn't on screen yet
 });
+// the feedback form (app.js feedbackSheet), emailed on by web3forms. its access key is public by design
+ipcMain.handle('feedback', async (_, { email = '', message = '' }) => {
+  const res = await session.defaultSession.fetch('https://api.web3forms.com/submit', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ access_key: '197ce167-d8f2-4479-ae56-1ebfcdd5b787', subject: 'Medflix feedback (desktop)', email: String(email), message: String(message) }) });
+  const data = await res.json().catch(() => ({}));
+  if (!data.success) throw new Error(data.message || 'HTTP ' + res.status);
+});
 ipcMain.on('open-external', (_, url) => /^https:\/\//.test(url) && shell.openExternal(url)); // site pages, and egydead's download hosts
 
 let player = null, playerBounds, playerFull = false;

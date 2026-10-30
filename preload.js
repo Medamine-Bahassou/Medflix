@@ -22,4 +22,5 @@ contextBridge.exposeInMainWorld('api', {
   openExternal: url => ipcRenderer.send('open-external', url),
   titleBar: color => ipcRenderer.send('titlebar', color),
   set: (key, value) => ipcRenderer.invoke('db:set', key, value),
+  feedback: fields => ipcRenderer.invoke('feedback', fields),
 });

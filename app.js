@@ -22,6 +22,7 @@ const STR = {
     hideAnime: 'إخفاء هذا الأنمي', hideManga: 'إخفاء هذه المانجا', hideMovie: 'إخفاء هذا الفيلم', hideSeries: 'إخفاء هذا المسلسل', listAdd: 'إضافة إلى قائمتي', listRemove: 'إزالة من قائمتي', openHidden: n => `العناصر المخفية (${n})`, removed: 'تمت الإزالة من قائمتي', ep: 'الحلقة', epShort: 'ح', episode: 'الحلقة',
     nothing: 'لا يوجد شيء هنا', tryElse: 'جرّب شيئًا آخر.', unreachable: 'تعذّر الوصول إلى الموقع', retry: 'إعادة المحاولة',
     continueWatching: 'تابع المشاهدة', refreshSite: 'تحديث من الموقع', refresh: 'تحديث', updated: 'تم التحديث', updateTitle: 'تحديث متوفر', updateText: 'يوجد إصدار أحدث من التطبيق. حدّثه الآن، ستبقى بياناتك كما هي.', updateGo: 'تحديث الآن', updateGetting: 'جارٍ التنزيل', updateAllow: 'اسمح للتطبيق بتثبيت التحديثات، ثم اضغط تحديث الآن مرة أخرى', updateFailed: 'تعذّر التحديث، يتم التنزيل من المتصفح',
+    feedback: 'ملاحظات وبلاغات', feedbackHint: 'اقتراح أو مشكلة واجهتك؟ اكتبها هنا وستصلنا مباشرة.', feedbackEmail: 'بريدك الإلكتروني (اختياري، لنرد عليك)', feedbackMsg: 'اكتب رسالتك…', feedbackSend: 'إرسال', feedbackSending: 'جارٍ الإرسال…', feedbackSent: 'تم إرسال رسالتك، شكرًا لك', feedbackFailed: 'تعذّر الإرسال، حاول مرة أخرى',
     play: 'تشغيل', moreInfo: 'المزيد', prev: 'السابق', next: 'التالي',
     results: q => `نتائج البحث عن «${q}»`, listEmpty: 'قائمتك فارغة', listHint: 'مرّر على أي عنوان واضغط + لحفظه هنا.',
     resume: e => `متابعة الحلقة ${e}`, inList: 'في قائمتي', trailer: 'الإعلان', episodes: 'الحلقات', jump: 'انتقل إلى حلقة…', moreLike: 'أعمال مشابهة',
@@ -55,6 +56,7 @@ const STR = {
     hideAnime: 'Hide this anime', hideManga: 'Hide this manga', hideMovie: 'Hide this movie', hideSeries: 'Hide this series', listAdd: 'Add to My List', listRemove: 'Remove from My List', openHidden: n => `Hidden items (${n})`, removed: 'Removed from My List', ep: 'EP', epShort: 'Ep', episode: 'Episode',
     nothing: 'Nothing here', tryElse: 'Try something else.', unreachable: "Couldn't reach the site", retry: 'Retry',
     continueWatching: 'Continue Watching', refreshSite: 'Refresh from site', refresh: 'Refresh', updated: 'Updated', updateTitle: 'Update available', updateText: 'A newer version of the app is out. Update now; your data stays.', updateGo: 'Update now', updateGetting: 'Downloading', updateAllow: 'Allow the app to install updates, then tap Update now again', updateFailed: 'Update failed, downloading in the browser instead',
+    feedback: 'Feedback & issues', feedbackHint: 'An idea, or something not working? Write it here and it reaches us directly.', feedbackEmail: 'Your email (optional, for a reply)', feedbackMsg: 'Write your message…', feedbackSend: 'Send', feedbackSending: 'Sending…', feedbackSent: 'Message sent, thank you', feedbackFailed: 'Could not send, try again',
     play: 'Play', moreInfo: 'More Info', prev: 'Prev', next: 'Next',
     results: q => `Results for “${q}”`, listEmpty: 'Your list is empty', listHint: 'Hover any title and press + to save it here.',
     resume: e => `Resume Ep ${e}`, inList: 'In My List', trailer: 'Trailer', episodes: 'Episodes', jump: 'Jump to ep…', moreLike: 'More Like This',
@@ -119,7 +121,7 @@ function renderNav() {
   $('#drawer').innerHTML = `<div class="dr-head"><a href="#/" class="logo">${ICON.logo}<span class="logo-word" aria-hidden="true">edFlix</span></a><button class="icon-btn" id="drClose" data-ta="close" aria-label="${t('close')}">${ICON.x}</button></div>
     <nav class="dr-links">${NAV.map(n => `<a href="${n.href}">${navSvg(n.id)}<span>${t(n.id)}</span></a>`).join('')}</nav>
     <div class="dr-sep"></div>
-    <nav class="dr-links"><a href="#/settings">${ICON.settings}<span>${t('settings')}</span></a></nav>
+    <nav class="dr-links"><a href="#/settings">${ICON.settings}<span>${t('settings')}</span></a><button type="button" id="drFeedback">${ICON.info}<span>${t('feedback')}</span></button></nav>
     <div class="lang dr-lang"><button data-l="ar">ع</button><button data-l="en">EN</button></div>`;
   markActive();
 }
@@ -132,6 +134,7 @@ const closeDrawer = () => document.body.classList.contains('drawer-open') && (do
 document.addEventListener('click', e => {
   if (e.target.closest('#dockMore')) document.body.classList.add('drawer-open');
   else if (e.target.closest('#drClose, #drawer-bg')) closeDrawer();
+  else if (e.target.closest('#drFeedback')) { closeDrawer(); feedbackSheet(); }
 });
 // while the drawer or a sheet is open, a drag anywhere but its own list doesn't scroll the page behind
 // (Android ignores overflow: hidden for touch scrolling)
@@ -238,6 +241,27 @@ function updateSheet(u) {
         });
     }
     if (a !== 'go' && (a || e.target === w || e.target.closest('.sheet-x'))) closeSheet(); // closing mid-download: Android's installer still opens
+  };
+}
+
+// the drawer's feedback / bug report form, emailed on by web3forms (api.feedback)
+function feedbackSheet() {
+  const w = document.createElement('div');
+  w.className = 'sheet-wrap';
+  w.innerHTML = `<form class="sheet"><div class="sheet-head"><b>${t('feedback')}</b><button class="sheet-x" type="button" aria-label="${t('close')}">${ICON.x}</button></div>
+    <p class="sheet-text">${t('feedbackHint')}</p>
+    <input class="fb-in" name="email" type="email" autocomplete="email" dir="auto" placeholder="${t('feedbackEmail')}" aria-label="${t('feedbackEmail')}">
+    <textarea class="fb-in" name="message" rows="5" required maxlength="5000" dir="auto" placeholder="${t('feedbackMsg')}" aria-label="${t('feedbackMsg')}"></textarea>
+    <div class="sheet-foot"><button class="btn ghost" type="button" data-a="no">${t('cancel')}</button><button class="btn red" type="submit">${t('feedbackSend')}</button></div></form>`;
+  document.body.append(w);
+  requestAnimationFrame(() => w.classList.add('open'));
+  const f = w.querySelector('form'), go = f.querySelector('[type=submit]');
+  w.onclick = e => (e.target === w || e.target.closest('.sheet-x, [data-a]')) && closeSheet();
+  f.onsubmit = async e => {
+    e.preventDefault();
+    go.disabled = true; go.textContent = t('feedbackSending');
+    try { await api.feedback(Object.fromEntries(new FormData(f))); closeSheet(); toast(t('feedbackSent')); }
+    catch { toast(t('feedbackFailed'), true); go.disabled = false; go.textContent = t('feedbackSend'); } // kept open: the text isn't lost
   };
 }
 

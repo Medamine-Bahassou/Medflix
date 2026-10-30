@@ -173,6 +173,38 @@ fun StorageSheet(done: () -> Unit) {
     }
 }
 
+/** the drawer's feedback / bug report form, emailed on by web3forms (app.js feedbackSheet) */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun FeedbackSheet(done: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var email by remember { mutableStateOf("") }
+    var msg by remember { mutableStateOf("") }
+    var sending by remember { mutableStateOf(false) }
+    ModalBottomSheet(done, containerColor = CardC) {
+        Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 32.dp)) {
+            Text(t("feedback"), fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Text(t("feedbackHint"), Modifier.padding(vertical = 12.dp), color = Color(0xFFCCCCCC), fontSize = 14.sp, lineHeight = 22.sp)
+            OutlinedTextField(email, { email = it }, Modifier.fillMaxWidth(), placeholder = { Text(t("feedbackEmail")) }, singleLine = true,
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Email))
+            OutlinedTextField(msg, { msg = it.take(5000) }, Modifier.fillMaxWidth().heightIn(min = 120.dp).padding(vertical = 12.dp), placeholder = { Text(t("feedbackMsg")) })
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(done) { Text(t("cancel"), color = Color.White) }
+                Button({
+                    sending = true
+                    scope.launch {
+                        runCatching {
+                            val r = Net.fetch("https://api.web3forms.com/submit", mapOf("Accept" to "application/json"), form = mapOf("access_key" to "197ce167-d8f2-4479-ae56-1ebfcdd5b787",
+                                "subject" to "Medflix feedback (android ${BuildConfig.BUILD})", "email" to email.trim(), "message" to msg.trim()))
+                            check(org.json.JSONObject(r.body).optBoolean("success")) { "HTTP ${r.status}" } // its answer is JSON either way
+                        }.onSuccess { toast(t("feedbackSent")); done() }.onFailure { sending = false; toast(t("feedbackFailed")) } // kept open: the text isn't lost
+                    }
+                }, enabled = !sending && msg.isNotBlank(), colors = ButtonDefaults.buttonColors(Red)) { Text(t(if (sending) "feedbackSending" else "feedbackSend")) }
+            }
+        }
+    }
+}
+
 /** a newer APK on GitHub: downloaded in the app, then Android's installer (app.js updateSheet) */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

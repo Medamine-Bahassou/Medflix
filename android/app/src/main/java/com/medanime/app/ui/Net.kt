@@ -84,7 +84,7 @@ object Net {
     private fun cfCheck(r: Resp) = r.header("cf-mitigated") == "challenge" || (challenged(r) && Regex("<title>\\s*Just a moment|_cf_chl_opt|cf-chl-|challenge-form", RegexOption.IGNORE_CASE).containsMatchIn(r.body))
     // the movie sites hop domains (egydead.space sends on to the current one)
     private val ED_RE = Regex("^https://([a-z0-9-]+\\.)*(egydead|myseed|arabseed)\\.[a-z]+/")
-    // mangatek's api and reader pages sit behind Cloudflare too (a 403 check for OkHttp): one page per host, their paths differ
+    // mangatek's api and reader pages sit behind Cloudflare too: one page per host, their paths differ
     private val TEK_RE = Regex("^https://((api\\.)?mangatek)\\.com/")
     private fun site(url: String) = if (url.startsWith(SITE)) "witanime" else ED_RE.find(url)?.groupValues?.get(2) ?: TEK_RE.find(url)?.groupValues?.get(1)
     // site -> the origin its requests go through a real page on, once Cloudflare refused our native client there
@@ -103,13 +103,16 @@ object Net {
         while (true) {
             val key = site(url)
             val origin = key?.let { via[it] }
+            // the sites at one fixed host: any refusal of our native client sends them through their page, not just Cloudflare's check
+            // (mangatek: some phones' connections get a plain block, or are dropped, where a browser gets through)
+            val home = if (key == "witanime") SITE else if (key?.endsWith("mangatek") == true) "https://$key.com" else null
             val r = if (origin != null && redirects) pages.getOrPut(origin) { SitePage(origin) }.fetch(origin + url.replace(Regex("^https://[^/]+"), ""), if (post) "POST" else "GET", headers, stopAt)
             else try { native(url, headers, post, redirects, stopAt, asPlayer, form) } catch (e: IOException) {
-                if (key != "witanime" || origin != null) throw e
-                via[key] = SITE; continue // a connection that stalls or drops for our native client: through the page
+                if (home == null || origin != null) throw e
+                via[key!!] = home; continue // a connection that stalls or drops for our native client: through the page
             }
-            if (origin == null && redirects && key == "witanime" && challenged(r)) { via[key] = SITE; continue }
-            if (origin == null && redirects && key != null && key != "witanime" && cfCheck(r)) { via[key] = java.net.URI(r.url).let { "${it.scheme}://${it.host}" }; continue }
+            if (origin == null && redirects && home != null && challenged(r)) { via[key!!] = home; continue }
+            if (origin == null && redirects && key != null && home == null && cfCheck(r)) { via[key] = java.net.URI(r.url).let { "${it.scheme}://${it.host}" }; continue }
             if (r.status != 429 || i == 3) return r
             delay((r.header("retry-after")?.toLongOrNull() ?: (1L shl i)) * 1000) // see main.js
             i++

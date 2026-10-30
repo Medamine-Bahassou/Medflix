@@ -188,6 +188,7 @@ fun App() {
     Store.version.intValue // a language change redraws everything
     var update by remember { mutableStateOf<Updater.Release?>(null) }
     var askStorage by remember { mutableStateOf(false) }
+    var feedback by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         // Android takes the folder's permission away on uninstall: asked right away, once per install (one sheet at a time)
         if (!Store.granted() && !Store["prefs"].has("storageAsked")) askStorage = true
@@ -195,7 +196,7 @@ fun App() {
     }
     CompositionLocalProvider(LocalLayoutDirection provides if (Store.lang == "ar") LayoutDirection.Rtl else LayoutDirection.Ltr) {
         MaterialTheme(darkColorScheme(primary = Red, background = Bg, surface = Bg, surfaceContainer = CardC, onPrimary = Color.White, secondaryContainer = Red)) {
-            ModalNavigationDrawer({ Drawer(top, tab) }, drawerState = drawer, gesturesEnabled = !top.full() || drawer.isOpen) {
+            ModalNavigationDrawer({ Drawer(top, tab) { feedback = true; scope.launch { drawer.close() } } }, drawerState = drawer, gesturesEnabled = !top.full() || drawer.isOpen) {
                 Scaffold(containerColor = Bg, bottomBar = { if (!top.full()) Dock(top, tab) }) { pad ->
                     // the reader takes the whole screen, under the phone's bars, so its pages don't move as they hide; its own bars pad themselves
                     Box(Modifier.padding(if (top is Screen.MangaRead) PaddingValues() else pad).fillMaxSize()) {
@@ -231,6 +232,7 @@ fun App() {
             cardMenu?.let { CardMenu(it) { cardMenu = null } }
             if (askStorage) StorageSheet { askStorage = false }
             update?.let { u -> UpdateSheet(u) { update = null } }
+            if (feedback) FeedbackSheet { feedback = false }
         }
     }
     // composed last, so it goes first: Cloudflare's check over the app is closed by back (its requests fail, the next asks again)
@@ -261,9 +263,9 @@ private fun section(s: Screen) = when (s) {
     is Screen.Settings, Screen.Hidden -> "settings"
 }
 
-/** the side drawer: every section, settings, language (app.js renderNav) */
+/** the side drawer: every section, settings, feedback, language (app.js renderNav) */
 @Composable
-private fun Drawer(top: Screen, tab: (Screen) -> Unit) {
+private fun Drawer(top: Screen, tab: (Screen) -> Unit, feedback: () -> Unit) {
     ModalDrawerSheet(drawerContainerColor = Color(0xFF141414), modifier = Modifier.width(290.dp)) {
         Logo(Modifier.padding(start = 24.dp, top = 28.dp, bottom = 16.dp))
         val item = @Composable { id: String, s: Screen, icon: ImageVector ->
@@ -273,6 +275,8 @@ private fun Drawer(top: Screen, tab: (Screen) -> Unit) {
         NAV.forEach { (id, v) -> item(id, v.first, v.second()) }
         HorizontalDivider(Modifier.padding(vertical = 12.dp, horizontal = 24.dp), color = Color(0x22FFFFFF))
         item("settings", Screen.Settings(), Ic.settings)
+        NavigationDrawerItem({ Text(t("feedback"), fontSize = 15.sp) }, false, feedback, Modifier.padding(horizontal = 12.dp), { Icon(Ic.info, null, Modifier.size(22.dp)) },
+            colors = NavigationDrawerItemDefaults.colors(unselectedIconColor = Color(0xFFCCCCCC), unselectedTextColor = Color(0xFFCCCCCC)))
         Spacer(Modifier.weight(1f))
         LangSwitch(Modifier.padding(24.dp))
     }
