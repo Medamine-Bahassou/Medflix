@@ -100,7 +100,7 @@ fun SectionScreen(name: String, nav: Nav) = Column {
     }
 }
 
-// ---------- the anime schedule (app.js schedule / airing) ----------
+// ---------- the anime schedule (app.js schedule) ----------
 private var schedQ by mutableStateOf("") // stays through refreshes and coming back from a show
 
 /**
@@ -127,12 +127,12 @@ fun ScheduleScreen(nav: Nav) = Column {
             val ws = fold(schedQ).split(' ').filter { it.isNotEmpty() }
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
                 if (ws.isEmpty()) items(all.groupBy { day(it.at) }.toList(), { it.first }) { (d, l) ->
-                    CardRowView(dayName(d), l.map { Card("/airing/${it.route}", "anime", it.title, it.poster, "", "", time(it), null, "/airing/${it.route}", open = Screen.Airing(it.route)) }, nav)
+                    CardRowView(dayName(d), l.map { Card("/airing/${it.route}", "anime", it.title, it.poster, "", "", time(it), null, "/airing/${it.route}") }, nav)
                 } else {
                     val hits = all.filter { s -> fold(s.title).let { f -> ws.all { it in f } } }
                     if (hits.isEmpty()) item { Empty(t("schedNone"), t("schedNoneHint")) }
                     items(hits, { it.route }) { s ->
-                        Row(Modifier.fillMaxWidth().clickable { nav.go(Screen.Airing(s.route)) }.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.fillMaxWidth().clickable { nav.go(Screen.Search(s.title, "anime")) }.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                             AsyncImage(s.poster, null, Modifier.width(48.dp).aspectRatio(2 / 3f).clip(RoundedCornerShape(4.dp)), contentScale = ContentScale.Crop)
                             Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                                 Text(s.title, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -143,19 +143,6 @@ fun ScheduleScreen(nav: Nav) = Column {
                     }
                 }
             }
-        }
-    }
-}
-
-/** a schedule card: its show on witanime, which replaces this page (back returns to the schedule), else "not here yet" */
-@Composable
-fun AiringScreen(route: String, nav: Nav) {
-    val (l, retry) = loadedOnce(route) { Witanime.airing(route) }
-    Body(l, retry) { (path, title) ->
-        if (path != null) return@Body LaunchedEffect(path) { nav.replace(Screen.Title(path)) }
-        Column {
-            PageTitle(title, nav)
-            Empty(title, t("notOnSite")) { OutlinedButton(nav.back) { Text(t("schedule"), color = Color.White) } }
         }
     }
 }
@@ -224,8 +211,9 @@ private suspend fun fuzzySearch(q: String, kind: String, ask: suspend (String) -
 
 /** search: witanime's titles, the movie sites' and manga, a row each, each with its spelling guesses (app.js search) */
 @Composable
-fun SearchScreen(q0: String, nav: Nav) {
+fun SearchScreen(q0: String, nav: Nav, kind0: String = "") {
     var q by rememberSaveable { mutableStateOf(q0) }
+    var kind by rememberSaveable { mutableStateOf(kind0) } // "": every section; else only that one is asked, and shown as a grid
     val typed by produceState(q0.trim(), q) { delay(400); value = q.trim() } // ask once typing stops
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { if (q.isEmpty()) focus.requestFocus() }
@@ -236,18 +224,24 @@ fun SearchScreen(q0: String, nav: Nav) {
                 leadingIcon = { Icon(Ic.search, null, Modifier.size(20.dp)) }, trailingIcon = { if (q.isNotEmpty()) IconButton({ q = "" }) { Icon(Ic.x, t("clear"), Modifier.size(18.dp)) } }, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 shape = RoundedCornerShape(6.dp), colors = TextFieldDefaults.colors(focusedContainerColor = CardC, unfocusedContainerColor = CardC, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, cursorColor = Red))
         }
+        Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("", "anime", "cinema", "manga").forEach { k -> FilterChip(kind == k, { kind = k }, { Text(t(k.ifEmpty { "all" })) }) }
+        }
         if (typed.isEmpty()) return@Column
-        val (l, retry) = loadedOnce(typed) { _ ->
+        val (l, retry) = loadedOnce(typed, kind) { _ ->
             coroutineScope {
-                val a = async { runCatching { fuzzySearch(typed, "anime") { Witanime.search(it).first().items } }.getOrNull() }
-                val c = async { runCatching { fuzzySearch(typed, "film") { Cinema.search(it) } }.getOrNull() }
-                val m = async { runCatching { fuzzySearch(typed, "manga") { Manga.browse(mapOf("search" to it), 1, HashSet()).items } }.getOrNull() }
+                // a section left out isn't asked (null, like one that didn't answer)
+                fun ask(k: String, go: suspend () -> List<Card>) = async { if (kind.isEmpty() || kind == k) runCatching { go() }.getOrNull() else null }
+                val a = ask("anime") { fuzzySearch(typed, "anime") { Witanime.search(it).first().items } }
+                val c = ask("cinema") { fuzzySearch(typed, "film") { Cinema.search(it) } }
+                val m = ask("manga") { fuzzySearch(typed, "manga") { Manga.browse(mapOf("search" to it), 1, HashSet()).items } }
                 if (a.await() == null && c.await() == null && m.await() == null) throw java.io.IOException(t("unreachable"))
                 Triple(a.await() ?: emptyList(), c.await() ?: emptyList(), m.await() ?: emptyList())
             }
         }
         Body(l, retry) { (a, c, m) ->
             if (a.isEmpty() && c.isEmpty() && m.isEmpty()) return@Body Empty(t("nothing"), t("tryElse"))
+            if (kind.isNotEmpty()) return@Body CardsGrid(a + c + m, nav) // one section: the others are empty
             LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
                 item { CardRowView(t("anime"), a, nav) }
                 item { CardRowView(t("cinema"), c, nav) }

@@ -278,7 +278,7 @@ object Witanime {
         return emptyList()
     }
 
-    // ---------- animeschedule.net: the anime schedule (scraper.js airTimes / airNames / airScore) ----------
+    // ---------- animeschedule.net: the anime schedule (scraper.js airTimes / airScore) ----------
     private const val AS = "https://animeschedule.net"
     // the timetable's "2026-10-28T14:30+01:00", read where SimpleDateFormat's ISO zone (X) isn't (before Android 7)
     private fun isoMs(s: String) = runCatching {
@@ -300,13 +300,6 @@ object Witanime {
             }
             best.values.map { it.second }
         }
-    }
-    // a show's names (main romaji title first, then English and the others), to find it on witanime
-    suspend fun airNames(route: String): List<String> {
-        val d = JSONObject(Pages.load("$AS/api/v3/anime/${URLEncoder.encode(route, "UTF-8")}"))
-        val n = d.optJSONObject("names") ?: JSONObject()
-        val syn = n.optJSONArray("synonyms")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList()
-        return (listOf(n.optString("romaji"), n.optString("english"), d.optString("title")) + syn).filter { it.isNotEmpty() }.distinct()
     }
     // a title's words as both sites can agree on them: "2nd Season" / "Season 2" / "II" / a last "2" -> s2, "Cour 2" / "Part 2" /
     // "2nd Cour" -> p2 (season and part 1 dropped), long vowels shortened (Reijou / Reijo, Juuou / Jyu Oh)
@@ -334,21 +327,6 @@ object Witanime {
         val ns = names.filter { it.isNotBlank() }.ifEmpty { return null }
         val a = airTimes().map { a -> ns.maxOf { airScore(a.title, it) } to a }.filter { it.first >= .6 }.maxByOrNull { it.first }?.second ?: return null
         return if (a.at > System.currentTimeMillis()) a else a.copy(at = a.at + 7 * 86_400_000L, ep = a.ep.toIntOrNull()?.plus(1)?.toString() ?: "")
-    }
-    /**
-     * a schedule card's show on witanime (its path, else null) and its name: searched by each of its names until one gives a title
-     * that matches, and last by its first word (witanime's search wants the start of its own spelling: "Ranma ½ (2024) 3rd Season"
-     * finds nothing, "Ranma" finds "Ranma1/2 3rd Season") (app.js airing)
-     */
-    suspend fun airing(route: String): Pair<String?, String> {
-        val s = runCatching { airTimes() }.getOrNull()?.find { it.route == route }
-        val names = (runCatching { airNames(route) }.getOrDefault(emptyList()) + (s?.title ?: route.replace('-', ' '))).distinct().take(4)
-        val w = Manga.norm(names[0]).split(' ')
-        for (q in (names + if (w[0].length >= 5) w[0] else w.take(2).joinToString(" ")).filter { it.isNotBlank() }) {
-            val best = runCatching { search(q).first().items }.getOrDefault(emptyList()).map { i -> names.maxOf { airScore(i.title, it) } to i }.maxByOrNull { it.first }
-            if (best != null && best.first >= .6) return best.second.path to names[0]
-        }
-        return null to (s?.title ?: names[0])
     }
 }
 

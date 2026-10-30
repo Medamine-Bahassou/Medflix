@@ -84,7 +84,9 @@ object Net {
     private fun cfCheck(r: Resp) = r.header("cf-mitigated") == "challenge" || (challenged(r) && Regex("<title>\\s*Just a moment|_cf_chl_opt|cf-chl-|challenge-form", RegexOption.IGNORE_CASE).containsMatchIn(r.body))
     // the movie sites hop domains (egydead.space sends on to the current one)
     private val ED_RE = Regex("^https://([a-z0-9-]+\\.)*(egydead|myseed|arabseed)\\.[a-z]+/")
-    private fun site(url: String) = if (url.startsWith(SITE)) "witanime" else ED_RE.find(url)?.groupValues?.get(2)
+    // mangatek's api and reader pages sit behind Cloudflare too (a 403 check for OkHttp): one page per host, their paths differ
+    private val TEK_RE = Regex("^https://((api\\.)?mangatek)\\.com/")
+    private fun site(url: String) = if (url.startsWith(SITE)) "witanime" else ED_RE.find(url)?.groupValues?.get(2) ?: TEK_RE.find(url)?.groupValues?.get(1)
     // site -> the origin its requests go through a real page on, once Cloudflare refused our native client there
     private val via = java.util.concurrent.ConcurrentHashMap<String, String>()
     private val pages = java.util.concurrent.ConcurrentHashMap<String, SitePage>()

@@ -19,7 +19,6 @@ app.once('browser-window-created', (_, win) => win.webContents.once('did-finish-
       ok(m.items.length && m.items[0].type === 'movie', 'movies');
       const air = await scraper.airTimes(true);
       ok(air.length > 50 && air.every(a => a.title && a.poster && !isNaN(new Date(a.at))), 'schedule ' + air.length);
-      ok((await scraper.airNames('detective-conan')).includes('Meitantei Conan'), 'schedule show names');
       ok(scraper.airScore('Ao no Hako Season 2', 'Ao no Hako 2nd Season') === 1 && scraper.airScore('Ao no Hako', 'Ao no Hako 2nd Season') === 0, 'title match');
       const s = await scraper.search('naruto');
       ok(s.items.some(i => i.path === '/anime/naruto'), 'search');

@@ -126,9 +126,6 @@ parsers.airTimes = doc => {
   }
   return Object.values(best);
 };
-// a show's names (main romaji title first, then English and the others), from its fast JSON API (or HTML fallback), to find it on witanime
-parsers.airNames = d => [...new Set((d.names ? [d.names.romaji, d.names.english, d.title, ...(d.names.synonyms || [])]
-  : [d.querySelector('#anime-header-main-title'), d.querySelector('#anime-header-english-title'), ...d.querySelectorAll('.alternative-name')].map(txt)).filter(Boolean))];
 // a title's words as both sites can agree on them: "2nd Season" / "Season 2" / "II" / a last "2" -> s2, "Cour 2" / "Part 2" /
 // "2nd Cour" -> p2 (season and part 1 dropped), long vowels shortened (Reijou / Reijo, Juuou / Jyu Oh)
 const airWords = s => ` ${norm(s)} `
@@ -299,7 +296,7 @@ function fetchPage(kind, url) {
   let p = inflight.get(url);
   if (!p) {
     p = api.fetch(url).then(text => {
-      const isJson = /^(manga|kitsu)/.test(kind) || (kind === 'airNames' && text.trim().startsWith('{'));
+      const isJson = /^(manga|kitsu)/.test(kind);
       const data = parsers[kind](isJson ? JSON.parse(text) : kind === 'newEpisodes' ? text : parse(text), url);
       cache[url] = { at: Date.now(), data };
       save();
@@ -337,7 +334,6 @@ async function load(kind, url, force = false, keep = false) {
 window.scraper = {
   home: force => load('home', '/', force),
   airTimes: force => load('airTimes', AS + '/', force).then(a => (Array.isArray(a) ? a : [])), // [] : an older cached format
-  airNames: route => load('airNames', `${AS}/api/v3/anime/${encodeURIComponent(route)}`),
   airScore,
   AS,
   // base may carry a query (`/browse?sort=Most Viewed`); the page number goes before it

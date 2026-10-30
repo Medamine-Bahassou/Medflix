@@ -14,7 +14,7 @@ const STR = {
     manga: 'مانجا', browseAll: 'تصفح الكل', continueReading: 'تابع القراءة', mHot: 'الأعمال الرائجة', mLatest: 'آخر الفصول', mPopular: 'الأكثر قراءة', mNew: 'أعمال جديدة',
     mSearchPh: 'ابحث عن مانجا أو مانهوا…', mSortNew: 'الأحدث', mSortViews: 'الأكثر قراءة', mSortRating: 'الأعلى تقييمًا', mSortTitle: 'أبجديًا',
     chapter: 'الفصل', chShort: 'ف', chapters: 'الفصول', read: 'ابدأ القراءة', resumeCh: n => `تابع الفصل ${n}`, prevCh: 'الفصل السابق', nextCh: 'الفصل التالي',
-    jumpCh: 'انتقل إلى فصل…', readMode: 'قراءة أفقية / عمودية', vertical: 'عمودي', horizontal: 'أفقي', continuous: 'قراءة متواصلة', readingMode: 'طريقة القراءة', nextEp: 'الحلقة القادمة', source: 'المصدر', sourceN: n => `المصدر ${n}`, autoScroll: 'تمرير تلقائي', slower: 'أبطأ', faster: 'أسرع', views: n => `${n} مشاهدة`, noImages: 'لا توجد صفحات في هذا الفصل', endOfChapter: 'نهاية الفصل', chRead: 'مقروء', fullscreen: 'ملء الشاشة', notOnSite: 'هذا الأنمي غير متوفر بعد.', mainServers: 'السيرفرات', backupServers: 'سيرفرات احتياطية', theSite: 'الموقع', backAgain: 'اضغط رجوع مرة أخرى للخروج', lockUi: 'قفل الأزرار', unlockUi: 'إلغاء القفل', scheduleShort: 'المواعيد',
+    jumpCh: 'انتقل إلى فصل…', readMode: 'قراءة أفقية / عمودية', vertical: 'عمودي', horizontal: 'أفقي', continuous: 'قراءة متواصلة', readingMode: 'طريقة القراءة', nextEp: 'الحلقة القادمة', source: 'المصدر', sourceN: n => `المصدر ${n}`, autoScroll: 'تمرير تلقائي', slower: 'أبطأ', faster: 'أسرع', views: n => `${n} مشاهدة`, noImages: 'لا توجد صفحات في هذا الفصل', endOfChapter: 'نهاية الفصل', chRead: 'مقروء', fullscreen: 'ملء الشاشة', mainServers: 'السيرفرات', backupServers: 'سيرفرات احتياطية', theSite: 'الموقع', backAgain: 'اضغط رجوع مرة أخرى للخروج', lockUi: 'قفل الأزرار', unlockUi: 'إلغاء القفل', scheduleShort: 'المواعيد',
     filter: 'تصفية', apply: 'تطبيق', reset: 'إعادة ضبط', all: 'الكل',
     f_sort: 'الترتيب', f_type: 'النوع', f_status: 'الحالة', f_year: 'السنة', f_season: 'الموسم', seasons: 'المواسم', f_version: 'الترجمة',
     f_country: 'البلد', f_source: 'المصدر', f_genres: 'التصنيفات',
@@ -47,7 +47,7 @@ const STR = {
     manga: 'Manga', browseAll: 'Browse all', continueReading: 'Continue Reading', mHot: 'Trending', mLatest: 'Latest Chapters', mPopular: 'Most Read', mNew: 'New Series',
     mSearchPh: 'Search manga, manhwa…', mSortNew: 'Newest', mSortViews: 'Most read', mSortRating: 'Top rated', mSortTitle: 'A-Z',
     chapter: 'Chapter', chShort: 'Ch', chapters: 'Chapters', read: 'Start reading', resumeCh: n => `Resume Ch ${n}`, prevCh: 'Previous chapter', nextCh: 'Next chapter',
-    jumpCh: 'Jump to chapter…', readMode: 'Horizontal / vertical reading', vertical: 'Vertical', horizontal: 'Horizontal', continuous: 'Continuous reading', readingMode: 'Reading mode', nextEp: 'Next episode', source: 'Source', sourceN: n => `Source ${n}`, autoScroll: 'Auto-scroll', slower: 'Slower', faster: 'Faster', views: n => `${n} views`, noImages: 'This chapter has no pages', endOfChapter: 'End of chapter', chRead: 'Read', fullscreen: 'Fullscreen', notOnSite: "This anime isn't available yet.", mainServers: 'Servers', backupServers: 'Backup servers', theSite: 'the site', backAgain: 'Press back again to leave', lockUi: 'Lock controls', unlockUi: 'Unlock', scheduleShort: 'Schedule',
+    jumpCh: 'Jump to chapter…', readMode: 'Horizontal / vertical reading', vertical: 'Vertical', horizontal: 'Horizontal', continuous: 'Continuous reading', readingMode: 'Reading mode', nextEp: 'Next episode', source: 'Source', sourceN: n => `Source ${n}`, autoScroll: 'Auto-scroll', slower: 'Slower', faster: 'Faster', views: n => `${n} views`, noImages: 'This chapter has no pages', endOfChapter: 'End of chapter', chRead: 'Read', fullscreen: 'Fullscreen', mainServers: 'Servers', backupServers: 'Backup servers', theSite: 'the site', backAgain: 'Press back again to leave', lockUi: 'Lock controls', unlockUi: 'Unlock', scheduleShort: 'Schedule',
     filter: 'Filters', apply: 'Apply', reset: 'Reset', all: 'All',
     f_sort: 'Sort', f_type: 'Type', f_status: 'Status', f_year: 'Year', f_season: 'Season', seasons: 'Seasons', f_version: 'Language',
     f_country: 'Country', f_source: 'Source', f_genres: 'Genres',
@@ -680,20 +680,11 @@ async function schedule(force) {
   $('#rf').onclick = () => pageRefresh().then(() => toast(t('updated')));
 }
 
-// a schedule card (#/airing/<animeschedule slug>): the show on witanime, searched by each of its names (romaji, English...)
-// until one gives a title that matches, and last by its first word (witanime's search wants the start of its own spelling:
-// "Ranma ½ (2024) 3rd Season" finds nothing, "Ranma" finds "Ranma1/2 3rd Season"); the page is replaced by it, so back returns to the schedule
+// a schedule card (#/airing/<animeschedule slug>): its title searched among the anime (witanime may not list it yet, or spell
+// it its own way); the page is replaced by the search, so back returns to the schedule
 async function airing(route) {
-  const s = (await scraper.airTimes()).find(x => x.route === route);
-  const names = [...new Set([...await scraper.airNames(route).catch(() => []), s?.title || route.replace(/-/g, ' ')])].slice(0, 4);
-  const w = names[0].toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(' ');
-  for (const q of [...names, w[0].length >= 5 ? w[0] : w.slice(0, 2).join(' ')].filter(Boolean)) {
-    const [score, hit] = (await scraper.search(q).catch(() => ({ items: [] }))).items
-      .map(i => [Math.max(...names.map(n => scraper.airScore(i.title, n))), i]).sort((a, b) => b[0] - a[0])[0] || [];
-    if (score >= .6) return location.replace('#/title' + hit.path);
-  }
-  view.innerHTML = `<div class="center"><div class="empty"><b>${esc(s?.title || names[0])}</b>${t('notOnSite')}<br><br>
-    <a class="btn ghost" href="#/schedule">${t('schedule')}</a></div></div>`;
+  const s = (await scraper.airTimes().catch(() => [])).find(x => x.route === route);
+  location.replace('#/search/' + encodeURIComponent(s?.title || route.replace(/-/g, ' ')) + '?in=anime');
 }
 
 // loading placeholders: n cards (their image box already shimmers, see .card .img), and rows of them
@@ -753,14 +744,25 @@ async function fuzzySearch(q, kind, ask) {
     .sort((a, b) => b.s - a.s || a.c.title.length - b.c.title.length).map(x => x.c); // as close: the shorter title (the show, before its spin-offs)
 }
 
+// #/search/<q>?in=<section>: only that section is asked, its matches in one grid
 async function search(q) {
+  const IN = /\?in=(anime|manga|cinema)$/, s = q.match(IN)?.[1] || '';
+  q = q.replace(IN, '');
   $('#search').q.value = q;
-  const head = `<h1>${esc(t('results', q))} <a class="btn ghost small h1-btn" href="#/filter/1?search=${encodeURIComponent(q)}">${ICON.filter} ${t('filter')}</a></h1>`;
+  const tabs = `<div class="fchips">${['', 'anime', 'manga', 'cinema'].map(k =>
+    `<a class="fchip ${k === s ? 'on' : ''}" href="#/search/${encodeURIComponent(q)}${k && '?in=' + k}">${t(k || 'all')}</a>`).join('')}</div>`;
+  const head = `<h1>${esc(t('results', q))} <a class="btn ghost small h1-btn" href="#/filter/1?search=${encodeURIComponent(q)}">${ICON.filter} ${t('filter')}</a></h1>${tabs}`;
+  if (s === 'manga' || s === 'cinema') {
+    view.innerHTML = `<div class="page">${head}<div class="grid" id="sres">${skel(12)}</div></div>`;
+    const html = await moreResults(s === 'manga' && { search: q }, s === 'cinema' && { search: q }, [], true);
+    if ($('#sres')) $('#sres').outerHTML = html;
+    return;
+  }
   view.innerHTML = `<div class="page">${head}<div class="grid">${skel(12)}</div></div><div class="rows sched-rows">${skelRows(2)}</div>`;
   const d = { items: await fuzzySearch(q, 'anime', v => scraper.search(v).then(r => r.items)) };
   // "nothing here" only once the manga and film rows came back empty too
   view.innerHTML = `<div class="page">${head}${d.items.length ? grid(d.items) : ''}</div><div class="rows sched-rows" id="mres">${skelRows(2)}</div>`;
-  const more = await moreResults({ search: q }, { search: q }, d.items);
+  const more = s ? '' : await moreResults({ search: q }, { search: q }, d.items); // ?in=anime: witanime's alone
   if (!$('#mres')) return;
   $('#mres').innerHTML = more;
   if (!more && !d.items.length) $('.page').insertAdjacentHTML('beforeend', grid([]));
@@ -768,8 +770,8 @@ async function search(q) {
 // manga and film matches, as rows (the search page, and the filter page). mq: a manga browse query (MangaSwat's terms; and:
 // more genre ids each card must have), fq: films (see filmQuery in filter.js; { search } alone for the search page); either
 // null to leave that section out. egydead's anime films are already dropped by category; this also drops one it filed
-// elsewhere when witanime listed the same film (same title, same year)
-async function moreResults(mq, fq, anime = []) {
+// elsewhere when witanime listed the same film (same title, same year). asGrid: one grid of both (a search in one section)
+async function moreResults(mq, fq, anime = [], asGrid) {
   const { and = [], ...api } = mq || {}, tq = mq && !and.length && tekQuery(new URLSearchParams(api));
   const ask = (kind, fn, s) => s ? fuzzySearch(s, kind, fn) : fn(); // a search: what was meant too (see fuzzySearch)
   const [m, tm, f] = await Promise.all([
@@ -788,6 +790,7 @@ async function moreResults(mq, fq, anime = []) {
     const same = (a, b) => (a = ar(a), b = ar(b), a.includes(b) || b.includes(a) || a.length >= 4 && b.length >= 4 && a.slice(0, 4) === b.slice(0, 4));
     films = films.filter((c, i) => pages[i] && fq.genres.every(g => pages[i].genres.some(x => same(x, g))) && (!fq.country || pages[i].tags.some(x => same(x, fq.country))));
   }
+  if (asGrid) return grid([...manga, ...films]);
   return (manga.length ? row(t('manga'), manga, '#/manga/browse/1' + (Object.keys(api).length ? '?' + new URLSearchParams(api) : '')) : '')
     + row(t('cinema'), films, fq && !fq.search ? '#/cinema/browse/all' : '');
 }

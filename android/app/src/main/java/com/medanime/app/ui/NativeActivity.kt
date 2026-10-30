@@ -88,7 +88,7 @@ sealed interface Screen {
     data object Home : Screen
     data object Anime : Screen
     data class Grid(val title: String, val base: String) : Screen
-    data class Search(val q: String = "") : Screen
+    data class Search(val q: String = "", val kind: String = "") : Screen // kind: one section only ("anime"...), else all
     data object MyList : Screen
     data class Settings(val part: String = "") : Screen // part: one of its pages ("": its menu)
     data class Title(val path: String) : Screen
@@ -106,7 +106,6 @@ sealed interface Screen {
     data class Section(val name: String) : Screen // a home row's full listing
     data object Hidden : Screen // cards long-pressed away
     data object Schedule : Screen // the anime's air times this week
-    data class Airing(val route: String) : Screen // a schedule card: its show, found on witanime
     data class Trailer(val url: String, val title: String) : Screen // a title's trailer, played in the app
 }
 // full-screen pages: no dock, no drawer swipe
@@ -205,7 +204,7 @@ fun App() {
                                 Screen.Home -> HomeScreen(nav)
                                 Screen.Anime -> AnimeScreen(nav)
                                 is Screen.Grid -> Column { PageTitle(top.title, nav); CardGrid(top.base, nav) }
-                                is Screen.Search -> SearchScreen(top.q, nav)
+                                is Screen.Search -> SearchScreen(top.q, nav, top.kind)
                                 Screen.MyList -> MyListScreen(nav)
                                 is Screen.Settings -> SettingsScreen(top.part, nav)
                                 is Screen.Title -> TitleScreen(top.path, nav)
@@ -223,7 +222,6 @@ fun App() {
                                 is Screen.Section -> SectionScreen(top.name, nav)
                                 Screen.Hidden -> HiddenScreen(nav)
                                 Screen.Schedule -> ScheduleScreen(nav)
-                                is Screen.Airing -> AiringScreen(top.route, nav)
                                 is Screen.Trailer -> TrailerScreen(top.url, top.title, nav)
                             }
                         }
@@ -256,7 +254,7 @@ private fun section(s: Screen) = when (s) {
     Screen.Anime, is Screen.Grid, is Screen.Title, is Screen.Play, is Screen.Section, is Screen.Trailer -> "anime" // a trailer: full screen, no dock to light
     Screen.Cinema, is Screen.CinemaBrowse, is Screen.CinemaTitle, is Screen.CinemaPlay -> "cinema"
     Screen.Manga, is Screen.MangaBrowse, is Screen.MangaSeries, is Screen.MangaRead -> "manga"
-    Screen.Schedule, is Screen.Airing -> "schedule"
+    Screen.Schedule -> "schedule"
     Screen.MyList -> "myList"
     is Screen.Downloads, is Screen.Offline -> "downloads"
     is Screen.Search -> "search"
@@ -433,6 +431,8 @@ fun screenFor(c: Card): Screen = c.open ?: when {
     c.type == "episode" -> Screen.Play(c.path)
     c.showPath.startsWith("/manga/series/") -> Screen.MangaSeries(c.showPath.substringAfterLast('/'))
     c.showPath.startsWith("/cinema/") -> Screen.CinemaTitle(c.showPath.removePrefix("/cinema/"))
+    // a schedule card: its title searched (witanime may not list it yet, or under another spelling)
+    c.showPath.startsWith("/airing/") -> Screen.Search(c.title, "anime")
     else -> Screen.Title(c.showPath)
 }
 
