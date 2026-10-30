@@ -7,8 +7,8 @@
   "scripts": {
     "start": "electron . 2>&1 | grep --line-buffered -v '^Fontconfig warning'",
     "build:web": "rm -rf www && mkdir www && cp index.html icons.js app.js scraper.js mobile.js filter.js manga.js cinema.js style.css www/ && echo \"window.BUILD = '$(date '+%Y-%m-%d %H:%M')';\" > www/build.js",
-    "apk": "cd android && rm -rf app/src/main/assets/public && ./gradlew assembleDebug && cp app/build/outputs/apk/debug/app-debug.apk ../MEDFLIX.apk",
-    "release": "npm run apk && tag=b$(cat android/app/build/build-stamp.txt) && gh release create $tag MEDFLIX.apk --title $tag --generate-notes"
+    "apk": "node release.js",
+    "release": "node release.js release"
   },
   "devDependencies": {
     "@capacitor/android": "^8.5.3",
