@@ -60,7 +60,7 @@ Java no longer ship, except `DownloadService` (the download notification), which
 
 ## Style
 
-- **Look**: Netflix dark. `--bg #0a0a0a`, `--red #e50914`, `--card #181818`, `--muted`, `--ease`, defined on `:root` in `style.css`.
+- **Look**: Netflix dark. `--bg #000` (AMOLED black), `--red #e50914`, `--card #181818`, `--muted`, `--ease`, defined on `:root` in `style.css`.
   Use these tokens, not new colours. Hero with Ken Burns slides, horizontal card rows, skeleton loaders, bottom sheets
   (`.sheet-wrap` / `.sheet`), and toasts (`toast(msg, bad)`).
 - **Arabic first, RTL**: the default language is `ar`. Every user-visible string goes in `STR` in **both** `ar` and `en`, read with `t('key')`.

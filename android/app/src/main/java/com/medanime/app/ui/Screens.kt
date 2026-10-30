@@ -388,7 +388,7 @@ fun DetailPage(banner: String, poster: String, title: String, alt: String, chips
                     }
                     if (desc.isNotEmpty()) Text(desc, Modifier.padding(top = 12.dp).clickable { more = !more }, color = Color(0xFFCCCCCC), fontSize = 14.sp, lineHeight = 22.sp,
                         maxLines = if (more) Int.MAX_VALUE else 4, overflow = TextOverflow.Ellipsis)
-                    FlowRow(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), content = buttons)
+                    FlowRow(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = buttons)
                     if (info.isNotEmpty()) FlowRow(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         info.forEach { (k, v) -> Column { Text(k, color = Muted, fontSize = 11.sp); Text(v, fontSize = 13.sp) } }
                     }
@@ -410,26 +410,38 @@ fun DetailPage(banner: String, poster: String, title: String, alt: String, chips
 }
 
 @Composable
-fun RedButton(label: String, onClick: () -> Unit) = Button(onClick, colors = ButtonDefaults.buttonColors(Red), shape = RoundedCornerShape(4.dp)) {
+fun RedButton(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) = Button(onClick, modifier, colors = ButtonDefaults.buttonColors(Red), shape = RoundedCornerShape(8.dp)) {
     Icon(Ic.play, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(label, fontWeight = FontWeight.Bold)
 }
+/** a title's page: its main action, the whole width (Android's filled button) */
+@Composable
+fun PlayButton(label: String, onClick: () -> Unit) = RedButton(label, Modifier.fillMaxWidth().height(48.dp), onClick)
+/**
+ * a title's other actions, side by side under it: an icon over its name, sharing the row (as the Play Store's and Netflix's
+ * apps do); on: what it does is set (in the list, notifying), the icon red
+ */
+@Composable
+fun FlowRowScope.Action(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, on: Boolean = false, onClick: () -> Unit) =
+    Column(Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Icon(icon, null, Modifier.size(24.dp), tint = if (on) Red else Color.White)
+        Text(label, Modifier.padding(top = 4.dp), color = if (on) Color.White else Color(0xFFB3B3B3), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
 @Composable
 fun GhostButton(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) =
     OutlinedButton(onClick, shape = RoundedCornerShape(4.dp), border = BorderStroke(1.dp, Color(0x55FFFFFF))) {
         Icon(icon, null, Modifier.size(18.dp), tint = Color.White); Spacer(Modifier.width(6.dp)); Text(label, color = Color.White)
     }
 @Composable
-fun ListButton(path: String, title: String, poster: String, type: String) {
+fun FlowRowScope.ListButton(path: String, title: String, poster: String, type: String) {
     Store.version.intValue
     val on = Store.inList(path)
-    GhostButton(if (on) t("inList") else t("myList"), if (on) Ic.check else Ic.plus) { Store.toggleList(path, title, poster, type).let { toast(if (it) t("added", title) else t("removed")) } }
+    Action(if (on) t("inList") else t("myList"), if (on) Ic.check else Ic.plus, on) { Store.toggleList(path, title, poster, type).let { toast(if (it) t("added", title) else t("removed")) } }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TitleScreen(path: String, nav: Nav) {
     val (l, refresh) = loaded(path, quiet = true) { Witanime.details(path, it) }
-    val open = openUrl()
     PullToRefreshBox(l.busy && l.data != null, refresh) {
         Body(l, refresh) { d ->
             Store.version.intValue
@@ -440,11 +452,20 @@ fun TitleScreen(path: String, nav: Nav) {
             val last = h?.optString("epPath")
             val first = last ?: d.episodes.firstOrNull()?.path
             val type = if (path.startsWith("/movie")) "movie" else "anime"
-            DetailPage(d.banner, d.poster, d.title, d.alt, d.tags.mapIndexed { i, c -> c to (i == 2) } + d.genres.map { it to false }, d.desc, {
-                if (first != null) RedButton(if (h != null) t("resume", h.optString("ep")) else t("play")) { nav.go(Screen.Play(first)) }
+            // its next episode's day and time, from the schedule: a red chip first, when it's in this week's timetable
+            val air by produceState<Air?>(null, d.title) {
+                if (type == "anime") value = runCatching { Witanime.nextAir(listOf(d.title) + d.alt.split(Regex("\\s*[,،]\\s*"))) }.getOrNull()
+            }
+            val airChip = air?.let { a ->
+                val loc = java.util.Locale(Store.lang); val at = java.util.Date(a.at)
+                val day = if (android.text.format.DateUtils.isToday(a.at)) t("today") else java.text.SimpleDateFormat("EEEE d MMM", loc).format(at)
+                "${t("nextEp")} · ${if (a.ep.isNotEmpty()) "${t("epShort")} ${a.ep} · " else ""}$day · ${java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT, loc).format(at)}" to true
+            }
+            DetailPage(d.banner, d.poster, d.title, d.alt, listOfNotNull(airChip) + d.tags.mapIndexed { i, c -> c to (i == 2) } + d.genres.map { it to false }, d.desc, {
+                if (first != null) PlayButton(if (h != null) t("resume", h.optString("ep")) else t("play")) { nav.go(Screen.Play(first)) }
                 ListButton(path, d.title, d.poster, type)
                 if (type == "anime") NotifyButton(path, d.title, d.poster, d.episodes.lastOrNull()?.path ?: "")
-                if (d.trailer.isNotEmpty()) GhostButton(t("trailer"), Ic.play) { open(d.trailer) }
+                if (d.trailer.isNotEmpty()) Action(t("trailer"), Ic.play) { nav.go(Screen.Trailer(d.trailer, d.title)) }
             }, d.info, nav, if (d.episodes.size > 1 || type == "anime") t("episodes") else null,
                 d.episodes.map { Numbered(it.ep, Store["seen"].has(it.path), it.path == last, Screen.Play(it.path), it.path, com.medanime.app.Downloads.done(it.path),
                     thumb = info[it.ep.toIntOrNull()]?.thumb?.ifEmpty { null } ?: d.banner.ifEmpty { d.poster }, name = info[it.ep.toIntOrNull()]?.name.orEmpty()) },

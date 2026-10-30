@@ -51,9 +51,12 @@ object Store {
         runCatching { JSONObject(file(key).readText()) }.getOrDefault(JSONObject())
     }
 
-    /** saves key whole (app.js persist), written aside then swapped in: a crash mid-write never leaves a half file */
-    fun persist(key: String) {
-        version.intValue++
+    /**
+     * saves key whole (app.js persist), written aside then swapped in: a crash mid-write never leaves a half file. quiet:
+     * no redraw (the reader's place, saved twice a second while scrolling, redrew the whole app each time)
+     */
+    fun persist(key: String, quiet: Boolean = false) {
+        if (!quiet) version.intValue++
         val text = get(key).toString()
         io.execute {
             val f = file(key)

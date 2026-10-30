@@ -48,7 +48,6 @@ fun similar(a: String, b: String): Double {
 fun CinemaTitleScreen(slug: String, show: Boolean, nav: Nav) {
     if (slug.startsWith("episode/") && !show) return LaunchedEffect(slug) { nav.replace(Screen.CinemaPlay(slug)) } // an episode plays straight away
     val (l, refresh) = loadedOnce(slug, show, quiet = true) { f -> Cinema.movie(slug, f) }
-    val open = openUrl()
     androidx.compose.material3.pulltorefresh.PullToRefreshBox(l.busy && l.data != null, refresh) {
         Body(l, refresh) { m ->
             val path = "/cinema/$slug"
@@ -71,10 +70,10 @@ fun CinemaTitleScreen(slug: String, show: Boolean, nav: Nav) {
                 else if (h != null) Screen.CinemaPlay(h.optString("slug")) to "${t("play")} · ${t("ep")} ${h.optString("ep")}"
                 else eps.firstOrNull()?.let { Screen.CinemaPlay(it.slug) to t("play") }
             DetailPage(m.banner, m.poster, m.title, m.year, m.cat.map { it to true } + (m.tags + m.genres).map { it to false }, m.desc, {
-                play?.let { (s, label) -> RedButton(label) { nav.go(s) } }
+                play?.let { (s, label) -> PlayButton(label) { nav.go(s) } }
                 ListButton(path, m.title, m.poster, "cinema")
                 if (slug.contains('/')) NotifyButton(path, m.title, m.poster, eps.lastOrNull()?.slug ?: "") // a series' season; new films have their own switch (settings)
-                if (m.trailer.isNotEmpty()) GhostButton(t("trailer"), Ic.play) { open(m.trailer) }
+                if (m.trailer.isNotEmpty()) Action(t("trailer"), Ic.play) { nav.go(Screen.Trailer(m.trailer, m.title)) }
             }, emptyList(), nav, if (eps.isNotEmpty()) t("episodes") else null,
                 eps.map { Numbered(it.n, Store["seen"].has("/cinema/${it.slug}"), h?.optString("slug") == it.slug, Screen.CinemaPlay(it.slug), "/cinema/${it.slug}", thumb = m.banner.ifEmpty { m.poster }) }, // the site gives no episode names or stills
                 acts = { listOf("seen" to t("markWatched"), "unseen" to t("markUnwatched")) },

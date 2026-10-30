@@ -78,7 +78,8 @@ object Downloads {
     private fun queue(id: String, rec: JSONObject, quiet: Boolean = false) {
         val cur = of(id)?.optString("state")
         if (cur == "active" || cur == "done") return if (quiet) Unit else toast(t(if (cur == "done") "dlDone" else "dlActive"))
-        all().put(id, rec.put("id", id).put("state", if (held(rec.optString("show"))) "paused" else "queued").put("received", 0).put("total", 0))
+        unhold(rec.optString("show"))
+        all().put(id, rec.put("id", id).put("state", "queued").put("received", 0).put("total", 0))
         save()
         askNotifications()
         pump()
@@ -91,11 +92,12 @@ object Downloads {
     /** a series' chapters, oldest first: their page images */
     fun chapters(serieId: String, title: String, poster: String, chs: List<Ch>) {
         var added = 0
+        unhold("/manga/series/$serieId")
         for (c in chs) {
             val id = "manga:${c.id}"
             if (of(id)?.optString("state").let { it != null && it != "error" && it != "cancelled" }) continue
             all().put(id, JSONObject().put("id", id).put("kind", "manga").put("show", "/manga/series/$serieId").put("chapterId", c.id).put("title", title)
-                .put("ep", c.n).put("poster", poster).put("state", if (held("/manga/series/$serieId")) "paused" else "queued").put("received", 0).put("total", 0).put("at", System.currentTimeMillis() + added++))
+                .put("ep", c.n).put("poster", poster).put("state", "queued").put("received", 0).put("total", 0).put("at", System.currentTimeMillis() + added++))
         }
         save()
         toast(if (added > 0) t("dlQueuedN", added) else t("dlDone"))
@@ -180,6 +182,9 @@ object Downloads {
         pump()
     }
     fun retry(id: String) { of(id)?.let { it.put("state", "paused") }; resume(id) } // the same: now, ahead of the show's others
+    // a download asked for starts, Pause all or its show paused or not: only that show lets go (its paused items stay
+    // paused, every other show stays held)
+    private fun unhold(show: String) { if (held(show)) setHeld(show, false) }
     // one item or show resumed: its show (and Pause all) no longer hold it back; other paused shows stay held
     private fun setHeld(show: String?, on: Boolean) {
         val prefs = Store["prefs"]

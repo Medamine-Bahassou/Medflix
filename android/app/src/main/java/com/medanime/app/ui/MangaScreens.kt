@@ -140,7 +140,7 @@ fun MangaSeriesScreen(id: String, nav: Nav) {
                 listOfNotNull(s.type.takeIf { it.isNotEmpty() }?.let { Manga.typeName(it) to false }, s.status.takeIf { it.isNotEmpty() }?.let { Manga.label(Manga.STATUS, it) to false },
                     s.rating.takeIf { it.isNotEmpty() }?.let { "★ $it" to true }, t("views", "%,d".format(s.views)) to false) + s.genres.map { it to false },
                 s.story, {
-                    start?.let { (cid, label) -> RedButton(label) { nav.go(Screen.MangaRead(cid)) } }
+                    start?.let { (cid, label) -> PlayButton(label) { nav.go(Screen.MangaRead(cid)) } }
                     ListButton("/manga/series/$id", s.title, s.poster, "manga")
                     NotifyButton("/manga/series/$id", s.title, s.poster, full.chs.firstOrNull()?.id ?: "")
                 }, emptyList(), nav, t("chapters"),
@@ -162,51 +162,91 @@ fun MangaSeriesScreen(id: String, nav: Nav) {
     }
 }
 
-private class Reading(val c: MChapter, val chs: List<Ch>, val sid: String, val title: String, val poster: String, val saved: Boolean, val alts: List<Ch>) // alts: this chapter's copies
+private class Reading(val c: MChapter, val chs: List<Ch>, val sid: String, val title: String, val poster: String, val alts: Map<String, List<Ch>>) // alts: a number's copies
 
 // the reader's lock outlives its chapters (they replace each other), as manga.js's rdLocked
 private var rdLocked by mutableStateOf(false)
 
+// a downloaded chapter opens from its saved copy straight away, without waiting for the site (online or not)
+private suspend fun chapterOf(cid: String): MChapter {
+    val dl = com.medanime.app.Downloads.of("manga:$cid")?.takeIf { it.optString("state") == "done" && (it.optJSONArray("files")?.length() ?: 0) > 0 } ?: return Manga.chapter(cid)
+    val files = dl.getJSONArray("files"); val meta = dl.optJSONObject("meta")
+    return MChapter(cid, dl.optString("ep"), meta?.optString("prev")?.ifEmpty { null }, meta?.optString("next")?.ifEmpty { null }, dl.optString("show").substringAfterLast('/'),
+        dl.optString("title"), dl.optString("poster"), (0 until files.length()).map { java.io.File(files.getString(it)).toURI().toString() })
+}
+
 /**
  * the reader: the chapter's pages down the screen, or one per screen swiped sideways (horizontal mode); a tap in the middle
- * shows or hides the bars; locked, they stay hidden (manga.js mangaReader)
+ * shows or hides the bars; locked, they stay hidden (manga.js mangaReader). Continuous (the default), the next chapter's
+ * pages follow this one's end in the same list as it's reached; off, the end has a next-chapter button
  */
 @OptIn(FlowPreview::class, ExperimentalMaterial3Api::class)
 @Composable
 fun MangaReaderScreen(cid: String, nav: Nav) {
     val (l, retry) = loadedOnce(cid) { _ ->
-        // a downloaded chapter opens from its saved copy straight away, without waiting for the site (online or not)
-        val dl = com.medanime.app.Downloads.of("manga:$cid")?.takeIf { it.optString("state") == "done" && (it.optJSONArray("files")?.length() ?: 0) > 0 }
-        val c = if (dl != null) {
-            val files = dl.getJSONArray("files"); val meta = dl.optJSONObject("meta")
-            MChapter(cid, dl.optString("ep"), meta?.optString("prev")?.ifEmpty { null }, meta?.optString("next")?.ifEmpty { null }, dl.optString("show").substringAfterLast('/'),
-                dl.optString("title"), dl.optString("poster"), (0 until files.length()).map { java.io.File(files.getString(it)).toURI().toString() })
-        } else Manga.chapter(cid)
+        val c = chapterOf(cid)
         // the series as listed (a MangaTek chapter may belong to a MangaSwat series); prev / next walk its merged chapter list
         val full = runCatching { Manga.full(c.serieId) }.getOrNull()
-        Reading(c, full?.chs ?: emptyList(), full?.s?.id ?: c.serieId, full?.s?.title ?: c.serieTitle, full?.s?.poster ?: c.seriePoster, dl != null, full?.alts?.get(c.n) ?: emptyList())
+        Reading(c, full?.chs ?: emptyList(), full?.s?.id ?: c.serieId, full?.s?.title ?: c.serieTitle, full?.s?.poster ?: c.seriePoster, full?.alts ?: emptyMap())
     }
     var lockBackAt by remember { mutableLongStateOf(0L) }
     // locked: the first back only warns, a second one within 2s leaves
     BackHandler(rdLocked) { if (System.currentTimeMillis() - lockBackAt < 2000) nav.back() else { lockBackAt = System.currentTimeMillis(); toast(t("backAgain")) } }
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         Body(l, retry) { d ->
-            val c = d.c
-            val at = d.chs.indexOfFirst { it.id == c.id || it.n == c.n }
-            val next = if (at >= 0) d.chs.getOrNull(at - 1)?.id else c.next // newest first
-            val prev = if (at >= 0) d.chs.getOrNull(at + 1)?.id else c.prev
+            // the chapters in the list, in order; each takes its pages + its end as items. Items are keyed by chapter + page:
+            // a chapter put before them shifts their indexes, and the list and pager stay on the item they showed
+            val chain = remember(cid) { mutableStateListOf(d.c) }
+            // item g: its chapter k, its page there (the chapter's page count: its end), and the chapter's first item. Reads
+            // the chain on each call: the effects below keep the first composition's lambdas
+            val of = { g: Int ->
+                var k = 0; var base = 0
+                while (k < chain.lastIndex && g >= base + chain[k].images.size + 1) { base += chain[k].images.size + 1; k++ }
+                Triple(k, g - base, base)
+            }
+            val atOf = { ch: MChapter -> d.chs.indexOfFirst { it.id == ch.id || it.n == ch.n } }
+            val nextOf = { ch: MChapter -> atOf(ch).let { if (it >= 0) d.chs.getOrNull(it - 1)?.id else ch.next } } // newest first
+            val prevOf = { ch: MChapter -> atOf(ch).let { if (it >= 0) d.chs.getOrNull(it + 1)?.id else ch.prev } }
             val horiz = Store["prefs"].optBoolean("mangaH") // horizontal: one page per screen, swiped sideways
+            val cont = Store["prefs"].optBoolean("mangaCont", true)
             // every chapter resumes its own spot: page index + how far down that page (tall manhwa strips need the fraction)
             val spots = remember(cid) {
                 val r = Store["manga"].optJSONObject(d.sid)
                 r?.optJSONObject("spots") ?: JSONObject().apply { if (r != null) put(r.optString("chapterId"), r.optDouble("page", 0.0)) } // older saves kept one spot
             }
-            val spot = spots.optDouble(c.id, 0.0)
-            LaunchedEffect(cid) {
+            val spot = remember(cid) { spots.optDouble(d.c.id, 0.0) }
+            // the item at the top (or the pager's page): which chapter is being read, for the bars, the history and the spot
+            // kept as chapter + page, not an index: a chapter put before it would point it at another one for a frame
+            var top by remember(cid) { mutableStateOf(d.c.id to spot.toInt()) }
+            val k = chain.indexOfFirst { it.id == top.first }.coerceAtLeast(0)
+            val base = chain.take(k).sumOf { it.images.size + 1 }
+            val g = base + top.second
+            val c = chain[k]
+            val follow = { i: Int -> top = of(i).let { (ci, p) -> chain[ci].id to p } }
+            val next = nextOf(c); val prev = prevOf(c)
+            LaunchedEffect(c.id) {
                 Store["manga"].put(d.sid, JSONObject().put("id", d.sid).put("title", d.title).put("poster", d.poster).put("chapterId", c.id).put("n", c.n).put("spots", spots).put("at", System.currentTimeMillis()))
                 if (!Store["mangaSeen"].has(c.id)) Store["mangaSeen"].put(c.id, 1) // 1: opened, 2: read to the last page
-                Store.persist("manga"); Store.persist("mangaSeen")
+                Store.persist("manga", true); Store.persist("mangaSeen", true)
             }
+            // continuous: the next chapter is fetched as the last one's last pages come up; failed, its end has the button
+            val tail = chain.last(); val tailNext = nextOf(tail)
+            val near = cont && tailNext != null && g >= chain.dropLast(1).sumOf { it.images.size + 1 } + tail.images.size - 3
+            var failed by remember(cid) { mutableStateOf<String?>(null) }
+            LaunchedEffect(near, tailNext) {
+                if (near) try { chapterOf(tailNext!!).let { x -> if (chain.none { it.id == x.id }) chain.add(x) } } // the same one twice: stop there
+                catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; failed = tailNext }
+            }
+            // and the previous one as the first one's top comes up: scrolling back up goes on into it (failed: the prev button)
+            val headPrev = prevOf(chain.first())
+            val nearTop = cont && headPrev != null && g < 2
+            LaunchedEffect(nearTop, headPrev) {
+                if (nearTop) try { chapterOf(headPrev!!).let { x -> if (chain.none { it.id == x.id }) { measure(x.images.takeLast(3)); chain.add(0, x) } } }
+                catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e }
+            }
+            val keyOf = { i: Int -> of(i).let { (ci, p) -> "${chain[ci].id}:$p" } }
+            // and the pages just above the top one, so scrolling back up they come in at their size
+            LaunchedEffect(g, chain.size) { measure((g - 3 until g).filter { it >= 0 }.mapNotNull { of(it).let { (ci, p) -> chain[ci].images.getOrNull(p) } }) }
             var bars by remember { mutableStateOf(true) }
             val showBars = bars && !rdLocked
             // its bars away (reading, or locked): the phone's status and navigation bars too, the pages on the whole screen;
@@ -217,12 +257,16 @@ fun MangaReaderScreen(cid: String, nav: Nav) {
                 if (showBars) sys.show(androidx.core.view.WindowInsetsCompat.Type.systemBars()) else sys.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
             }
             DisposableEffect(Unit) { onDispose { sys.show(androidx.core.view.WindowInsetsCompat.Type.systemBars()) } }
-            // where the reader is: page i (+ how far down it; null: unknown, the spot stays); last, the last page in view: the
+            // where the reader is: item i (+ how far down it; null: unknown, the spot stays); last, the last item in view: a
             // chapter's last page there marks it read (not the spot: it peeks in while the page above is still being read)
             val reached = { i: Int?, frac: Double, last: Int ->
-                if (i != null && i < c.images.size) spots.put(c.id, i + minOf(.999, frac))
-                if (last >= c.images.size - 1 && c.images.isNotEmpty() && Store["mangaSeen"].optInt(c.id) != 2) { Store["mangaSeen"].put(c.id, 2); Store.persist("mangaSeen") }
-                Store.persist("manga")
+                if (i != null) of(i).let { (ci, p) -> if (p < chain[ci].images.size) spots.put(chain[ci].id, p + minOf(.999, frac)) }
+                var b = 0
+                chain.forEach { ch ->
+                    if (ch.images.isNotEmpty() && last >= b + ch.images.size - 1 && Store["mangaSeen"].optInt(ch.id) != 2) { Store["mangaSeen"].put(ch.id, 2); Store.persist("mangaSeen", true) }
+                    b += ch.images.size + 1
+                }
+                Store.persist("manga", true)
             }
             // here: the bottom bar shows where it is. Not saveable: the screen holder put back last time's pixel offset over the
             // 480dp placeholders, which spilled into the pages below; the saved spot places it instead
@@ -232,7 +276,7 @@ fun MangaReaderScreen(cid: String, nav: Nav) {
             var auto by remember(cid) { mutableStateOf(false) }
             var speedOpen by remember { mutableStateOf(false) }
             var speed by remember { mutableFloatStateOf(Store["prefs"].optDouble("mangaSpeed", 3.0).toFloat()) }
-            val setSpeed = { v: Float -> speed = (Math.round(v * 2) / 2f).coerceIn(.5f, 10f); Store["prefs"].put("mangaSpeed", speed.toDouble()); Store.persist("prefs") }
+            val setSpeed = { v: Float -> speed = (Math.round(v * 2) / 2f).coerceIn(.5f, 10f); Store["prefs"].put("mangaSpeed", speed.toDouble()); Store.persist("prefs", true) }
             val dens = androidx.compose.ui.platform.LocalDensity.current.density
             // gliding, nobody touches the phone: the screen stays on until it stops
             val view = androidx.compose.ui.platform.LocalView.current
@@ -247,8 +291,8 @@ fun MangaReaderScreen(cid: String, nav: Nav) {
                     try { list.scrollBy(dy) } catch (e: kotlinx.coroutines.CancellationException) { if (!kotlinx.coroutines.currentCoroutineContext().isActive) throw e }
                 }
             }
-            // zoom, 1x-4x (manga.js readerZoom): pinched around the fingers, or a double tap for 2.5x and back; zoomed, one finger
-            // also pans sideways while the pages still scroll under it. A single tap shows or hides the bars
+            // zoom, 1x-4x (manga.js readerZoom): pinched around the fingers; zoomed, one finger also pans sideways while the
+            // pages still scroll under it. A tap shows or hides the bars (no double tap: waiting for one held every tap back)
             var z by remember(cid) { mutableFloatStateOf(1f) }
             var off by remember(cid) { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
             var box by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
@@ -271,15 +315,21 @@ fun MangaReaderScreen(cid: String, nav: Nav) {
                         } while (e.changes.any { it.pressed })
                     }
                 }
-                .pointerInput(Unit) { detectTapGestures(onDoubleTap = { zoomTo(if (z > 1f) 1f else 2.5f, it) },
-                    onTap = { if (!rdLocked) bars = !bars }) }
+                .pointerInput(Unit) { detectTapGestures(onTap = { if (!rdLocked) bars = !bars }) }
                 .graphicsLayer { scaleX = z; scaleY = z; translationX = off.x; translationY = off.y; transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f) }
-            val end = @Composable {
-                Column(Modifier.fillMaxWidth().padding(vertical = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("${t("endOfChapter")} ${c.n}", color = Muted)
-                    Spacer(Modifier.height(12.dp))
-                    if (next != null) RedButton(t("nextCh")) { nav.replace(Screen.MangaRead(next)) }
-                    else GhostButton(t("chapters"), Ic.manga) { nav.replace(Screen.MangaSeries(d.sid)) }
+            // chapter k's end: between chained chapters a plain divider; the last one's has the next chapter coming (continuous),
+            // or its button
+            val end: @Composable (Int) -> Unit = { ci ->
+                val ch = chain[ci]; val nx = nextOf(ch)
+                Column(Modifier.fillMaxWidth().padding(vertical = if (ci < chain.lastIndex) 24.dp else 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    if (ch.images.isEmpty()) Text(t("noImages"), Modifier.padding(bottom = 8.dp), fontWeight = FontWeight.Bold)
+                    Text("${t("endOfChapter")} ${ch.n}", color = Muted)
+                    if (ci == chain.lastIndex) {
+                        Spacer(Modifier.height(12.dp))
+                        if (nx == null) GhostButton(t("chapters"), Ic.manga) { nav.replace(Screen.MangaSeries(d.sid)) }
+                        else if (cont && failed != nx) CircularProgressIndicator(Modifier.size(28.dp), color = Red)
+                        else RedButton(t("nextCh")) { nav.replace(Screen.MangaRead(nx)) }
+                    }
                 }
             }
             var seekAt by remember { mutableLongStateOf(0L) } // the last jump from the scrollbar
@@ -287,41 +337,46 @@ fun MangaReaderScreen(cid: String, nav: Nav) {
             // with the next half-second's scroll; not while the speed row is open, and a jump from the scrollbar gives them 4s more
             LaunchedEffect(showBars, auto, speedOpen, seekAt) { if (auto && showBars && !speedOpen) { kotlinx.coroutines.delay(4000); bars = false } }
             if (horiz) {
-                val pager = androidx.compose.foundation.pager.rememberPagerState(spot.toInt().coerceAtMost(c.images.size)) { c.images.size + 1 }
+                val pager = androidx.compose.foundation.pager.rememberPagerState(g) { chain.sumOf { it.images.size + 1 } }
+                LaunchedEffect(pager) { snapshotFlow { pager.currentPage }.collect(follow) }
                 LaunchedEffect(pager) { snapshotFlow { pager.settledPage }.collect { if (it > 0) bars = false; reached(it, 0.0, it) } }
-                androidx.compose.foundation.pager.HorizontalPager(pager, Modifier.fillMaxSize().then(toggle), userScrollEnabled = z == 1f) { i -> // zoomed: the swipe pans, not turns
+                androidx.compose.foundation.pager.HorizontalPager(pager, Modifier.fillMaxSize().then(toggle), userScrollEnabled = z == 1f, key = keyOf) { i -> // zoomed: the swipe pans, not turns
+                    val (pk, p) = of(i)
                     // each page scrolls on its own when taller than the screen
-                    if (i < c.images.size) Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), Alignment.Center) {
-                        MangaPage(c.images[i], Modifier.fillMaxWidth())
-                    } else Box(Modifier.fillMaxSize(), Alignment.Center) { end() }
+                    if (p < chain[pk].images.size) Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), Alignment.Center) {
+                        MangaPage(chain[pk].images[p], Modifier.fillMaxWidth())
+                    } else Box(Modifier.fillMaxSize(), Alignment.Center) { end(pk) }
                 }
                 // which page of how many (an LTR isolate: "3 / 15" in Arabic too); above the bar while it shows, not on the end page
-                if (pager.currentPage < c.images.size) Text("\u2066${pager.currentPage + 1} / ${c.images.size}\u2069",
+                val p = pager.currentPage - base
+                if (p < c.images.size) Text("⁦${p + 1} / ${c.images.size}⁩",
                     Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = if (showBars) 76.dp else 16.dp)
                         .background(Color(0x99000000), RoundedCornerShape(99.dp)).padding(horizontal = 12.dp, vertical = 4.dp),
                     color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             } else {
-                // each page's drawn height (px): its placeholder when it's drawn again (scrolled back to, nothing moves), and what a
+                // each item's drawn height (px): its placeholder when it's drawn again (scrolled back to, nothing moves), and what a
                 // spot's fraction is of, saved and restored alike
-                val heights = remember(cid) { mutableStateMapOf<Int, Int>() }
+                val heights = remember(cid) { mutableStateMapOf<String, Int>() }
                 // the saved spot's fraction down its page: only known once that page is drawn. Until then nothing is saved, or the
                 // first save would overwrite the spot with the page's top; a scroll by hand first gives up
-                var restored by remember(cid) { mutableStateOf(spot == 0.0 || spot.toInt() >= c.images.size) }
+                var restored by remember(cid) { mutableStateOf(spot == 0.0 || spot.toInt() >= d.c.images.size) }
                 LaunchedEffect(cid) {
                     if (restored) return@LaunchedEffect
-                    val at = spot.toInt()
-                    val byHand = snapshotFlow { if (list.isScrollInProgress) true else if (heights[at] != null) false else null }.first { it != null }!!
-                    if (!byHand) list.scrollToItem(at, Math.round((spot - at) * heights[at]!!).toInt())
+                    val at = spot.toInt(); val key = "${d.c.id}:$at"
+                    val byHand = snapshotFlow { if (list.isScrollInProgress) true else if (heights[key] != null) false else null }.first { it != null }!!
+                    // its index now: the previous chapter may have come in above meanwhile
+                    if (!byHand) list.scrollToItem(chain.takeWhile { it.id != d.c.id }.sumOf { it.images.size + 1 } + at, Math.round((spot - at) * heights[key]!!).toInt())
                     restored = true
                 }
-                // the spot now, all read from the list at once: the top page + how far down its laid-out height. Not while that page
+                // the spot now, all read from the list at once: the top item + how far down its laid-out height. Not while that page
                 // is still its placeholder (the fraction of 480dp lands elsewhere once it loads), nor before the saved spot is back
                 val save = {
                     val i = list.firstVisibleItemIndex
-                    val h = heights[i]
+                    val h = heights[keyOf(i)]
                     if (restored) reached(if (h != null) i else null, list.firstVisibleItemScrollOffset.toDouble() / maxOf(1, h ?: 1),
                         list.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0)
                 }
+                LaunchedEffect(list) { snapshotFlow { list.firstVisibleItemIndex }.collect(follow) }
                 // every half second while it moves (auto-scroll never settles, a debounce never fired), and once more on leaving
                 LaunchedEffect(list) {
                     snapshotFlow { list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset }.sample(500).filter { restored }.collect { (i, _) ->
@@ -331,14 +386,27 @@ fun MangaReaderScreen(cid: String, nav: Nav) {
                 }
                 DisposableEffect(list) { onDispose { save() } }
                 LazyColumn(Modifier.fillMaxSize().then(toggle), list) {
-                    if (c.images.isEmpty()) item { Empty(t("noImages"), "") }
-                    itemsIndexed(c.images) { i, src ->
-                        MangaPage(src, Modifier.fillMaxWidth(), heights[i]) { heights[i] = it }
+                    chain.forEachIndexed { ci, ch ->
+                        itemsIndexed(ch.images, { i, _ -> "${ch.id}:$i" }) { i, src -> MangaPage(src, Modifier.fillMaxWidth(), heights["${ch.id}:$i"]) { heights["${ch.id}:$i"] = it } }
+                        item("${ch.id}:${ch.images.size}") { end(ci) }
                     }
-                    item { end() }
                 }
             }
             var picker by remember { mutableStateOf(false) }
+            var menu by remember { mutableStateOf(false) }
+            var page by remember { mutableStateOf("") } // the menu's page: "" its options, "source" or "mode" a choice
+            var delAsk by remember { mutableStateOf(false) }
+            val scope = rememberCoroutineScope()
+            // its saved copy deleted (as on the downloads page, asked first): read from its files, the site's copy takes its
+            // place in the list (same items, so the place stays); offline, its pages are gone
+            if (delAsk) AlertDialog({ delAsk = false }, { TextButton({
+                    delAsk = false; com.medanime.app.Downloads.delete("manga:${c.id}")
+                    val id = c.id
+                    if (c.images.firstOrNull()?.startsWith("file:") == true) scope.launch {
+                        runCatching { Manga.chapter(id) }.getOrNull()?.let { x -> chain.indexOfFirst { it.id == id }.takeIf { it >= 0 }?.let { chain[it] = x } }
+                    }
+                }) { Text(t("del"), color = Red) } }, dismissButton = { TextButton({ delAsk = false }) { Text(t("cancel"), color = Color.White) } },
+                title = { Text(t("confirmDel", "${d.title} · ${t("chapter")} ${c.n}"), fontSize = 17.sp) }, text = { Text(t("confirmDelHint")) }, containerColor = CardC)
             AnimatedVisibility(showBars, Modifier.align(Alignment.TopCenter), enter = fadeIn(), exit = fadeOut()) {
                 Row(Modifier.fillMaxWidth().background(Color(0xE6000000)).statusBarsPadding().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(nav.back) { Icon(Ic.back, null, Modifier.size(22.dp)) }
@@ -346,10 +414,42 @@ fun MangaReaderScreen(cid: String, nav: Nav) {
                         Text(d.title, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text("${t("chapter")} ${c.n}", color = Muted, fontSize = 12.sp)
                     }
-                    if (d.alts.size > 1) SourceMenu(d.alts, c.id) { nav.replace(Screen.MangaRead(it)) }
-                    com.medanime.app.Downloads.tick.intValue
-                    IconButton({ if (d.saved || com.medanime.app.Downloads.done("manga:${c.id}")) toast(t("dlDone")) else com.medanime.app.Downloads.chapters(d.sid, d.title, d.poster, listOf(Ch(c.id, c.n))) }) {
-                        Icon(Ic.download, if (d.saved) t("offline") else t("downloadShort"), Modifier.size(22.dp), tint = if (d.saved || com.medanime.app.Downloads.done("manga:${c.id}")) Red else Color.White)
+                    // ⋮: this chapter's download and copy (no site names), and how to read
+                    Box {
+                        IconButton({ page = ""; menu = true }) { Icon(Ic.dots, t("more"), Modifier.size(22.dp)) }
+                        DropdownMenu(menu, { menu = false }, containerColor = CardC) {
+                            com.medanime.app.Downloads.tick.intValue
+                            val done = com.medanime.app.Downloads.done("manga:${c.id}")
+                            val alts = d.alts[c.n].orEmpty()
+                            val mode = { h: Boolean -> menu = false; Store["prefs"].put("mangaH", h); Store.persist("prefs") }
+                            // a choice opens in the menu's place (Android's submenus): a back row, then its options as radios
+                            val head: @Composable (String) -> Unit = { title ->
+                                DropdownMenuItem({ Text(title, fontWeight = FontWeight.Bold) }, { page = "" }, leadingIcon = { Icon(Ic.back, null, Modifier.size(18.dp)) })
+                                HorizontalDivider(color = Color(0x22FFFFFF))
+                            }
+                            val option: @Composable (String, Boolean, () -> Unit) -> Unit = { label, on, go ->
+                                DropdownMenuItem({ Text(label) }, go, leadingIcon = { RadioButton(on, null, Modifier.size(20.dp), colors = RadioButtonDefaults.colors(selectedColor = Red)) })
+                            }
+                            // a choice in the options: its name, what it is now under it, a chevron to its page
+                            val entry: @Composable (String, String, androidx.compose.ui.graphics.vector.ImageVector, String) -> Unit = { title, now, icon, to ->
+                                DropdownMenuItem({ Column { Text(title); Text(now, color = Muted, fontSize = 12.sp) } }, { page = to },
+                                    leadingIcon = { Icon(icon, null, Modifier.size(18.dp)) }, trailingIcon = { Icon(Ic.next, null, Modifier.size(14.dp), tint = Muted) })
+                            }
+                            when (page) {
+                                "source" -> { head(t("source")); alts.forEachIndexed { i, a -> option(t("sourceN", i + 1), a.id == c.id) { menu = false; if (a.id != c.id) nav.replace(Screen.MangaRead(a.id)) } } }
+                                "mode" -> { head(t("readingMode")); option(t("vertical"), !horiz) { mode(false) }; option(t("horizontal"), horiz) { mode(true) } }
+                                else -> {
+                                    DropdownMenuItem({ Text(t("downloadShort")) }, { menu = false; if (done) toast(t("dlDone")) else com.medanime.app.Downloads.chapters(d.sid, d.title, d.poster, listOf(Ch(c.id, c.n))) },
+                                        leadingIcon = { Icon(Ic.download, null, Modifier.size(18.dp), tint = if (done) Red else Color.White) }, trailingIcon = { if (done) Icon(Ic.check, null, Modifier.size(16.dp), tint = Red) })
+                                    if (done) DropdownMenuItem({ Text(t("del")) }, { menu = false; delAsk = true }, leadingIcon = { Icon(Ic.trash, null, Modifier.size(18.dp)) })
+                                    HorizontalDivider(color = Color(0x22FFFFFF))
+                                    if (alts.size > 1) entry(t("source"), t("sourceN", alts.indexOfFirst { it.id == c.id }.coerceAtLeast(0) + 1), Ic.folder, "source")
+                                    entry(t("readingMode"), t(if (horiz) "horizontal" else "vertical"), if (horiz) Ic.horiz else Ic.vert, "mode")
+                                    DropdownMenuItem({ Text(t("continuous")) }, { Store["prefs"].put("mangaCont", !cont); Store.persist("prefs") }, leadingIcon = { Icon(Ic.refresh, null, Modifier.size(18.dp)) },
+                                        trailingIcon = { Switch(cont, null, colors = SwitchDefaults.colors(checkedTrackColor = Red)) })
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -360,11 +460,10 @@ fun MangaReaderScreen(cid: String, nav: Nav) {
                     IconButton({ setSpeed(speed - .5f) }) { Icon(Ic.minus, null, Modifier.size(18.dp)) }
                     Slider(speed, { setSpeed(it) }, Modifier.weight(1f), valueRange = .5f..10f, steps = 18, colors = SliderDefaults.colors(thumbColor = Red, activeTrackColor = Red))
                     IconButton({ setSpeed(speed + .5f) }) { Icon(Ic.plus, null, Modifier.size(18.dp)) }
-                    Text("\u2066${if (speed % 1 == 0f) speed.toInt() else speed}x\u2069", Modifier.width(40.dp), color = Color.White, fontSize = 13.sp)
+                    Text("⁦${if (speed % 1 == 0f) speed.toInt() else speed}x⁩", Modifier.width(40.dp), color = Color.White, fontSize = 13.sp)
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     IconButton({ rdLocked = true }) { Icon(Ic.lock, t("lockUi"), Modifier.size(20.dp)) }
-                    IconButton({ Store["prefs"].put("mangaH", !horiz); Store.persist("prefs") }) { Icon(if (horiz) Ic.horiz else Ic.vert, t("readMode"), Modifier.size(20.dp), tint = if (horiz) Red else Color.White) }
                     // playing closes the speed row
                     if (!horiz) Box(Modifier.size(48.dp).combinedClickable(onLongClick = { speedOpen = !speedOpen }) { auto = !auto; if (auto) speedOpen = false }, Alignment.Center) {
                         Icon(if (auto) Ic.pause else Ic.play, t("autoScroll"), Modifier.size(20.dp), tint = if (auto) Red else Color.White)
@@ -374,7 +473,7 @@ fun MangaReaderScreen(cid: String, nav: Nav) {
                     if (d.chs.isNotEmpty()) TextButton({ picker = true }) { Text("${t("chShort")} ${c.n}", color = Color.White, fontSize = 15.sp); Icon(Ic.caretUp, null, Modifier.padding(start = 6.dp).size(14.dp), tint = Color.White) }
                     IconButton({ next?.let { nav.replace(Screen.MangaRead(it)) } }, enabled = next != null) { Icon(Ic.next, t("nextCh"), Modifier.size(22.dp)) }
                 }
-                if (!horiz && c.images.isNotEmpty()) ReaderScrollbar(list, c.images.size) { seekAt = System.currentTimeMillis() } }
+                if (!horiz && c.images.isNotEmpty()) ReaderScrollbar(list, base, c.images.size) { seekAt = System.currentTimeMillis() } }
             }
             // locked: a faint button brings the bars back
             if (rdLocked) IconButton({ rdLocked = false; bars = true }, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 24.dp).background(Color(0x55000000), androidx.compose.foundation.shape.CircleShape)) {
@@ -382,7 +481,7 @@ fun MangaReaderScreen(cid: String, nav: Nav) {
             }
             if (picker) ModalBottomSheet({ picker = false }, containerColor = CardC) {
                 val seen = Store["mangaSeen"]
-                LazyColumn(state = rememberLazyListState(maxOf(0, at - 3))) {
+                LazyColumn(state = rememberLazyListState(maxOf(0, atOf(c) - 3))) {
                     itemsIndexed(d.chs) { _, x ->
                         Row(Modifier.fillMaxWidth().clickable { picker = false; nav.replace(Screen.MangaRead(x.id)) }.padding(horizontal = 24.dp, vertical = 14.dp)) {
                             Text("${t("chapter")} ${x.n}", Modifier.weight(1f), color = if (x.id == c.id) Red else if (seen.has(x.id)) Muted else Color.White, fontWeight = if (x.id == c.id) FontWeight.Bold else FontWeight.Normal)
@@ -401,24 +500,6 @@ fun MangaReaderScreen(cid: String, nav: Nav) {
 internal fun ReadBadge() = Text(t("chRead"), Modifier.padding(start = 8.dp).background(Color(0x1AFFFFFF), RoundedCornerShape(99.dp)).padding(horizontal = 8.dp, vertical = 2.dp),
     color = Color(0xFFCCCCCC), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
 
-/** a chapter with several copies (two sites, or one listing it twice): which one to read, by number, no site names */
-@Composable
-private fun SourceMenu(alts: List<Ch>, cur: String, pick: (String) -> Unit) {
-    var open by remember { mutableStateOf(false) }
-    val label = { i: Int -> if (Store.lang == "ar") "المصدر ${i + 1}" else "Source ${i + 1}" }
-    Box {
-        TextButton({ open = true }) {
-            Text(label(alts.indexOfFirst { it.id == cur }.coerceAtLeast(0)), color = Color.White, fontSize = 13.sp)
-            Icon(Ic.caretDown, null, Modifier.padding(start = 4.dp).size(12.dp), tint = Color.White)
-        }
-        DropdownMenu(open, { open = false }, containerColor = CardC) {
-            alts.forEachIndexed { i, a ->
-                DropdownMenuItem({ Text(label(i)) }, { open = false; if (a.id != cur) pick(a.id) }, trailingIcon = { if (a.id == cur) Icon(Ic.check, null, Modifier.size(16.dp), tint = Red) })
-            }
-        }
-    }
-}
-
 /**
  * the reader's scrollbar (vertical mode), on the left: the thumb follows the place in the chapter; dragging it or tapping
  * the track jumps there. Hidden until scrolled or touched (manga.js rd-scroll)
@@ -435,36 +516,51 @@ private fun MangaPage(src: String, modifier: Modifier, known: Int? = null, onSiz
             .size(coil3.size.Size.ORIGINAL).allowHardware(false)
             .maxBitmapSize(coil3.size.Size.ORIGINAL).build() // Coil shrinks past 4096px (800x9000 -> 364x4096, blurry): the strips make that needless
         val bmp = ((coil3.SingletonImageLoader.get(ctx).execute(req) as? coil3.request.SuccessResult)?.image ?: return@produceState).toBitmap()
+        ratios[src] = bmp.width.toFloat() / bmp.height
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
             (0 until bmp.height step 2048).map { y -> android.graphics.Bitmap.createBitmap(bmp, 0, y, bmp.width, minOf(2048, bmp.height - y)).asImageBitmap() }
         }
     }
     val dens = androidx.compose.ui.platform.LocalDensity.current
-    // drawn: its height is told. Until then: the height it had when last drawn, else 480dp
+    // drawn: its height is told. Until then: the height it had when last drawn, or its shape if measured, else 480dp
     androidx.compose.foundation.layout.Column(modifier.then(when {
         strips != null -> Modifier.onSizeChanged { onSize(it.height) }
         known != null -> Modifier.height(with(dens) { known.toDp() })
+        ratios[src] != null -> Modifier.aspectRatio(ratios.getValue(src))
         else -> Modifier.heightIn(min = 480.dp)
     })) {
         strips?.forEach { androidx.compose.foundation.Image(it, null, Modifier.fillMaxWidth(), contentScale = ContentScale.FillWidth) }
     }
 }
 
+// each page's width / height once decoded: a page that isn't drawn yet takes its shape, not 480dp. Above the page being
+// read that matters: a placeholder growing there pushed the page down as it loaded
+private val ratios = java.util.concurrent.ConcurrentHashMap<String, Float>()
+
+/** pages measured ahead, decoded small (their download stays in Coil's disk cache for the page itself) */
+private suspend fun measure(srcs: List<String>) = coroutineScope {
+    srcs.filter { !ratios.containsKey(it) }.map { src -> async {
+        val req = coil3.request.ImageRequest.Builder(Net.activity).data(src).memoryCachePolicy(coil3.request.CachePolicy.DISABLED)
+            .size(coil3.size.Size(coil3.size.Dimension(256), coil3.size.Dimension.Undefined)).build()
+        (coil3.SingletonImageLoader.get(Net.activity).execute(req) as? coil3.request.SuccessResult)?.image?.let { ratios[src] = it.width.toFloat() / it.height }
+    } }.forEach { it.await() }
+}
+
 /** how far the chapter is read, under the bottom bar's buttons: a tap or a drag jumps there (from the right in Arabic) */
 @Composable
-private fun ReaderScrollbar(list: androidx.compose.foundation.lazy.LazyListState, pages: Int, onSeek: () -> Unit) {
+private fun ReaderScrollbar(list: androidx.compose.foundation.lazy.LazyListState, base: Int, pages: Int, onSeek: () -> Unit) { // base: the chapter's first item
     val scope = rememberCoroutineScope()
-    val frac by remember(pages) { derivedStateOf {
+    val frac by remember(base, pages) { derivedStateOf {
         val first = list.layoutInfo.visibleItemsInfo.firstOrNull()
-        if (first == null) 0f else ((list.firstVisibleItemIndex + list.firstVisibleItemScrollOffset.toFloat() / maxOf(1, first.size)) / pages).coerceIn(0f, 1f)
+        if (first == null) 0f else ((list.firstVisibleItemIndex - base + list.firstVisibleItemScrollOffset.toFloat() / maxOf(1, first.size)) / pages).coerceIn(0f, 1f)
     } }
     val rtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
     BoxWithConstraints(Modifier.fillMaxWidth().height(28.dp).padding(horizontal = 12.dp)) {
         val thumb = 14.dp; val track = maxWidth
         // a touch at x (from the left, whatever the language): that share of the chapter
-        val go = { x: Float -> onSeek(); val f = (x / constraints.maxWidth).coerceIn(0f, 1f).let { if (rtl) 1 - it else it } * pages; scope.launch { list.scrollToItem(f.toInt().coerceAtMost(pages - 1)) } }
-        Box(Modifier.fillMaxSize().pointerInput(pages, rtl) { detectHorizontalDragGestures(onDragStart = { go(it.x) }) { ch, _ -> go(ch.position.x) } }
-            .pointerInput(pages, rtl) { detectTapGestures { go(it.x) } }) {
+        val go = { x: Float -> onSeek(); val f = (x / constraints.maxWidth).coerceIn(0f, 1f).let { if (rtl) 1 - it else it } * pages; scope.launch { list.scrollToItem(base + f.toInt().coerceAtMost(pages - 1)) } }
+        Box(Modifier.fillMaxSize().pointerInput(base, pages, rtl) { detectHorizontalDragGestures(onDragStart = { go(it.x) }) { ch, _ -> go(ch.position.x) } }
+            .pointerInput(base, pages, rtl) { detectTapGestures { go(it.x) } }) {
             Box(Modifier.align(Alignment.CenterStart).fillMaxWidth().height(3.dp).background(Color(0x33FFFFFF), RoundedCornerShape(2.dp)))
             Box(Modifier.align(Alignment.CenterStart).fillMaxWidth(frac).height(3.dp).background(Red, RoundedCornerShape(2.dp)))
             Box(Modifier.align(Alignment.CenterStart).offset(x = (track - thumb) * frac).size(thumb).background(Red, androidx.compose.foundation.shape.CircleShape))

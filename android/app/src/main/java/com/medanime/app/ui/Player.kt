@@ -333,12 +333,24 @@ fun HostPlayer(url: String) {
             // no-referrer: as mobile.js frames it (some hosts refuse other sites' pages). myseed's gateway is the other way round:
             // with no referrer, or ours, it shows a "visit the official site" banner; framed from its front site (front=), its player
             val front = Uri.parse(url).takeIf { u -> u.host == "d.myseed.tv" }?.getQueryParameter("front") // the site's domain of the day (Cinema.myseedUrl)
-            it.loadDataWithBaseURL(if (front != null) "https://$front/" else "https://localhost/", "<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'>" +
+            // YouTube (trailers) refuses to play with no referrer (error 153); in an app's WebView it wants the app's id as one
+            val yt = Uri.parse(url).host?.contains("youtube") == true
+            it.loadDataWithBaseURL(if (front != null) "https://$front/" else if (yt) "https://com.medanime.app/" else "https://localhost/", "<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'>" +
                 "<style>body{margin:0;background:#000}iframe{position:fixed;inset:0;width:100%;height:100%;border:0}</style>" +
-                "<iframe src=\"${android.text.Html.escapeHtml(url)}\" allow=\"autoplay; fullscreen; encrypted-media; picture-in-picture\" allowfullscreen referrerpolicy=\"${if (front != null) "origin" else "no-referrer"}\"></iframe>",
+                "<iframe src=\"${android.text.Html.escapeHtml(url)}\" allow=\"autoplay; fullscreen; encrypted-media; picture-in-picture\" allowfullscreen referrerpolicy=\"${if (front != null || yt) "origin" else "no-referrer"}\"></iframe>",
                 "text/html", "utf-8", null)
         }
     })
     if (loading) CircularProgressIndicator(color = Red) // draws no touch handler: the player under it still gets taps
+    }
+}
+
+/** a title's trailer in the app (app.js showTrailer): its player 16:9 on black, playing at once; back closes it */
+@Composable
+fun TrailerScreen(url: String, title: String, nav: Nav) = Box(Modifier.fillMaxSize().background(Color.Black)) {
+    Box(Modifier.fillMaxWidth().aspectRatio(16 / 9f).align(Alignment.Center)) { HostPlayer(url + (if ('?' in url) "&" else "?") + "autoplay=1") }
+    Row(Modifier.fillMaxWidth().statusBarsPadding().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+        IconButton(nav.back) { Icon(Ic.back, t("back"), Modifier.size(22.dp)) }
+        Text(title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }

@@ -1,7 +1,7 @@
 :root {
   --red: #e50914;
   --red-dark: #b20710;
-  --bg: #0a0a0a;
+  --bg: #000; /* amoled black: its pixels off */
   --card: #181818;
   --muted: #9a9a9a;
   --gutter: 4%; /* page sides; phones: 16px (below) */
@@ -29,7 +29,7 @@ input:focus-visible, select:focus-visible { outline: none; }
 /* window drag area; leave room for the native window controls on the right */
 #nav, .player header, .rd-head { -webkit-app-region: drag; padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + var(--gutter)); }
 #nav a, #nav form, #nav .lang, #nav .nav-gear, .player header button, .player header a, .player header .dd, .rd-head button, .rd-head a, .rd-head select { -webkit-app-region: no-drag; }
-#nav.solid { background: #0a0a0af2; backdrop-filter: blur(10px); box-shadow: 0 1px 0 #ffffff10; }
+#nav.solid { background: #000000f2; backdrop-filter: blur(10px); box-shadow: 0 1px 0 #ffffff10; }
 .logo { display: flex; direction: ltr; font-size: 26px; } /* the M and "edFlix" read as one word, left to right, in Arabic too */
 .logo-mark { height: 1.3em; width: auto; filter: drop-shadow(0 0 10px #e5091466); }
 .links { display: flex; gap: 22px; }
@@ -286,7 +286,7 @@ input:focus-visible, select:focus-visible { outline: none; }
   #nav { height: auto; gap: 10px; padding: calc(env(safe-area-inset-top, 0px) + 10px) var(--gutter) 10px; background: #000; }
   .logo { font-size: 20px; }
   /* nav links become a bottom tab bar */
-  .links { position: fixed; inset: auto 0 0; z-index: 55; gap: 0; padding: 6px 0 calc(env(safe-area-inset-bottom, 0px) + 6px); background: #0a0a0af5; backdrop-filter: blur(12px); border-top: 1px solid #ffffff14; }
+  .links { position: fixed; inset: auto 0 0; z-index: 55; gap: 0; padding: 6px 0 calc(env(safe-area-inset-bottom, 0px) + 6px); background: #000000f5; backdrop-filter: blur(12px); border-top: 1px solid #ffffff14; }
   .links a { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 48px; padding: 4px 0; font-size: 11px; font-weight: 600; white-space: nowrap; }
   .links svg { display: block; width: 22px; height: 22px; }
   .links a.active { color: var(--red); }
@@ -497,10 +497,10 @@ html, body { overscroll-behavior-y: none; } /* no WebView stretch / glow (or bro
 @media (max-width: 760px) { .links .long { display: none; } .links .short { display: inline; } }
 .reader { min-height: 100vh; background: #000; }
 .rd-head { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 10px; padding-top: calc(env(safe-area-inset-top, 0px) + 10px); padding-bottom: 10px; padding-left: 16px;
-  background: #0a0a0af0; backdrop-filter: blur(10px); border-bottom: 1px solid #ffffff10; transition: transform .3s var(--ease); }
+  background: #000000f0; backdrop-filter: blur(10px); border-bottom: 1px solid #ffffff10; transition: transform .3s var(--ease); }
 .reader:is(.hide-ui, .locked) .rd-head { transform: translateY(-110%); }
 .rd-bar { position: fixed; inset: auto 0 0; z-index: 10; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px 8px; padding: 10px var(--gutter) calc(env(safe-area-inset-bottom, 0px) + 10px);
-  background: #0a0a0af0; backdrop-filter: blur(10px); border-top: 1px solid #ffffff10; transition: transform .3s var(--ease); }
+  background: #000000f0; backdrop-filter: blur(10px); border-top: 1px solid #ffffff10; transition: transform .3s var(--ease); }
 .reader:is(.hide-ui, .locked) .rd-bar { transform: translateY(110%); }
 .rd-bar .icon-btn { width: 40px; height: 40px; background: #ffffff12; border: 1px solid #ffffff1a; }
 .rd-bar .icon-btn:hover { transform: none; }

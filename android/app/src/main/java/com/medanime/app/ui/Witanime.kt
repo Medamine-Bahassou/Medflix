@@ -327,6 +327,15 @@ object Witanime {
         return x.count { u -> y.any { like(u, it) } }.toDouble() / maxOf(x.size, y.size)
     }
     /**
+     * a show's next airing (a schedule card's match, the other way round): the timetable's best-matching title, if alike
+     * enough. Aired already this week: the same time a week on, the episode after (app.js nextAir)
+     */
+    suspend fun nextAir(names: List<String>): Air? {
+        val ns = names.filter { it.isNotBlank() }.ifEmpty { return null }
+        val a = airTimes().map { a -> ns.maxOf { airScore(a.title, it) } to a }.filter { it.first >= .6 }.maxByOrNull { it.first }?.second ?: return null
+        return if (a.at > System.currentTimeMillis()) a else a.copy(at = a.at + 7 * 86_400_000L, ep = a.ep.toIntOrNull()?.plus(1)?.toString() ?: "")
+    }
+    /**
      * a schedule card's show on witanime (its path, else null) and its name: searched by each of its names until one gives a title
      * that matches, and last by its first word (witanime's search wants the start of its own spelling: "Ranma ½ (2024) 3rd Season"
      * finds nothing, "Ranma" finds "Ranma1/2 3rd Season") (app.js airing)

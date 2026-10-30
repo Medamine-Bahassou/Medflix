@@ -14,7 +14,7 @@ const STR = {
     manga: 'مانجا', browseAll: 'تصفح الكل', continueReading: 'تابع القراءة', mHot: 'الأعمال الرائجة', mLatest: 'آخر الفصول', mPopular: 'الأكثر قراءة', mNew: 'أعمال جديدة',
     mSearchPh: 'ابحث عن مانجا أو مانهوا…', mSortNew: 'الأحدث', mSortViews: 'الأكثر قراءة', mSortRating: 'الأعلى تقييمًا', mSortTitle: 'أبجديًا',
     chapter: 'الفصل', chShort: 'ف', chapters: 'الفصول', read: 'ابدأ القراءة', resumeCh: n => `تابع الفصل ${n}`, prevCh: 'الفصل السابق', nextCh: 'الفصل التالي',
-    jumpCh: 'انتقل إلى فصل…', readMode: 'قراءة أفقية / عمودية', autoScroll: 'تمرير تلقائي', slower: 'أبطأ', faster: 'أسرع', views: n => `${n} مشاهدة`, noImages: 'لا توجد صفحات في هذا الفصل', endOfChapter: 'نهاية الفصل', chRead: 'مقروء', fullscreen: 'ملء الشاشة', notOnSite: 'هذا الأنمي غير متوفر بعد.', mainServers: 'السيرفرات', backupServers: 'سيرفرات احتياطية', theSite: 'الموقع', backAgain: 'اضغط رجوع مرة أخرى للخروج', lockUi: 'قفل الأزرار', unlockUi: 'إلغاء القفل', scheduleShort: 'المواعيد',
+    jumpCh: 'انتقل إلى فصل…', readMode: 'قراءة أفقية / عمودية', vertical: 'عمودي', horizontal: 'أفقي', continuous: 'قراءة متواصلة', readingMode: 'طريقة القراءة', nextEp: 'الحلقة القادمة', source: 'المصدر', sourceN: n => `المصدر ${n}`, autoScroll: 'تمرير تلقائي', slower: 'أبطأ', faster: 'أسرع', views: n => `${n} مشاهدة`, noImages: 'لا توجد صفحات في هذا الفصل', endOfChapter: 'نهاية الفصل', chRead: 'مقروء', fullscreen: 'ملء الشاشة', notOnSite: 'هذا الأنمي غير متوفر بعد.', mainServers: 'السيرفرات', backupServers: 'سيرفرات احتياطية', theSite: 'الموقع', backAgain: 'اضغط رجوع مرة أخرى للخروج', lockUi: 'قفل الأزرار', unlockUi: 'إلغاء القفل', scheduleShort: 'المواعيد',
     filter: 'تصفية', apply: 'تطبيق', reset: 'إعادة ضبط', all: 'الكل',
     f_sort: 'الترتيب', f_type: 'النوع', f_status: 'الحالة', f_year: 'السنة', f_season: 'الموسم', seasons: 'المواسم', f_version: 'الترجمة',
     f_country: 'البلد', f_source: 'المصدر', f_genres: 'التصنيفات',
@@ -47,7 +47,7 @@ const STR = {
     manga: 'Manga', browseAll: 'Browse all', continueReading: 'Continue Reading', mHot: 'Trending', mLatest: 'Latest Chapters', mPopular: 'Most Read', mNew: 'New Series',
     mSearchPh: 'Search manga, manhwa…', mSortNew: 'Newest', mSortViews: 'Most read', mSortRating: 'Top rated', mSortTitle: 'A-Z',
     chapter: 'Chapter', chShort: 'Ch', chapters: 'Chapters', read: 'Start reading', resumeCh: n => `Resume Ch ${n}`, prevCh: 'Previous chapter', nextCh: 'Next chapter',
-    jumpCh: 'Jump to chapter…', readMode: 'Horizontal / vertical reading', autoScroll: 'Auto-scroll', slower: 'Slower', faster: 'Faster', views: n => `${n} views`, noImages: 'This chapter has no pages', endOfChapter: 'End of chapter', chRead: 'Read', fullscreen: 'Fullscreen', notOnSite: "This anime isn't available yet.", mainServers: 'Servers', backupServers: 'Backup servers', theSite: 'the site', backAgain: 'Press back again to leave', lockUi: 'Lock controls', unlockUi: 'Unlock', scheduleShort: 'Schedule',
+    jumpCh: 'Jump to chapter…', readMode: 'Horizontal / vertical reading', vertical: 'Vertical', horizontal: 'Horizontal', continuous: 'Continuous reading', readingMode: 'Reading mode', nextEp: 'Next episode', source: 'Source', sourceN: n => `Source ${n}`, autoScroll: 'Auto-scroll', slower: 'Slower', faster: 'Faster', views: n => `${n} views`, noImages: 'This chapter has no pages', endOfChapter: 'End of chapter', chRead: 'Read', fullscreen: 'Fullscreen', notOnSite: "This anime isn't available yet.", mainServers: 'Servers', backupServers: 'Backup servers', theSite: 'the site', backAgain: 'Press back again to leave', lockUi: 'Lock controls', unlockUi: 'Unlock', scheduleShort: 'Schedule',
     filter: 'Filters', apply: 'Apply', reset: 'Reset', all: 'All',
     f_sort: 'Sort', f_type: 'Type', f_status: 'Status', f_year: 'Year', f_season: 'Season', seasons: 'Seasons', f_version: 'Language',
     f_country: 'Country', f_source: 'Source', f_genres: 'Genres',
@@ -478,7 +478,8 @@ document.addEventListener('load', e => e.target.tagName === 'IMG' && e.target.cl
 document.addEventListener('error', e => e.target.tagName === 'IMG' && e.target.classList.add('ok', 'broken'), true); // broken: offline posters etc.
 let barColor;
 const syncBar = () => {
-  const c = $('.player') ? '#000000' : $('#nav').classList.toggle('solid', scrollY > 40) ? '#0a0a0a' : '#000000';
+  $('#nav').classList.toggle('solid', scrollY > 40);
+  const c = '#000000'; // amoled black throughout: the solid nav is black too
   if (c !== barColor) api.titleBar(barColor = c);
 };
 addEventListener('scroll', syncBar);
@@ -1189,6 +1190,19 @@ async function title(path, force) {
   pageRefresh = () => title(path, true);
   $('#rf').onclick = () => pageRefresh().then(() => toast(t('updated')));
   if (d.trailer) $('#trl').onclick = () => showTrailer(d.trailer);
+  const chips = $('.chips', view); // this page's: left before the timetable answers, the chip lands nowhere
+  if (type === 'anime') nextAir([d.title, ...(d.alt || '').split(/\s*[,،]\s*/)]).then(s => s && chips.insertAdjacentHTML('afterbegin', `<span class="chip red">${esc(s)}</span>`)).catch(() => {});
+}
+// a show's next airing, from the schedule's timetable (a schedule card's match, the other way round): its best-matching title
+// if alike enough. Aired already this week: the same time a week on, the episode after
+async function nextAir(names) {
+  names = names.filter(Boolean);
+  const [score, a] = (await scraper.airTimes()).map(a => [Math.max(...names.map(n => scraper.airScore(a.title, n))), a]).sort((x, y) => y[0] - x[0])[0] || [];
+  if (!a || score < .6) return '';
+  let at = +new Date(a.at), ep = a.ep;
+  if (at < Date.now()) { at += 7 * 864e5; ep = /^\d+$/.test(ep) ? String(+ep + 1) : ''; }
+  const d = new Date(at), fmt = o => new Intl.DateTimeFormat(lang, o).format(d);
+  return `${t('nextEp')} · ${ep ? `${t('epShort')} ${ep} · ` : ''}${d.toDateString() === new Date().toDateString() ? t('today') : fmt({ weekday: 'long', day: 'numeric', month: 'short' })} · ${fmt({ hour: 'numeric', minute: '2-digit' })}`;
 }
 // an episode's row (anime, series): its still (else the show's picture), its number and, when known, its name
 const epRow = (n, i, pic, href, seen, last) => `<a class="ep ${seen ? 'seen' : ''} ${last ? 'last' : ''}" href="${href}">

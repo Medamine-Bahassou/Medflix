@@ -145,8 +145,8 @@ class Alerts : JobService() {
 
 /** the bell on a title's page: notify me of its new episodes or chapters */
 @androidx.compose.runtime.Composable
-fun NotifyButton(path: String, title: String, poster: String, last: String) {
+fun androidx.compose.foundation.layout.FlowRowScope.NotifyButton(path: String, title: String, poster: String, last: String) {
     Store.version.intValue
     val on = Alerts.on(path)
-    GhostButton(if (on) t("notifying") else t("notify"), if (on) Ic.bellFill else Ic.bell) { Alerts.toggle(path, title, poster, last) }
+    Action(if (on) t("notifying") else t("notify"), if (on) Ic.bellFill else Ic.bell, on) { Alerts.toggle(path, title, poster, last) }
 }

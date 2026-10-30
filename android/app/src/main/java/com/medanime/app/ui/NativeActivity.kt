@@ -79,7 +79,7 @@ import java.io.File
 import okio.Path.Companion.toOkioPath
 
 // style.css :root
-val Bg = Color(0xFF0A0A0A)
+val Bg = Color(0xFF000000) // amoled black: its pixels off
 val Red = Color(0xFFE50914)
 val CardC = Color(0xFF181818)
 val Muted = Color(0xFF9A9A9A)
@@ -107,9 +107,10 @@ sealed interface Screen {
     data object Hidden : Screen // cards long-pressed away
     data object Schedule : Screen // the anime's air times this week
     data class Airing(val route: String) : Screen // a schedule card: its show, found on witanime
+    data class Trailer(val url: String, val title: String) : Screen // a title's trailer, played in the app
 }
 // full-screen pages: no dock, no drawer swipe
-private fun Screen.full() = this is Screen.Play || this is Screen.CinemaPlay || this is Screen.MangaRead || this is Screen.Offline
+private fun Screen.full() = this is Screen.Play || this is Screen.CinemaPlay || this is Screen.MangaRead || this is Screen.Offline || this is Screen.Trailer
 
 // the sections (app.js NAV), in the drawer; up to 4 of them in the dock (settings)
 val NAV = linkedMapOf<String, Pair<Screen, () -> ImageVector>>(
@@ -223,6 +224,7 @@ fun App() {
                                 Screen.Hidden -> HiddenScreen(nav)
                                 Screen.Schedule -> ScheduleScreen(nav)
                                 is Screen.Airing -> AiringScreen(top.route, nav)
+                                is Screen.Trailer -> TrailerScreen(top.url, top.title, nav)
                             }
                         }
                     }
@@ -239,7 +241,7 @@ fun App() {
 
 @Composable
 private fun Dock(top: Screen, tab: (Screen) -> Unit) {
-    NavigationBar(containerColor = Color(0xF00A0A0A)) {
+    NavigationBar(containerColor = Color(0xF0000000)) {
         val colors = NavigationBarItemDefaults.colors(selectedIconColor = Color.White, selectedTextColor = Color.White, indicatorColor = Red, unselectedIconColor = Muted, unselectedTextColor = Muted)
         Store.dock().forEach { id ->
             val (s, icon) = NAV.getValue(id)
@@ -251,7 +253,7 @@ private fun Dock(top: Screen, tab: (Screen) -> Unit) {
 // the section a page belongs to (app.js markActive)
 private fun section(s: Screen) = when (s) {
     Screen.Home -> "home"
-    Screen.Anime, is Screen.Grid, is Screen.Title, is Screen.Play, is Screen.Section -> "anime"
+    Screen.Anime, is Screen.Grid, is Screen.Title, is Screen.Play, is Screen.Section, is Screen.Trailer -> "anime" // a trailer: full screen, no dock to light
     Screen.Cinema, is Screen.CinemaBrowse, is Screen.CinemaTitle, is Screen.CinemaPlay -> "cinema"
     Screen.Manga, is Screen.MangaBrowse, is Screen.MangaSeries, is Screen.MangaRead -> "manga"
     Screen.Schedule, is Screen.Airing -> "schedule"
@@ -572,7 +574,7 @@ fun HeroPager(hero: List<Slide>, nav: Nav) {
         HorizontalPager(pager) { i ->
             Box(Modifier.fillMaxSize()) {
                 AsyncImage(hero[i].banner, null, Modifier.fillMaxSize().graphicsLayer { scaleX = zoom; scaleY = zoom }, contentScale = ContentScale.Crop)
-                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Transparent, .45f to Color(0x330A0A0A), 1f to Bg)))
+                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Transparent, .45f to Color(0x33000000), 1f to Bg)))
             }
         }
         val h = hero[pager.currentPage.coerceAtMost(hero.size - 1)]
