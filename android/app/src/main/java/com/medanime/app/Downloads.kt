@@ -194,7 +194,7 @@ object Downloads {
                 cur.put("state", state)
                 if (state == "done") cur.put("size", bytes)
                 save()
-                if (state == "done") toast(t("dlFinished", "$rawTitle ${t(if (manga) "chapter" else "ep")} $ep"))
+                if (state == "done" && !com.medanime.app.ui.immersed) toast(t("dlFinished", "$rawTitle ${t(if (manga) "chapter" else "ep")} $ep"))
                 // a locked chapter: said once a minute, not once per chapter of a long series' Download all
                 if (state == "error" && (why == null || System.currentTimeMillis() - lockedAt > 60_000)) { toast(why ?: t("dlFailed")); if (why != null) lockedAt = System.currentTimeMillis() }
                 if (state != "cancelled") DownloadService.finished(app, id, t(if (state == "done") "dlNotifDone" else "dlFailed"), title)

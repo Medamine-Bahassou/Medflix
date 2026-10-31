@@ -2,7 +2,7 @@
 // Capacitor's native HTTP (no CORS, any headers, shared cookie jar), IndexedDB, and an iframe player.
 if (!window.api && window.Capacitor) (() => {
   const SITE = 'https://witanime.site', AR = 'https://eva.animerco.org', MANGA = 'https://appswat.com', OLY = 'https://olympustaff.com', AS = 'https://animeschedule.net', MC = 'https://cima.my-cima.net', WC = 'https://wecima.singles', RA = 'https://ristoanime.me';
-  const SUGGEST = ['https://graphql.anilist.co', 'https://api.tvmaze.com', 'https://api.jikan.moe', 'https://www.wikidata.org', 'https://kitsu.io', 'https://v3.sg.media-imdb.com', 'https://www.imdb.com']; // the search's title suggestions (app.js)
+  const SUGGEST = ['https://graphql.anilist.co', 'https://api.tvmaze.com', 'https://api.jikan.moe', 'https://www.wikidata.org', 'https://kitsu.io', 'https://v3.sg.media-imdb.com', 'https://www.imdb.com', 'https://caching.graphql.imdb.com']; // the search's title suggestions (app.js)
   // same desktop Chrome UA as the Electron build, so the sites serve the markup the scraper expects
   const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0 Safari/537.36';
   // witanime sits behind Cloudflare: talk to it as this WebView (same markup as desktop), the browser its cookies were earned in
@@ -139,7 +139,8 @@ if (!window.api && window.Capacitor) (() => {
       const u = new URL(url, SITE);
       if (![SITE, AR, RA, MANGA, AS, MC, WC, OLY, ...SUGGEST].includes(u.origin) && !/^https:\/\/([a-z0-9-]+\.)*(egydead|myseed|arabseed)\.[a-z]+$/.test(u.origin)) throw new Error('blocked: ' + u.origin);
       // form: egydead's watch page, which its server can take over 30s to build the first time it's asked
-      const res = await http(u.href, form ? { method: 'POST', data: form, readTimeout: 90e3,
+      const res = await http(u.href, u.origin === 'https://caching.graphql.imdb.com' ? { method: 'POST', data: form, headers: { 'Content-Type': 'application/json', 'x-imdb-client-name': 'imdb-web-next-localized' } } // see main.js
+        : form ? { method: 'POST', data: form, readTimeout: 90e3,
         headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' } }
         // the latest-episodes pager 404s unless it looks like the home page's own call (see main.js): Origin, or X-Requested-With
         : u.pathname === '/new-episodes' ? { headers: { Accept: 'application/json', Referer: SITE + '/', Origin: SITE, 'X-Requested-With': 'XMLHttpRequest' } }

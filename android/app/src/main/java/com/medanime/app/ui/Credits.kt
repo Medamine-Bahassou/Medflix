@@ -25,7 +25,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
 
-internal data class Credit(val name: String, val photo: String, val actor: String, val actorPhoto: String = "", val source: String = "")
+data class Credit(val name: String, val photo: String, val actor: String, val actorPhoto: String = "", val source: String = "")
 
 internal object Credits {
     fun clean(s: String) = s.replace(Regex("(?:الموسم|الجزء)\\s+\\S+.*|\\bseason\\s+\\d+.*|مشاهدة|تحميل|مسلسل|فيلم|مترجم|مدبلج|كامل|اون لاين", RegexOption.IGNORE_CASE), " ").replace(Regex("\\b(?:19|20)\\d{2}\\b"), "").trim()
@@ -82,6 +82,29 @@ internal object Credits {
         }
         return emptyList()
     }
+    // IMDb: the title's id from its page, else its one title-and-year match in IMDb's suggestions (cast-info.js)
+    private suspend fun imdb(names: List<String>, year: String, kind: String, id: String): List<Credit> {
+        val type = if (kind == "series") Regex("tv(Series|MiniSeries)") else Regex("movie|tvMovie")
+        for (name in if (id.isNotEmpty()) names.take(1) else names) {
+            val tt = id.ifEmpty {
+                objects(json("https://v3.sg.media-imdb.com/suggestion/x/${enc(clean(name))}.json").optJSONArray("d"))
+                    .filter { norm(it.optString("l")) == norm(name) && (year.isEmpty() || it.optString("y") == year) && type.matches(it.optString("qid")) }
+                    .singleOrNull()?.optString("id").orEmpty()
+            }
+            if (!tt.matches(Regex("tt\\d+"))) continue
+            val query = "query{title(id:\"$tt\"){credits(first:250,filter:{categories:[\"cast\"]}){edges{node{name{nameText{text} primaryImage{url}} ... on Cast{characters{name}}}}}}}"
+            // json only, and answered only to a client naming itself as IMDb's site
+            val r = Net.fetch("https://caching.graphql.imdb.com/", mapOf("x-imdb-client-name" to "imdb-web-next-localized"), json = JSONObject().put("query", query).toString())
+            if (r.status >= 400) throw java.io.IOException("HTTP ${r.status}")
+            return objects(JSONObject(r.body).optJSONObject("data")?.optJSONObject("title")?.optJSONObject("credits")?.optJSONArray("edges")).map { e ->
+                val n = e.getJSONObject("node"); val p = n.getJSONObject("name")
+                Credit(objects(n.optJSONArray("characters")).joinToString(" / ") { it.optString("name") },
+                    p.optJSONObject("primaryImage")?.optString("url").orEmpty().replace(Regex("\\._V1_.*(\\.\\w+)$"), "._V1_UX240_$1"), // a 240px-wide copy
+                    p.getJSONObject("nameText").optString("text"))
+            }
+        }
+        return emptyList()
+    }
     private suspend fun series(names: List<String>, year: String): List<Credit> {
         for (name in names) {
             val hits = objects(JSONArray(Pages.load("https://api.tvmaze.com/search/shows?q=${enc(clean(name))}"))).map { it.getJSONObject("show") }
@@ -94,9 +117,19 @@ internal object Credits {
         }
         return emptyList()
     }
-    suspend fun load(names: List<String>, anime: Boolean, year: String, kind: String = if (anime) "anime" else "cinema", onUpdate: (List<Credit>) -> Unit = {}): List<Credit> {
+    suspend fun load(names: List<String>, anime: Boolean, year: String, kind: String = if (anime) "anime" else "cinema", slug: String = "", onUpdate: (List<Credit>) -> Unit = {}): List<Credit> {
         val queries = names.filter { norm(it).isNotEmpty() }.distinct()
         var failure: Exception? = null
+        if (kind == "cinema" || kind == "series") { // films and series: from their page (slug), its IMDb id and its own cast list; TVmaze and Wikidata below
+            val m = if (slug.isEmpty()) null else try { Cinema.movie(slug) } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+            val fromImdb: suspend () -> List<Credit> = { imdb(queries, year, kind, m?.imdbId.orEmpty()) }
+            val team: suspend () -> List<Credit> = { m?.team.orEmpty() }
+            // an Arabic title: the page's cast first (Arabic names, roles and photos), where IMDb's would be transliterated if it has one at all
+            for (task in if (Regex("[\\u0600-\\u06ff]").containsMatchIn(names.firstOrNull().orEmpty())) listOf(team, fromImdb) else listOf(fromImdb, team)) try {
+                val rows = task()
+                if (rows.isNotEmpty()) return rows
+            } catch (e: CancellationException) { throw e } catch (e: Exception) { failure = e }
+        }
         if (kind in listOf("anime", "manga", "series")) {
             try {
                 val rows = if (kind == "series") series(queries, year) else anilist(queries, kind, onUpdate)
@@ -138,10 +171,10 @@ internal object Credits {
 }
 
 @Composable
-fun CreditsSection(names: List<String>, anime: Boolean, year: String = "", kind: String = if (anime) "anime" else "cinema", nav: Nav) {
-    var credits by remember(names, anime, year, kind) { mutableStateOf<List<Credit>?>(null) }
-    LaunchedEffect(names, anime, year, kind) {
-        try { credits = Credits.load(names, anime, year, kind) { credits = it } }
+fun CreditsSection(names: List<String>, anime: Boolean, year: String = "", kind: String = if (anime) "anime" else "cinema", slug: String = "", nav: Nav) {
+    var credits by remember(names, anime, year, kind, slug) { mutableStateOf<List<Credit>?>(null) }
+    LaunchedEffect(names, anime, year, kind, slug) {
+        try { credits = Credits.load(names, anime, year, kind, slug) { credits = it } }
         catch (e: CancellationException) { throw e }
         catch (_: Exception) { if (credits == null) credits = emptyList() }
     }
@@ -149,7 +182,7 @@ fun CreditsSection(names: List<String>, anime: Boolean, year: String = "", kind:
     if (rows != null && rows.isEmpty()) return
     val uri = androidx.compose.ui.platform.LocalUriHandler.current
     Column(Modifier.padding(vertical = 12.dp)) {
-        Row(Modifier.fillMaxWidth().clickable(enabled = rows != null) { nav.go(Screen.Characters(names, kind, year)) }.padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().clickable(enabled = rows != null) { nav.go(Screen.Characters(names, kind, year, slug)) }.padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             Text(t("charactersCast") + (rows?.let { " (${it.size})" } ?: ""), Modifier.weight(1f), fontSize = 20.sp, fontWeight = FontWeight.Bold)
             if (rows != null) Text(t("viewAllCast"), color = Muted, fontSize = 13.sp)
         }
@@ -218,7 +251,7 @@ fun CreditsScreen(screen: Screen.Characters, nav: Nav) {
     var failed by remember(screen) { mutableStateOf(false) }
     var query by androidx.compose.runtime.saveable.rememberSaveable(screen) { mutableStateOf("") }
     LaunchedEffect(screen) {
-        try { rows = Credits.load(screen.names, screen.kind == "anime", screen.year, screen.kind) { rows = it } }
+        try { rows = Credits.load(screen.names, screen.kind == "anime", screen.year, screen.kind, screen.slug) { rows = it } }
         catch (e: CancellationException) { throw e }
         catch (_: Exception) { failed = true }
     }

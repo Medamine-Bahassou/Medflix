@@ -23,6 +23,7 @@ import kotlinx.coroutines.withTimeout
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -96,7 +97,7 @@ object Net {
      * GET or POST (an empty one), with witanime's 429 retry; through the site's page once Cloudflare refuses us (mobile.js http).
      * asPlayer: asked as the player's WebView asks, for links that only play in the browser that got them (myseed's)
      */
-    suspend fun fetch(url: String, headers0: Map<String, String> = emptyMap(), post: Boolean = false, stopAt: String = "", redirects: Boolean = true, asPlayer: Boolean = false, form: Map<String, String>? = null): Resp {
+    suspend fun fetch(url: String, headers0: Map<String, String> = emptyMap(), post: Boolean = false, stopAt: String = "", redirects: Boolean = true, asPlayer: Boolean = false, form: Map<String, String>? = null, json: String? = null): Resp {
         // the latest-episodes pager 404s unless it looks like the home page's own call (mobile.js): Origin, or X-Requested-With
         val headers = if (url.startsWith("$SITE/new-episodes")) mapOf("Accept" to "application/json", "Referer" to "$SITE/", "Origin" to SITE, "X-Requested-With" to "XMLHttpRequest") + headers0 else headers0
         var i = 0
@@ -107,7 +108,7 @@ object Net {
             // (a phone's connection may get a plain block, or be dropped, where a browser gets through)
             val home = if (key == "witanime") SITE else if (key == "olympustaff") OLY else null
             val r = if (origin != null && redirects) pages.getOrPut(origin) { SitePage(origin) }.fetch(origin + url.replace(Regex("^https://[^/]+"), ""), if (post) "POST" else "GET", headers, stopAt)
-            else try { native(url, headers, post, redirects, stopAt, asPlayer, form) } catch (e: IOException) {
+            else try { native(url, headers, post, redirects, stopAt, asPlayer, form, json) } catch (e: IOException) {
                 if (home == null || origin != null) throw e
                 via[key!!] = home; continue // a connection that stalls or drops for our native client: through the page
             }
@@ -122,11 +123,11 @@ object Net {
     /** closes Cloudflare's check where it's up over the app (back) */
     fun dropChecks() = pages.values.forEach { it.dropIfChecking() }
 
-    private suspend fun native(url: String, headers: Map<String, String>, post: Boolean, redirects: Boolean, stopAt: String, asPlayer: Boolean, form: Map<String, String>?) = withContext(Dispatchers.IO) {
+    private suspend fun native(url: String, headers: Map<String, String>, post: Boolean, redirects: Boolean, stopAt: String, asPlayer: Boolean, form: Map<String, String>?, json: String? = null) = withContext(Dispatchers.IO) {
         val req = Request.Builder().url(url)
             .header("User-Agent", if (url.startsWith(SITE) || asPlayer) wvUa else UA).header("Accept-Language", "ar,en;q=0.8")
             .apply { headers.forEach { (k, v) -> header(k, v) } }
-            .apply { if (form != null) post(okhttp3.FormBody.Builder().apply { form.forEach { (k, v) -> add(k, v) } }.build()) else if (post) post(ByteArray(0).toRequestBody()) }.build() // form: MyCima's search
+            .apply { if (json != null) post(json.toRequestBody("application/json".toMediaType())) else if (form != null) post(okhttp3.FormBody.Builder().apply { form.forEach { (k, v) -> add(k, v) } }.build()) else if (post) post(ByteArray(0).toRequestBody()) }.build() // form: MyCima's search
         val c = if (redirects) client else client.newBuilder().followRedirects(false).followSslRedirects(false).build()
         val call = c.newCall(req)
         val reg = coroutineContext[kotlinx.coroutines.Job]?.invokeOnCompletion { if (it != null) call.cancel() } // abort socket on pause/back

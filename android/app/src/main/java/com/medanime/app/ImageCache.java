@@ -23,7 +23,7 @@ import java.util.regex.Pattern;
  */
 final class ImageCache {
 
-    private static final Pattern HOSTS = Pattern.compile("^https://(s4\\.anilist\\.co|static\\.tvmaze\\.com|cdn\\.myanimelist\\.net|upload\\.wikimedia\\.org|commons\\.wikimedia\\.org|images\\.witanime\\.site|eva\\.animerco\\.org/wp-content/uploads|(appswat|meshmanga)\\.com/v2/media/__sized__|cdn\\.olympustaff\\.com/images/manga|img\\.animeschedule\\.net/production|([a-z0-9-]+\\.)*(egydead|myseed|arabseed)\\.[a-z]+/wp-content/uploads)/.*"); // manga posters, not chapter pages
+    private static final Pattern HOSTS = Pattern.compile("^https://(s4\\.anilist\\.co|static\\.tvmaze\\.com|cdn\\.myanimelist\\.net|m\\.media-amazon\\.com/images|upload\\.wikimedia\\.org|commons\\.wikimedia\\.org|images\\.witanime\\.site|eva\\.animerco\\.org/wp-content/uploads|(appswat|meshmanga)\\.com/v2/media/__sized__|cdn\\.olympustaff\\.com/images/manga|img\\.animeschedule\\.net/production|([a-z0-9-]+\\.)*(egydead|myseed|arabseed)\\.[a-z]+/wp-content/uploads)/.*"); // manga posters, not chapter pages
     private static final String UA =
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0 Safari/537.36";
     private static final Set<String> checked = ConcurrentHashMap.newKeySet();

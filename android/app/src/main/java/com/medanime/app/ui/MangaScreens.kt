@@ -144,6 +144,7 @@ fun MangaSeriesScreen(id: String, nav: Nav) {
                 // type and status under the title; the rating and views lead the actions row
                 listOfNotNull(s.type.takeIf { it.isNotEmpty() }?.let { Manga.typeName(it) to true }, s.status.takeIf { it.isNotEmpty() }?.let { Manga.label(Manga.STATUS, it) to true }) + s.genres.map { it to false },
                 s.story, {
+                    SiteRating(s.rating)
                     SourceRating(listOf(s.title) + s.alt.split(Regex("[,،]")), "manga")
                     Action("%,d".format(s.views), Ic.eye)
                     ListButton("/manga/series/$id", s.title, s.poster, "manga")

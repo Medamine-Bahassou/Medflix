@@ -53,10 +53,10 @@ internal object SourceRatings {
 
 /** the AniList / IMDb score, as one of the actions row's items: the logo over the stars */
 @Composable
-internal fun FlowRowScope.SourceRating(names: List<String>, kind: String, year: String = "") {
-    var rating by remember(names, kind, year) { mutableStateOf<Pair<String, String>?>(null) }
-    LaunchedEffect(names, kind, year) {
-        rating = try { withContext(Dispatchers.IO) { SourceRatings.get(names, kind, year) } } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+internal fun FlowRowScope.SourceRating(names: List<String>, kind: String, year: String = "", imdb: String = "") {
+    var rating by remember(names, kind, year, imdb) { mutableStateOf(imdb.takeIf { it.isNotEmpty() }?.let { "IMDb" to it }) } // the page already gave its IMDb score (a film's page)
+    LaunchedEffect(names, kind, year, imdb) {
+        if (rating == null) rating = try { withContext(Dispatchers.IO) { SourceRatings.get(names, kind, year) } } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
     }
     rating?.let { (source, value) ->
         val gold = Color(0xFFF5C518)
@@ -67,5 +67,15 @@ internal fun FlowRowScope.SourceRating(names: List<String>, kind: String, year: 
             }
             Text("★ $value", Modifier.padding(top = 4.dp), color = gold, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
         }
+    }
+}
+
+/** the site's own score, as an actions row item: a gold star over it */
+@Composable
+internal fun FlowRowScope.SiteRating(value: String) {
+    if (value.isEmpty()) return
+    Column(Modifier.weight(1f).padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        androidx.compose.material3.Icon(Ic.star, null, Modifier.size(24.dp), tint = Color(0xFFF5C518))
+        Text(value, Modifier.padding(top = 4.dp), color = Color(0xFFF5C518), fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
     }
 }

@@ -19,7 +19,7 @@ import java.net.URLEncoder
 data class EpRef(val slug: String, val n: String)
 data class Movie(val title: String, val year: String, val dub: Boolean, val origin: String, val poster: String, val banner: String, val desc: String,
                  val cat: List<String>, val genres: List<String>, val tags: List<String>, val trailer: String, val related: List<Card>,
-                 val seasons: List<Card>, val episodes: List<EpRef>, val up: String)
+                 val seasons: List<Card>, val episodes: List<EpRef>, val up: String, val imdb: String = "", val imdbId: String = "", val team: List<Credit> = emptyList())
 data class Link(val label: String, val quality: String, val url: String, val backup: Boolean = false) // backup: another site's copy of the film
 
 object Cinema {
@@ -141,7 +141,14 @@ object Cinema {
             doc.select(".episodes__list a[href], .EpsList a[href]").map { a -> EpRef(slugOf(a.attr("href")), Regex("\\d+(\\.\\d+)?").find(txt(a.selectFirst("b") ?: a))?.value ?: txt(a)) }
                 .filter { it.slug.startsWith("episode/") }.distinctBy { it.slug }.sortedBy { it.n.toDoubleOrNull() ?: 0.0 },
             // an episode's season (or series), a season's series: the last such link in the breadcrumbs before self
-            doc.select(".bread__crumbs a[href], .breadcrumbs-single a[href]").map { slugOf(it.attr("href")) }.lastOrNull { it.isNotEmpty() && it != self && Regex("^(season|serie)/").containsMatchIn(it) } ?: "")
+            doc.select(".bread__crumbs a[href], .breadcrumbs-single a[href]").map { slugOf(it.attr("href")) }.lastOrNull { it.isNotEmpty() && it != self && Regex("^(season|serie)/").containsMatchIn(it) } ?: "",
+            Regex("^\\d+(\\.\\d+)?").find(txt(doc.selectFirst(".imdb__rating__link .rate__txt")))?.value ?: "", // the page's IMDb box ("6.8 / 10"): no lookup needed
+            Regex("/(tt\\d+)").find(doc.selectFirst(".imdb__rating__link")?.attr("href") ?: "")?.groupValues?.get(1) ?: "", // its cast is asked of IMDb by it
+            // the page's own cast ("فريق العمل"; actors only: it lists directors and writers too). a role of just "ممثل" (actor) is no character;
+            // the photos are 80px thumbnails of a .jpg original, and a placeholder where the site has none (cinema.js)
+            doc.select(".work__team .persons__list a[href*=/actor/]").map { a ->
+                Credit(txt(a.selectFirst(".role")).replace(Regex("^ممثلة?$"), ""), img(a.selectFirst("img")).let { if ("default-user-image" in it) "" else it.replace(Regex("-\\d+x\\d+\\.webp$"), ".jpg") }, txt(a.selectFirst(".name")))
+            })
     }
 
     // ---------- servers: the watch page (title + watch/), its wrappers unwrapped to the hosts' embeds ----------

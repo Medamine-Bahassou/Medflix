@@ -115,6 +115,12 @@ Object.assign(parsers, {
       related: edCards(doc.querySelector('.related__blocks, .related_section, .related-posts')),
       seasons: seasonsCards.length ? seasonsCards : seasonsBtns,
       episodes: edEpisodes(doc),
+      // the page's own cast ("فريق العمل"; actors only: it lists directors and writers too). a role of just "ممثل" (actor) is no character;
+      // the photos are 80px thumbnails of a .jpg original, and a placeholder where the site has none
+      team: [...doc.querySelectorAll('.work__team .persons__list a[href*="/actor/"]')].map(a => ({ name: txt(a.querySelector('.role')).replace(/^ممثل(ة)?$/, ''),
+        photo: (a.querySelector('img')?.getAttribute('data-src') || '').replace(/.*default-user-image.*/, '').replace(/-\d+x\d+\.webp$/, '.jpg'), actor: txt(a.querySelector('.name')), actorPhoto: '' })),
+      imdbId: doc.querySelector('.imdb__rating__link')?.getAttribute('href')?.match(/\/(tt\d+)/)?.[1] || '', // its cast is asked of imdb by it
+      imdb: txt(doc.querySelector('.imdb__rating__link .rate__txt')).match(/^\d+(\.\d+)?/)?.[0] || '', // the page's IMDb box ("6.8 / 10"): no lookup needed
       // an episode's season (or series), a season's series: the last such link in the breadcrumbs before self
       up: [...doc.querySelectorAll('.bread__crumbs a[href], .breadcrumbs-single a[href]')].map(a => edSlug(a.getAttribute('href'))).filter(s => s && s !== selfSlug && /^(season|serie)\//.test(s)).pop() || '',
     };
@@ -321,6 +327,7 @@ async function cinemaBrowse(id, force) {
   listView(eCatName(eCat(id)), await at(1, force), n => at(n, true), () => cinemaBrowse(id, true));
 }
 
+const edMovieOf = slug => load('edMovie', edUrl(slug)); // a title page, from the cache: its cast and IMDb id (cast-info.js)
 async function cinemaTitle(slug, force) {
   const m = await load('edMovie', edUrl(slug), force);
   const path = '/cinema/' + slug;
@@ -343,7 +350,7 @@ async function cinemaTitle(slug, force) {
           <h1 dir="auto">${esc(m.title)}</h1>
           <div class="chips">${m.cat.map(c => `<span class="chip red">${esc(c)}</span>`).join('')}${[...m.tags, ...m.genres].map(g => `<span class="chip">${esc(g)}</span>`).join('')}</div>
           <p class="desc" dir="auto">${esc(m.desc)}</p>
-          <div class="actions">${Ratings.slot({title:m.title, type:"cinema", year:m.year})}
+          <div class="actions">${Ratings.slot({title:m.title, type:"cinema", year:m.year, imdb:m.imdb})}
             ${play ? `<a class="btn red" href="${play.href}">${ICON.play} ${esc(play.label)}</a>` : ''}
             <button class="btn ghost" id="fav">${inList(path) ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList')}</button>
             ${m.trailer ? `<button class="btn ghost" id="trl">${ICON.play} ${t('trailer')}</button>` : ''}
@@ -357,7 +364,7 @@ async function cinemaTitle(slug, force) {
     ${eps.length ? `<div class="section"><h2>${t('episodes')} <small>${eps.length}</small></h2><div class="eps list">${eps.map(e => // the site gives no episode names or stills
       epRow(e.n, null, m.banner || m.poster, edHref(e.slug), store.seen['/cinema/' + e.slug], h?.slug === e.slug)).join('')}</div></div>` : ''}
     ${row(t('moreLike'), dubbed(m.related))}`;
-  CastInfo.mount($('#title-cast'), [m.title], slug.includes('/') ? 'series' : 'cinema', slug.includes('/') ? '' : m.year);
+  CastInfo.mount($('#title-cast'), [m.title], slug.includes('/') ? 'series' : 'cinema', slug.includes('/') ? '' : m.year, slug);
   $('#fav').onclick = e => { const on = toggleList({ path, title: m.title, poster: m.poster, type: 'cinema' }); e.currentTarget.innerHTML = on ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList'); };
   pageRefresh = () => cinemaTitle(slug, true);
   $('#rf').onclick = () => pageRefresh().then(() => toast(t('updated')));

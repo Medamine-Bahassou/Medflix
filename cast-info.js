@@ -36,6 +36,20 @@ const CastInfo = (() => {
     }
     return [];
   }
+  // imdb: the title's id from its page, else its one title-and-year match in imdb's suggestions
+  async function imdb(names, year, kind, id) {
+    const sized = u => (u || '').replace(/\._V1_.*(\.\w+)$/, '._V1_UX240_$1'); // a 240px-wide copy, not the full photo
+    for (const name of id ? names.slice(0, 1) : names) {
+      const tt = id || (((await json('https://v3.sg.media-imdb.com/suggestion/x/' + encodeURIComponent(clean(name)) + '.json')).d || [])
+        .filter(h => /^tt\d+$/.test(h.id) && norm(h.l) === norm(name) && (!year || String(h.y) === year) && (kind === 'series' ? /^tv(Series|MiniSeries)$/ : /^(movie|tvMovie)$/).test(h.qid)));
+      const one = id || (tt.length === 1 && tt[0].id);
+      if (!/^tt\d+$/.test(one || '')) continue;
+      const query = `query{title(id:"${one}"){credits(first:250,filter:{categories:["cast"]}){edges{node{name{nameText{text} primaryImage{url}} ... on Cast{characters{name}}}}}}}`;
+      const edges = JSON.parse(await api.fetch('https://caching.graphql.imdb.com/', { query })).data?.title?.credits?.edges || [];
+      return edges.map(({ node: n }) => ({ name: (n.characters || []).map(c => c.name).join(' / '), photo: sized(n.name.primaryImage?.url), actor: n.name.nameText.text, actorPhoto: '' }));
+    }
+    return [];
+  }
   async function series(names, year) {
     for (const name of names) {
       const hits = (await json('https://api.tvmaze.com/search/shows?q=' + encodeURIComponent(clean(name)))).map(x => x.show)
@@ -82,15 +96,22 @@ const CastInfo = (() => {
     }
     return [];
   }
-  function load(names, kind, year = '', onUpdate) {
+  // films and series: from their page (slug), its IMDb id and its own cast list
+  async function film(names, kind, year, slug) {
+    const m = slug ? await edMovieOf(slug).catch(() => ({})) : {};
+    const team = async () => m.team || [], fromImdb = () => imdb(names, year, kind, m.imdbId);
+    // an Arabic title: the page's cast first (Arabic names, roles and photos), where IMDb's would be transliterated if it has one at all
+    return fallback([...(/[\u0600-\u06ff]/.test(names[0]) ? [team, fromImdb] : [fromImdb, team]), ...(kind === 'series' ? [() => series(names, year)] : []), () => cinema(names, year)]);
+  }
+  function load(names, kind, year = '', onUpdate, slug = '') {
     names = [...new Set(names.filter(n => norm(n)))];
-    const key = JSON.stringify([names, kind, year]);
+    const key = JSON.stringify([names, kind, year, slug]);
     if (!updates.has(key)) updates.set(key, { rows: null, listeners: new Set() });
     const state = updates.get(key);
     if (onUpdate) { state.listeners.add(onUpdate); if (state.rows) onUpdate(state.rows); }
     const publish = rows => { state.rows = rows; for (const listener of state.listeners) listener(rows); };
     if (!cache.has(key)) {
-      const task = kind === 'anime' || kind === 'manga' ? fallback([() => anilist(names, kind, publish), () => anime(names, kind)]) : kind === 'series' ? fallback([() => series(names, year), () => cinema(names, year)]) : cinema(names, year);
+      const task = kind === 'anime' || kind === 'manga' ? fallback([() => anilist(names, kind, publish), () => anime(names, kind)]) : film(names, kind, year, slug);
       cache.set(key, task.then(rows => { publish(rows); state.listeners.clear(); return rows; }).catch(e => { state.listeners.clear(); updates.delete(key); cache.delete(key); throw e; }));
     }
     return cache.get(key).finally(() => { if (onUpdate) state.listeners.delete(onUpdate); });
@@ -148,12 +169,12 @@ const CastInfo = (() => {
     return { watch, close };
   }
   const dispose = () => { pageRun++; for (const close of [...active]) close(); active.clear(); pending.length = 0; };
-  function mount(el, names, kind, year = '') {
+  function mount(el, names, kind, year = '', slug = '') {
     if (!el) return;
     el.hidden = false;
     el.innerHTML = `<h2>${t('charactersCast')}</h2><div class="cast-track" aria-busy="true" aria-label="${t('loadingCast')}">${Array.from({ length: 6 }, () => '<div class="cast-card skel" aria-hidden="true"><div class="cast-photo cast-skeleton"></div><span class="bar"></span></div>').join('')}</div>`;
     const run = pageRun;
-    const href = '#/characters/' + encodeURIComponent(JSON.stringify({ names, kind, year, back: location.hash }));
+    const href = '#/characters/' + encodeURIComponent(JSON.stringify({ names, kind, year, slug, back: location.hash }));
     let portraits;
     load(names, kind, year, items => {
       if (run !== pageRun || !el.isConnected) return;
@@ -163,9 +184,9 @@ const CastInfo = (() => {
       portraits?.close();
       portraits = lazyImages(el);
       portraits.watch();
-    }).catch(() => { if (!portraits && run === pageRun && el.isConnected) { el.hidden = true; el.innerHTML = ''; } });
+    }, slug).catch(() => { if (!portraits && run === pageRun && el.isConnected) { el.hidden = true; el.innerHTML = ''; } });
   }
-  async function page({ names, kind, year = '', back = '#/' }) {
+  async function page({ names, kind, year = '', slug = '', back = '#/' }) {
     const run = pageRun;
     const root = document.createElement('div');
     root.className = 'page cast-page';
@@ -184,7 +205,7 @@ const CastInfo = (() => {
     const status = root.querySelector('[role=status]');
     try {
       let items = [], refresh = () => {};
-      const loading = load(names, kind, year, rows => { items = rows; refresh(); });
+      const loading = load(names, kind, year, rows => { items = rows; refresh(); }, slug);
       if (run !== pageRun || !root.isConnected) return;
       const grid = root.querySelector('.cast-grid'), more = root.querySelector('.cast-more');
       let shown = [], count = 0;

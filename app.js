@@ -331,6 +331,7 @@ function toggleList(item) {
   return inList(item.path);
 }
 const showOf = epPath => { const [, , a, b] = epPath.split('/'); return a === 'movie' ? `/movie/${b}` : `/anime/${a}`; };
+let immersed = false; // a video or a chapter open (route()): no "download finished" toasts over it
 const playHash = epPath => '#/play/' + epPath.replace(/^\/watch\//, '');
 
 let toastT;
@@ -1033,7 +1034,7 @@ api.onDownload(p => {
   Object.assign(d, p);
   if (changed) {
     saveDownloads();
-    if (p.state === 'done') toast(t('dlFinished', `${d.title} ${isManga(d) ? t('chapter') : t('ep')} ${d.ep}`));
+    if (p.state === 'done' && !immersed) toast(t('dlFinished', `${d.title} ${isManga(d) ? t('chapter') : t('ep')} ${d.ep}`));
     if (p.state === 'error') toast(t('dlFailed'), true);
     if (p.state !== 'active') pumpDownloads(); // that show's next one
   }
@@ -1222,15 +1223,16 @@ async function title(path, force) {
   const h = store.history[path];
   const type = path.startsWith('/movie') ? 'movie' : 'anime';
   const first = h?.epPath || d.episodes[0]?.path;
+  const score = d.tags.find(x => /^\d+\.\d+$/.test(x)); // the site's score, among the tags: shown with the actions instead
   view.innerHTML = `
     <div class="det-hero"><div class="bg" style="background-image:url('${esc(img(d.banner))}')"></div>
       <div class="det">
         ${d.poster ? `<img class="poster" src="${esc(img(d.poster))}" alt="">` : ''}
         <div>
           <h1>${esc(d.title)}</h1>${d.alt ? `<div class="alt">${esc(d.alt)}</div>` : ''}
-          <div class="chips">${d.tags.map((t, i) => `<span class="chip ${i === 2 ? 'red' : ''}">${esc(t)}</span>`).join('')}${d.genres.map(g => `<span class="chip">${esc(g)}</span>`).join('')}</div>
+          <div class="chips">${d.tags.filter(x => x !== score).map(x => `<span class="chip">${esc(x)}</span>`).join('')}${d.genres.map(g => `<span class="chip">${esc(g)}</span>`).join('')}</div>
           <p class="desc" dir="auto">${esc(d.desc)}</p>
-          <div class="actions">${Ratings.slot({title:d.title, type:"anime"})}
+          <div class="actions">${Ratings.site(score)}${Ratings.slot({title:d.title, type:"anime"})}
             ${first ? `<a class="btn red" href="${playHash(first)}">${ICON.play} ${h ? esc(t('resume', h.ep)) : t('play')}</a>` : ''}
             <button class="btn ghost" id="fav">${inList(path) ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList')}</button>
             ${d.trailer ? `<button class="btn ghost" id="trl">${ICON.play} ${t('trailer')}</button>` : ''}
@@ -1590,7 +1592,8 @@ async function route(soft) {
   api.statusBar?.(true); // phones: the reader hides it with its bars (manga.js), every page starts with it
   const watching = a === 'play' || a === 'offline' || (a === 'cinema' && (rest[1] === 'watch' || rest[0] === 'episode'));
   api.keepAwake?.(watching); // phones: the video is in an iframe, which doesn't stop the screen locking mid-episode
-  $('#nav').style.display = watching || (a === 'manga' && rest[0] === 'read') ? 'none' : '';
+  immersed = watching || (a === 'manga' && rest[0] === 'read');
+  $('#nav').style.display = immersed ? 'none' : '';
   if (!soft) { scrollTo(0, 0); spinner(); }
   view.classList.toggle('still', !!soft); // a redraw with fresher data: no entrance animations, no poster fade-in
   try {

@@ -527,7 +527,9 @@ fun TitleScreen(path: String, nav: Nav) {
                 val day = if (android.text.format.DateUtils.isToday(a.at)) t("today") else java.text.SimpleDateFormat("EEEE d MMM", loc).format(at)
                 "${t("nextEp")} · ${if (a.ep.isNotEmpty()) "${t("epShort")} ${a.ep} · " else ""}$day · ${java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT, loc).format(at)}" to true
             }
-            DetailPage(d.banner, d.poster, d.title, d.alt, listOfNotNull(airChip) + d.tags.mapIndexed { i, c -> c to (i == 2) } + d.genres.map { it to false }, d.desc, {
+            val score = d.tags.find { it.matches(Regex("\\d+\\.\\d+")) } ?: "" // the site's score, among the tags: shown with the actions instead
+            DetailPage(d.banner, d.poster, d.title, d.alt, listOfNotNull(airChip) + d.tags.filter { it != score }.map { it to false } + d.genres.map { it to false }, d.desc, {
+                SiteRating(score)
                 SourceRating(listOf(d.title) + d.alt.split(Regex("[,،]")), "anime")
                 ListButton(path, d.title, d.poster, type)
                 if (type == "anime") NotifyButton(path, d.title, d.poster, d.episodes.lastOrNull()?.path ?: "")

@@ -96,7 +96,7 @@ sealed interface Screen {
     data class Search(val q: String = "", val kind: String = "") : Screen // kind: one section only ("anime"...), else all
     data object MyList : Screen
     data class Settings(val part: String = "") : Screen // part: one of its pages ("": its menu)
-    data class Characters(val names: List<String>, val kind: String, val year: String = "") : Screen
+    data class Characters(val names: List<String>, val kind: String, val year: String = "", val slug: String = "") : Screen
     data class Title(val path: String) : Screen
     data class Play(val epPath: String) : Screen
     data object Manga : Screen
@@ -115,6 +115,8 @@ sealed interface Screen {
     data class Trailer(val url: String, val title: String) : Screen // a title's trailer, played in the app
 }
 // full-screen pages: no dock, no drawer swipe
+var immersed = false // a video or a chapter open (App): no "download finished" toasts over it (Downloads)
+    private set
 private fun Screen.full() = this is Screen.Play || this is Screen.CinemaPlay || this is Screen.MangaRead || this is Screen.Offline || this is Screen.Trailer
 
 // the sections (app.js NAV), in the drawer; up to 4 of them in the dock (settings)
@@ -265,7 +267,7 @@ fun App() {
     val stack = rememberSaveable(saver = Saver<androidx.compose.runtime.snapshots.SnapshotStateList<Screen>, String>(
         save = { encodeScreens(it) }, restore = { runCatching { decodeScreens(it).toMutableStateList() }.getOrNull() }
     )) { activity.restoredStack.ifEmpty { listOf(Screen.Home) }.toMutableStateList() }
-    SideEffect { activity.sessionStack = stack.toList() }
+    SideEffect { activity.sessionStack = stack.toList(); immersed = stack.last().full() }
     val top = stack.last()
     LaunchedEffect(top) {
         if (top !is Screen.Play && top !is Screen.CinemaPlay && top !is Screen.Offline) PlaybackSession.navigation(null)

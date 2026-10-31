@@ -70,7 +70,7 @@ fun CinemaTitleScreen(slug: String, show: Boolean, nav: Nav) {
                 else if (h != null) Screen.CinemaPlay(h.optString("slug")) to "${t("play")} · ${t("ep")} ${h.optString("ep")}"
                 else eps.firstOrNull()?.let { Screen.CinemaPlay(it.slug) to t("play") }
             DetailPage(m.banner, m.poster, m.title, m.year, m.cat.map { it to true } + (m.tags + m.genres).map { it to false }, m.desc, {
-                SourceRating(listOf(m.title), if (slug.contains('/')) "series" else "cinema", if (slug.contains('/')) "" else m.year)
+                SourceRating(listOf(m.title), if (slug.contains('/')) "series" else "cinema", if (slug.contains('/')) "" else m.year, m.imdb)
                 ListButton(path, m.title, m.poster, "cinema")
                 if (slug.contains('/')) NotifyButton(path, m.title, m.poster, eps.lastOrNull()?.slug ?: "") // a series' season; new films have their own switch (settings)
             }, emptyList(), nav, if (eps.isNotEmpty()) t("episodes") else null,
@@ -89,7 +89,7 @@ fun CinemaTitleScreen(slug: String, show: Boolean, nav: Nav) {
                         }
                     }
                 },
-                after = { item { CreditsSection(listOf(m.title), false, if (slug.contains('/')) "" else m.year, kind = if (slug.contains('/')) "series" else "cinema", nav = nav) }; item { CardRowView(t("moreLike"), m.related, nav) } }, play = play?.let { (s, label) -> label to { nav.go(s) } },
+                after = { item { CreditsSection(listOf(m.title), false, if (slug.contains('/')) "" else m.year, kind = if (slug.contains('/')) "series" else "cinema", slug = slug, nav = nav) }; item { CardRowView(t("moreLike"), m.related, nav) } }, play = play?.let { (s, label) -> label to { nav.go(s) } },
                 menu = listOfNotNull(if (m.trailer.isNotEmpty()) MenuItem(t("trailer"), Ic.play) { nav.go(Screen.Trailer(m.trailer, m.title)) } else null))
         }
     }

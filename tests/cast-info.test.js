@@ -2,9 +2,9 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-function credits(answer, primary = false) {
+function credits(answer, primary = false, pages = {}) {
   const calls = [];
-  const ctx = { URLSearchParams, api: { fetch: async (url, form) => { if (url.includes("graphql.anilist.co") && !primary) return JSON.stringify({ data: { Media: null } }); calls.push(url); return JSON.stringify(await answer(new URL(url), form)); } } };
+  const ctx = { URLSearchParams, edMovieOf: async slug => pages[slug], api: { fetch: async (url, form) => { if (url.includes("graphql.anilist.co") && !primary) return JSON.stringify({ data: { Media: null } }); calls.push(url); return JSON.stringify(await answer(new URL(url), form)); } } };
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync('cast-info.js', 'utf8') + '\nthis.credits = CastInfo;', ctx);
   return { ...ctx.credits, calls };
@@ -51,7 +51,7 @@ test('cleans catalog boilerplate and seasons while preserving title numbers', ()
 test('ambiguous movie remakes are rejected without a release year', async () => {
   const c = credits(url => url.searchParams.get('action') === 'wbsearchentities' ? { search: ['Q1', 'Q2'].map(id => ({ id, label: 'Dune', description: 'film' })) } : { entities: Object.fromEntries(['Q1', 'Q2'].map(id => [id, { claims: { P161: [{ mainsnak: snak({ id: 'Q3' }) }] } }])) });
   assert.equal((await c.load(['Dune'], 'cinema')).length, 0);
-  assert.equal(c.calls.length, 2);
+  assert.equal(c.calls.length, 3); // imdb's suggestions, then wikidata's search and entities
 });
 test('individual seasons do not make the parent series ambiguous', async () => {
   const c = credits(url => {
@@ -62,6 +62,23 @@ test('individual seasons do not make the parent series ambiguous', async () => {
   });
   const [row] = await c.load(['Breaking Bad'], 'cinema');
   assert.equal(row.actor, 'Bryan Cranston');
+});
+test('films take their IMDb cast: the page id first, else one title-and-year suggestion', async () => {
+  const cast = { data: { title: { credits: { edges: [{ node: { name: { nameText: { text: 'Nani' }, primaryImage: { url: 'https://m.media-amazon.com/images/M/x._V1_.jpg' } }, characters: [{ name: 'Jadal' }] } }, { node: { name: { nameText: { text: 'Extra' }, primaryImage: null }, characters: null } }] } } } };
+  const c = credits((url, form) => url.hostname === 'v3.sg.media-imdb.com' ? { d: [{ id: 'tt1', l: 'The Paradise', y: 2026, qid: 'movie' }, { id: 'tt2', l: 'The Paradise', y: 2012, qid: 'movie' }, { id: 'tt3', l: 'The Paradise', y: 2026, qid: 'tvSeries' }] } : (assert.match(form.query, /"tt1"/), cast));
+  const rows = await c.load(['The Paradise'], 'cinema', '2026');
+  assert.equal(JSON.stringify(rows.map(r => [r.name, r.actor, r.photo])), JSON.stringify([['Jadal', 'Nani', 'https://m.media-amazon.com/images/M/x._V1_UX240_.jpg'], ['', 'Extra', '']]));
+  const byId = credits((url, form) => (assert.equal(url.hostname, 'caching.graphql.imdb.com'), assert.match(form.query, /"tt9"/), cast), false, { 'serie/x': { imdbId: 'tt9', team: [] } });
+  assert.equal((await byId.load(['Anything'], 'series', '', null, 'serie/x')).length, 2);
+  assert.equal(byId.calls.length, 1);
+});
+test('Arabic titles take the page cast first; foreign ones only when IMDb has nothing', async () => {
+  const team = [{ name: 'علا', photo: 'p.jpg', actor: 'ياسمين رئيس', actorPhoto: '' }];
+  const ar = credits(() => { throw Error('not asked'); }, false, { 'فيلم-x': { imdbId: 'tt1', team } });
+  assert.equal((await ar.load(['صنع في مصر'], 'cinema', '2014', null, 'فيلم-x'))[0].actor, 'ياسمين رئيس');
+  assert.equal(ar.calls.length, 0);
+  const en = credits(() => ({ d: [] }), false, { 'film-y': { team } });
+  assert.equal((await en.load(['Unknown Film'], 'cinema', '2020', null, 'film-y'))[0].name, 'علا');
 });
 test('AniList loads every page, matches aliases, deduplicates and omits voices for manhwa', async () => {
   const c = credits((url, form) => {

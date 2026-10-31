@@ -747,4 +747,6 @@ img.broken:not(.rd-pages img) { content: url("data:image/gif;base64,R0lGODlhAQAB
 .source-rating:empty { display: none; }
 .source-rating svg { height: 18px; width: auto; border-radius: 4px; }
 .source-rating b { color: #f5c518; }
+.source-rating.site { padding-inline-start: 10px; color: #f5c518; }
+.source-rating.site svg { width: 15px; height: 15px; }
 .source-rating small { color: var(--muted); font-size: 11px; margin-inline-start: -4px; }
