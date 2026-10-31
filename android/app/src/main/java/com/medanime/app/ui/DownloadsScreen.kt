@@ -390,7 +390,7 @@ fun OfflineScreen(epPath: String, nav: Nav) {
         { castTo("${d.optString("title")} · $sub", file, null) }, fullButton = false) { full ->
         if (failed) Empty(t("playFailed"), t("playFailedHint")) { OutlinedButton({ openWith(file, true) }) { Text(t("openWith"), color = Color.White) } }
         else AndroidView({ c ->
-            PlayerView(c).apply {
+            (android.view.LayoutInflater.from(c).inflate(com.medanime.app.R.layout.offline_player, null) as PlayerView).apply {
                 this.player = exo
                 setShutterBackgroundColor(android.graphics.Color.BLACK)
                 setShowPreviousButton(false); setShowNextButton(false) // one file each: the bar above has the other episodes
