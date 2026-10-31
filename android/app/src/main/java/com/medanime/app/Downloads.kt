@@ -143,6 +143,8 @@ object Downloads {
         pump()
     }
 
+    // episode or chapter 1 first, up to the last: a batch is added in the same millisecond, so the time added only breaks ties (app.js dlOrder)
+    private val order = compareBy<JSONObject>({ it.optString("ep").toDoubleOrNull() ?: Double.MAX_VALUE }, { it.optLong("at") })
     /** starts the next waiting item of every show that has nothing downloading */
     @Synchronized fun pump() {
         val items = all().keys().asSequence().mapNotNull { of(it) }.toList()
@@ -153,7 +155,7 @@ object Downloads {
         }
         for ((show, l) in items.groupBy { it.optString("show") }) {
             if (wait || held(show) || l.any { it.optString("state") == "active" }) continue
-            val d = l.filter { it.optString("state") == "queued" }.minByOrNull { it.optLong("at") } ?: continue
+            val d = l.filter { it.optString("state") == "queued" }.minWithOrNull(order) ?: continue
             start(d, show)
         }
         DownloadService.held = items.any { it.optString("state").let { s -> s == "queued" || s == "active" } }

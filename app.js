@@ -966,10 +966,12 @@ async function dlSources(d) {
   for (const l of links) { try { return { url: await api.downloadUrl(l.token), quality: l.quality }; } catch (e) { console.error(e); } }
   return {};
 }
+// episode or chapter 1 first, up to the last: a batch is added in the same millisecond, so the time added only breaks ties
+const dlOrder = (a, b) => parseFloat(a.ep) - parseFloat(b.ep) || a.at - b.at;
 function prefetch() {
   for (;;) {
     const d = Object.values(store.downloads).filter(d => dlSent.has(d.id) && !dlFetched.has(d.id) && d.state === 'queued'
-      && (isManga(d) ? dlFetching.pages < 3 : !dlFetching.episode)).sort((a, b) => a.at - b.at)[0];
+      && (isManga(d) ? dlFetching.pages < 3 : !dlFetching.episode)).sort(dlOrder)[0];
     if (!d) return;
     const k = isManga(d) ? 'pages' : 'episode';
     dlFetched.add(d.id); dlFetching[k]++;
@@ -980,7 +982,7 @@ function prefetch() {
 // starts the next waiting item of every show that isn't paused and has nothing downloading (phones: see dlSent)
 function pumpDownloads() {
   if (api.downloadEnqueue) {
-    for (const d of Object.values(store.downloads).filter(d => d.state === 'queued' && !held(d.show) && !dlSent.has(d.id)).sort((a, b) => a.at - b.at)) {
+    for (const d of Object.values(store.downloads).filter(d => d.state === 'queued' && !held(d.show) && !dlSent.has(d.id)).sort(dlOrder)) {
       dlSent.add(d.id);
       api.downloadEnqueue(dlJob(d));
     }
@@ -990,7 +992,7 @@ function pumpDownloads() {
   for (const d of Object.values(store.downloads)) (shows[d.show] ||= []).push(d);
   for (const [show, items] of Object.entries(shows)) {
     if (held(show) || items.some(d => d.state === 'active')) continue;
-    const d = items.filter(d => d.state === 'queued').sort((a, b) => a.at - b.at)[0];
+    const d = items.filter(d => d.state === 'queued').sort(dlOrder)[0];
     if (!d) continue;
     d.state = 'active'; d.received = 0; d.total = 0;
     drawDownloads();
