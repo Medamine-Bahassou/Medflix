@@ -23,7 +23,7 @@ const STR = {
     nothing: 'لا يوجد شيء هنا', tryElse: 'جرّب شيئًا آخر.', unreachable: 'تعذّر الوصول إلى الموقع', retry: 'إعادة المحاولة',
     continueWatching: 'تابع المشاهدة', refreshSite: 'تحديث من الموقع', refresh: 'تحديث', updated: 'تم التحديث', updateTitle: 'تحديث متوفر', updateText: 'يوجد إصدار أحدث من التطبيق. حدّثه الآن، ستبقى بياناتك كما هي.', updateGo: 'تحديث الآن', updateGetting: 'جارٍ التنزيل', updateAllow: 'اسمح للتطبيق بتثبيت التحديثات، ثم اضغط تحديث الآن مرة أخرى', updateFailed: 'تعذّر التحديث، يتم التنزيل من المتصفح',
     feedback: 'ملاحظات وبلاغات', feedbackHint: 'اقتراح أو مشكلة واجهتك؟ اكتبها هنا وستصلنا مباشرة.', feedbackEmail: 'بريدك الإلكتروني (اختياري، لنرد عليك)', feedbackMsg: 'اكتب رسالتك…', feedbackSend: 'إرسال', feedbackSending: 'جارٍ الإرسال…', feedbackSent: 'تم إرسال رسالتك، شكرًا لك', feedbackFailed: 'تعذّر الإرسال، حاول مرة أخرى',
-    play: 'تشغيل', moreInfo: 'المزيد', details: 'التفاصيل', prev: 'السابق', next: 'التالي',
+    play: 'تشغيل', moreInfo: 'المزيد', details: 'التفاصيل', charactersCast: 'الشخصيات والممثلون', viewAllCast: 'عرض الكل', enlargeImage: 'عرض الصورة بحجم كامل', loadMoreCast: 'تحميل المزيد', castSearch: 'ابحث عن شخصية أو ممثل…', loadingCast: 'جارٍ تحميل الشخصيات…', noCast: 'لا تتوفر معلومات عن الشخصيات لهذا العنوان.', castUnavailable: 'تعذّر تحميل الشخصيات حالياً.', japaneseVoice: 'الصوت الياباني', actor: 'الممثل', prev: 'السابق', next: 'التالي',
     results: q => `نتائج البحث عن «${q}»`, listEmpty: 'قائمتك فارغة', listHint: 'مرّر على أي عنوان واضغط + لحفظه هنا.',
     resume: e => `متابعة الحلقة ${e}`, inList: 'في قائمتي', trailer: 'الإعلان', episodes: 'الحلقات', jump: 'انتقل إلى حلقة…', moreLike: 'أعمال مشابهة',
     back: 'رجوع (Esc)', loadingServers: 'جارٍ تحميل السيرفرات…', openBrowser: 'فتح في المتصفح', openBrowserTip: 'إذا لم يعمل المشغّل داخل التطبيق', cast: 'عرض على التلفاز', casting: 'يُعرض الآن على التلفاز', castPlayFirst: 'شغّل الفيديو هنا أولاً، ثم اعرضه على التلفاز', castWifi: 'اتصل بشبكة الواي فاي نفسها التي يتصل بها التلفاز', castFailed: 'تعذّر التشغيل على التلفاز، جرّب سيرفراً آخر',
@@ -57,7 +57,7 @@ const STR = {
     nothing: 'Nothing here', tryElse: 'Try something else.', unreachable: "Couldn't reach the site", retry: 'Retry',
     continueWatching: 'Continue Watching', refreshSite: 'Refresh from site', refresh: 'Refresh', updated: 'Updated', updateTitle: 'Update available', updateText: 'A newer version of the app is out. Update now; your data stays.', updateGo: 'Update now', updateGetting: 'Downloading', updateAllow: 'Allow the app to install updates, then tap Update now again', updateFailed: 'Update failed, downloading in the browser instead',
     feedback: 'Feedback & issues', feedbackHint: 'An idea, or something not working? Write it here and it reaches us directly.', feedbackEmail: 'Your email (optional, for a reply)', feedbackMsg: 'Write your message…', feedbackSend: 'Send', feedbackSending: 'Sending…', feedbackSent: 'Message sent, thank you', feedbackFailed: 'Could not send, try again',
-    play: 'Play', moreInfo: 'More Info', details: 'Details', prev: 'Prev', next: 'Next',
+    play: 'Play', moreInfo: 'More Info', details: 'Details', charactersCast: 'Characters & cast', viewAllCast: 'View all', enlargeImage: 'View image fullscreen', loadMoreCast: 'Load more', castSearch: 'Search characters or actors…', loadingCast: 'Loading characters…', noCast: 'Character and cast information is not available for this title.', castUnavailable: 'Character information could not be loaded right now.', japaneseVoice: 'Japanese voice', actor: 'Actor', prev: 'Prev', next: 'Next',
     results: q => `Results for “${q}”`, listEmpty: 'Your list is empty', listHint: 'Hover any title and press + to save it here.',
     resume: e => `Resume Ep ${e}`, inList: 'In My List', trailer: 'Trailer', episodes: 'Episodes', jump: 'Jump to ep…', moreLike: 'More Like This',
     back: 'Back (Esc)', loadingServers: 'Loading servers…', openBrowser: 'Open in browser', openBrowserTip: "If the in-app player won't load", cast: 'Cast to TV', casting: 'Playing on the TV', castPlayFirst: 'Start the video here first, then cast it', castWifi: 'Connect to the same Wi-Fi as the TV', castFailed: "Couldn't play it on the TV, try another server",
@@ -720,22 +720,59 @@ const skelRows = n => Array.from({ length: n }, () => `<section class="row"><h3>
 // isn't what witanime calls it. What was typed is asked first; when that finds little, it's asked again as the names that
 // typo-tolerant title searches suggest (Kitsu for anime and manga, IMDb for films and series) and as its other spellings,
 // and everything found is ranked by how close its title is to what was typed or to one of those names.
-const fold = s => String(s || '').toLowerCase().normalize('NFKD').replace(/\p{M}/gu, '').replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-const pairs = s => { s = ` ${s.replace(/ /g, '')} `; return new Set(Array.from({ length: s.length - 1 }, (_, i) => s.slice(i, i + 2))); };
-const dice = (a, b) => { const x = pairs(a), y = pairs(b); return 2 * [...x].filter(p => y.has(p)).length / (x.size + y.size); };
-// 0..1: 1 when the title holds the query (spaces and punctuation aside), else the most letter pairs it shares with the
-// whole title or with a run of as many title words
-function closeness(q, title) {
-  const a = fold(q), b = fold(title);
-  if (!a || !b) return 0;
-  if (b.replace(/ /g, '').includes(a.replace(/ /g, ''))) return 1;
-  const n = a.split(' ').length, w = b.split(' ');
-  return Math.max(dice(a, b), ...w.map((_, i) => dice(a, w.slice(i, i + n).join(' '))));
+const fold = s => String(s || '').toLowerCase().normalize('NFKD').replace(/\p{M}/gu, '').replace(/ـ/g, '').replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/[٠-٩۰-۹]/g, c => String(c.charCodeAt(0) - (c <= '٩' ? 1632 : 1776))).replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+// strip request phrasing only at the edges; words inside a title still matter
+const searchQuery = q => fold(q).replace(/^(?:(?:please |can you )?(?:search for|find|show me|watch)|(?:ابحث عن|ابحث لي عن|اريد مشاهده|اريد|مشاهده)) +/u, '').replace(/ +(?:مترجم|مدبلج|اون لاين)$/u, '').trim();
+// sources alternate between "Ao Ashi 2nd Season" and "Aoashi Season 2"
+const searchTitle = q => fold(q).replace(/\b(\d+)(?:st|nd|rd|th)\b/g, '$1')
+  .replace(/\b(first|second|third|fourth|fifth|sixth) (season|part|cour)\b/g, (_, n, k) => `${k} ${['first', 'second', 'third', 'fourth', 'fifth', 'sixth'].indexOf(n) + 1}`)
+  .replace(/\b(\d+) (season|part|cour)\b/g, '$2 $1').replace(/\b(season|part|cour) ?(\d+)\b/g, '$1 $2');
+const searchNumbersMatch = (q, title) => {
+  const numbers = searchTitle(title).split(' ');
+  return searchTitle(q).split(' ').filter(w => /^\d+$/.test(w)).every(w => numbers.includes(w));
+};
+// adjacent swapped letters count as one typo ("naurto" -> "naruto")
+function wordScore(a, b) {
+  if (a === b) return 1;
+  if (/^\d+$/.test(a) || /^\d+$/.test(b) || Math.min(a.length, b.length) < 3) return 0;
+  if (b.startsWith(a) && a.length >= 3) return .9;
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+  for (let j = 0; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) {
+    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] !== b[j - 1]));
+    if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+  }
+  const edits = d[a.length][b.length];
+  return edits <= (Math.min(a.length, b.length) >= 6 ? 2 : 1) ? 1 - edits / Math.max(a.length, b.length) : 0;
 }
-// "spider-man" -> "spider man", "spiderman", "spider-man", "spider"
+function closeness(q, title) {
+  const a = searchTitle(q), b = searchTitle(title);
+  if (!a || !b) return 0;
+  if (a.replace(/ /g, '') === b.replace(/ /g, '')) return 1;
+  const words = a.split(' '), target = b.split(' ');
+  // explicit years and season numbers must survive typo correction
+  if (words.some(w => /^\d+$/.test(w) && !target.includes(w))) return 0;
+  const compact = a.replace(/ /g, '');
+  if (target.some((_, i) => {
+    let joined = '';
+    for (let j = i; j < target.length && joined.length < compact.length; j++) { joined += target[j]; if (joined === compact) return true; }
+    return false;
+  })) return .96;
+  const used = new Set();
+  let total = 0;
+  for (const w of words) {
+    let best = 0, at = -1;
+    target.forEach((t, i) => { const score = used.has(i) ? 0 : wordScore(w, t); if (score > best) { best = score; at = i; } });
+    if (at < 0) return 0; // every query word must match, even when reordered
+    used.add(at); total += best;
+  }
+  return .96 * total / words.length;
+}
+// search the base title too: literal site search cannot resolve spacing and season wording together
 const spellings = q => {
-  const w = fold(q).split(' ').filter(Boolean);
-  return [w.join(' '), w.join(''), w.join('-'), ...(w.length > 1 ? w.filter(x => x.length >= 4).sort((a, b) => b.length - a.length).slice(0, 1) : [])];
+  const canonical = searchTitle(q), base = canonical.replace(/\b(?:season|part|cour) \d+\b/g, '').replace(/ +/g, ' ').trim();
+  const w = canonical.split(' ').filter(Boolean);
+  return [...new Set([base, base.replace(/ /g, ''), canonical, w.join('-'), w.join(''), ...w.filter(x => x.length >= 4 && !['season', 'part', 'cour'].includes(x)).sort((a, b) => b.length - a.length).slice(0, 1)])].filter(Boolean);
 };
 // each suggestion: a title's names (Kitsu's: canonical, English, romaji: "Solo Leveling" is "Ore dake Level Up na Ken")
 const kitsu = async (kind, q) => (JSON.parse(await api.fetch(`https://kitsu.io/api/edge/${kind}?${new URLSearchParams({ 'filter[text]': q, 'page[limit]': 3, [`fields[${kind}]`]: 'canonicalTitle,titles' })}`)).data || [])
@@ -749,27 +786,32 @@ const suggested = new Map(); // kind|query -> its suggested names (a promise), f
 // only titles one of whose names is near what was typed (IMDb also lists whatever's popular)
 const suggest = (kind, q) => {
   const k = kind + '|' + fold(q);
-  if (!suggested.has(k)) suggested.set(k, SUGGEST[kind](q).then(l => [...new Set(l.filter(n => n.some(x => closeness(q, x) >= .45)).flat().filter(Boolean))].slice(0, 4), () => []));
+  if (!suggested.has(k)) suggested.set(k, SUGGEST[kind](q).then(l => [...new Set(l.filter(n => n.some(x => closeness(q, x) >= .65)).flat().filter(Boolean))].slice(0, 4), () => []));
   return suggested.get(k);
 };
-// ask(text) -> cards. Cards only found by a suggestion or another spelling must be close to one of the names.
+// ask(text) -> cards; even the source's literal results must match the query or a trusted alias.
 async function fuzzySearch(q, kind, ask) {
-  const found = new Map(), add = (l, other) => (l || []).forEach(c => found.has(c.path) || found.set(c.path, { c, other }));
-  add(await ask(q).catch(() => []), false);
+  q = searchQuery(q);
+  if (!q) return [];
+  const found = new Map(), add = l => (l || []).forEach(c => found.has(c.path) || found.set(c.path, c));
+  add(await ask(q).catch(() => []));
   let names = [q];
-  if ([...found.values()].filter(x => closeness(q, x.c.title) >= .6).length < 3) {
+  if ([...found.values()].filter(x => closeness(q, x.title) >= .6).length < 3) {
     const sug = await suggest(kind, q);
     names = [q, ...sug];
-    const more = [...new Set([...sug, ...spellings(q)])].filter(v => v !== q).slice(0, 5);
-    (await Promise.all(more.map(v => ask(v).catch(() => [])))).forEach(l => add(l, true));
+    const variants = spellings(q);
+    const more = [...new Set([...variants.slice(0, 2), ...sug, ...variants.slice(2)])].filter(v => v !== q).slice(0, 7);
+    (await Promise.all(more.map(v => ask(v).catch(() => [])))).forEach(add);
   }
-  const score = c => Math.max(...names.map(n => closeness(n, c.title)));
-  return [...found.values()].map(x => ({ ...x, s: score(x.c) })).filter(x => !x.other || x.s >= .5)
+  const score = c => Math.max(closeness(q, c.title), ...names.slice(1).map(n => .97 * closeness(n, c.title)));
+  return [...found.values()].map(c => ({ c, s: score(c) })).filter(x => x.s >= .62 && searchNumbersMatch(q, x.c.title))
     .sort((a, b) => b.s - a.s || a.c.title.length - b.c.title.length).map(x => x.c); // as close: the shorter title (the show, before its spin-offs)
 }
 
+let searchRun = 0;
 // #/search/<q>?in=<section>: only that section is asked, its matches in one grid
 async function search(q) {
+  const run = ++searchRun, hash = location.hash, current = () => run === searchRun && hash === location.hash;
   const IN = /\?in=(anime|manga|cinema)$/, s = q.match(IN)?.[1] || '';
   q = q.replace(IN, '');
   $('#search').q.value = q;
@@ -779,15 +821,16 @@ async function search(q) {
   if (s === 'manga' || s === 'cinema') {
     view.innerHTML = `<div class="page">${head}<div class="grid" id="sres">${skel(12)}</div></div>`;
     const html = await moreResults(s === 'manga' && { search: q }, s === 'cinema' && { search: q }, [], true);
-    if ($('#sres')) $('#sres').outerHTML = html;
+    if (current() && $('#sres')) $('#sres').outerHTML = html;
     return;
   }
   view.innerHTML = `<div class="page">${head}<div class="grid">${skel(12)}</div></div><div class="rows sched-rows">${skelRows(2)}</div>`;
   const d = { items: await fuzzySearch(q, 'anime', v => scraper.search(v).then(r => r.items)) };
+  if (!current()) return;
   // "nothing here" only once the manga and film rows came back empty too
   view.innerHTML = `<div class="page">${head}${d.items.length ? grid(d.items) : ''}</div><div class="rows sched-rows" id="mres">${skelRows(2)}</div>`;
   const more = s ? '' : await moreResults({ search: q }, { search: q }, d.items); // ?in=anime: witanime's alone
-  if (!$('#mres')) return;
+  if (!current() || !$('#mres')) return;
   $('#mres').innerHTML = more;
   if (!more && !d.items.length) $('.page').insertAdjacentHTML('beforeend', grid([]));
 }
@@ -1187,7 +1230,7 @@ async function title(path, force) {
           <h1>${esc(d.title)}</h1>${d.alt ? `<div class="alt">${esc(d.alt)}</div>` : ''}
           <div class="chips">${d.tags.map((t, i) => `<span class="chip ${i === 2 ? 'red' : ''}">${esc(t)}</span>`).join('')}${d.genres.map(g => `<span class="chip">${esc(g)}</span>`).join('')}</div>
           <p class="desc" dir="auto">${esc(d.desc)}</p>
-          <div class="actions">
+          <div class="actions">${Ratings.slot({title:d.title, type:"anime"})}
             ${first ? `<a class="btn red" href="${playHash(first)}">${ICON.play} ${h ? esc(t('resume', h.ep)) : t('play')}</a>` : ''}
             <button class="btn ghost" id="fav">${inList(path) ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList')}</button>
             ${d.trailer ? `<button class="btn ghost" id="trl">${ICON.play} ${t('trailer')}</button>` : ''}
@@ -1196,12 +1239,14 @@ async function title(path, force) {
         </div>
       </div>
     </div>
+    <section class="section" id="title-cast" hidden></section>
     ${d.info.length ? `<div class="infos">${d.info.map(([k, v]) => `<div><span>${esc(k)}</span>${esc(v)}</div>`).join('')}</div>` : ''}
     ${d.episodes.length > 1 || type === 'anime' ? `<div class="section"><h2>${t('episodes')} <small>${d.episodes.length}</small>
       <div class="ep-tools"><input id="epf" placeholder="${t('jump')}" type="number"><button class="btn ghost small" id="rev" aria-label="${t('reverse')}" title="${t('reverse')}">${ICON.sort}</button></div></h2>
       <div class="eps list" id="eps"></div></div>` : ''}
     ${d.related.length ? row(t('moreLike'), d.related) : ''}`;
 
+  CastInfo.mount($('#title-cast'), [d.title, ...(d.alt || '').split(/[,،]/)], 'anime');
   const eps = $('#eps');
   let rev = false, info = {};
   const drawEps = (f = '') => eps && (eps.innerHTML = (rev ? [...d.episodes].reverse() : d.episodes)
@@ -1245,8 +1290,8 @@ function overlay(html) {
 const showTrailer = url => overlay(`<iframe src="${esc(url)}" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`);
 // a tap on a details page's poster, or a downloaded show's, shows it full size
 document.addEventListener('click', e => {
-  const p = e.target.closest('.det .poster, .dl-hero > img');
-  if (p) overlay(`<img class="viewer" src="${esc(p.src)}" alt="">`);
+  const p = e.target.closest('.det .poster, .dl-hero > img, .cast-photo[data-full]');
+  if (p) overlay(`<img class="viewer${p.dataset.full ? ' cast-viewer' : ''}" src="${esc(p.dataset.full || p.src)}" alt="${esc(p.dataset.name || p.alt || '')}">${p.dataset.full ? `<button class="icon-btn viewer-close" aria-label="${t('back')}">${ICON.x}</button>` : ''}`);
 });
 
 // Sites list one host several times in different qualities: keep the first (best) one of each.
@@ -1528,6 +1573,7 @@ async function route(soft) {
   // background redraws wait while a video plays or a search/sheet/menu is open, rather than reset them
   // (and while a pull-to-refresh runs: a redraw would drop its loads, and its spinner would never stop)
   if (soft && (/^#\/(play|offline|manga\/read)\/|^#\/cinema\/([^/]+\/watch|episode\/)/.test(location.hash) || $('.sheet-wrap, .dd.open, body.searching, #ptr.busy'))) return;
+  CastInfo.dispose();
   scraper.newView();
   clearInterval(heroTimer);
   cardData.clear();
@@ -1563,6 +1609,7 @@ async function route(soft) {
     else if (a === 'manga') await mangaRoute(rest);
     else if (a === 'cinema') await cinemaRoute(rest);
     else if (a === 'settings') settingsView();
+    else if (a === 'characters') await CastInfo.page(JSON.parse(rest.join('/')));
     else if (a === 'title') await title('/' + rest.join('/'));
     else if (a === 'play') await play('/watch/' + rest.join('/'));
   } catch (e) { console.error(e); failed(e); }

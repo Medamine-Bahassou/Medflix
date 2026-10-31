@@ -108,7 +108,7 @@ input:focus-visible, select:focus-visible { outline: none; }
 .card .meta { position: absolute; inset: auto 0 0; padding: 40px 10px 10px; background: linear-gradient(#0000, #000e 55%); }
 .card .t { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card .s { font-size: 11px; color: #bbb; display: flex; gap: 8px; }
-.card .s .star { display: inline-flex; align-items: center; gap: 3px; color: #ffc93c; }
+.card .s .star { display: inline-flex; align-items: center; gap: 3px; color: #f5c518; font-weight: 700; direction: ltr; } /* the site's own score, scraped with the card */
 .card .s .star svg { width: 11px; height: 11px; }
 .card .badge { position: absolute; top: 8px; inset-inline-start: 8px; background: var(--red); font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 3px; box-shadow: 0 2px 10px #0008; }
 .card .fav { position: absolute; top: 8px; inset-inline-end: 8px; width: 30px; height: 30px; border-radius: 50%; background: #000a; border: 1px solid #fff6; color: #fff;
@@ -699,3 +699,52 @@ img.broken:not(.rd-pages img) { content: url("data:image/gif;base64,R0lGODlhAQAB
 
 /* Descriptions already use dir=auto: align to their own text direction on every screen size. */
 .det .desc, .hero .info p { text-align: start; }
+
+/* character portraits scroll independently on phones, in either reading direction */
+.cast-track { display:flex; gap:16px; overflow-x:auto; padding-block:8px 16px; }
+.cast-card { flex:0 0 140px; position:relative; }
+.cast-photo { width:100%; aspect-ratio:2/3; background:var(--card); border-radius:8px; overflow:hidden; }
+.cast-photo img { width:100%; height:100%; object-fit:cover; }
+.cast-card b { display:block; margin-block:10px 4px; }
+.cast-card small { display:block; color:var(--muted); line-height:1.5; }
+.cast-card .cast-voice { width:36px; height:36px; object-fit:cover; border-radius:50%; margin-block-start:8px; }
+@media(max-width:760px) { .cast-card { flex-basis:112px; } }
+
+.cast-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; color:inherit; text-decoration:none; }
+.cast-heading:focus-visible { outline:2px solid var(--red); outline-offset:4px; }
+.cast-see-all { display:flex; align-items:center; gap:6px; color:var(--muted); font-size:14px; white-space:nowrap; }
+.cast-see-all svg { width:18px; height:18px; }
+.cast-heading:hover .cast-see-all { color:var(--red); }
+.cast-grid { margin-block:20px; }
+.cast-grid .cast-card { min-width:0; }
+.cast-search { width:100%; max-width:480px; padding:12px 14px; background:var(--card); color:inherit; border:1px solid var(--muted); border-radius:6px; }
+
+
+.cast-photo { position:relative; }
+.cast-placeholder { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--muted); }
+.cast-placeholder svg { width:40%; height:auto; max-width:56px; }
+.cast-photo img { position:absolute; inset:0; opacity:0; }
+.cast-photo img.ok:not(.broken):not([hidden]) { opacity:1; }
+.cast-photo:has(img.ok:not(.broken):not([hidden])) .cast-placeholder { visibility:hidden; }
+
+.cast-more[hidden] { display:none; }
+
+.cast-skeleton { background:linear-gradient(110deg,var(--card) 30%,#ffffff14 50%,var(--card) 70%) 0 0/300% 100%; animation:shimmer 1.4s infinite; }
+.cast-card.skel .bar { margin-block-start:12px; }
+
+.cast-grid .cast-card b { font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cast-grid .cast-card small { font-size:11px; }
+
+.cast-photo[data-full] { display:block; padding:0; border:0; cursor:zoom-in; }
+.cast-photo[data-full]:focus-visible { outline:2px solid var(--red); outline-offset:3px; }
+.viewer-close { position:absolute; top:calc(env(safe-area-inset-top,0px) + 16px); inset-inline-end:16px; background:var(--card); }
+
+.trailer .cast-viewer { width:94vw; height:92dvh; }
+
+.cast-search[hidden] { display:none; }
+
+.source-rating { display: inline-flex; align-items: center; align-self: center; gap: 6px; padding: 3px 12px 3px 4px; border: 1px solid #f5c51855; border-radius: 30px; background: #f5c51814; font-size: 13px; white-space: nowrap; direction: ltr; } /* logo, then the score: same order in both languages */
+.source-rating:empty { display: none; }
+.source-rating svg { height: 18px; width: auto; border-radius: 4px; }
+.source-rating b { color: #f5c518; }
+.source-rating small { color: var(--muted); font-size: 11px; margin-inline-start: -4px; }

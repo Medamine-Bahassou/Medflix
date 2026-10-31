@@ -99,6 +99,7 @@ internal fun encodeScreens(stack: List<Screen>): String = JSONArray().apply {
             is Screen.Grid -> { put("title", s.title); put("base", s.base) }
             is Screen.Search -> { put("q", s.q); put("kind", s.kind) }
             is Screen.Settings -> put("part", s.part)
+            is Screen.Characters -> { put("names", JSONArray(s.names)); put("kind", s.kind); put("year", s.year) }
             is Screen.Title -> put("path", s.path)
             is Screen.Play -> put("epPath", s.epPath)
             is Screen.MangaBrowse -> put("query", JSONObject(s.query))
@@ -126,6 +127,7 @@ internal fun decodeScreens(text: String): List<Screen> = JSONArray(text).let { a
             "Search" -> Screen.Search(j.getString("q"), j.getString("kind"))
             "MyList" -> Screen.MyList
             "Settings" -> Screen.Settings(j.getString("part"))
+            "Characters" -> Screen.Characters(j.getJSONArray("names").let { n -> (0 until n.length()).map { n.getString(it) } }, j.getString("kind"), j.optString("year"))
             "Title" -> Screen.Title(j.getString("path"))
             "Play" -> Screen.Play(j.getString("epPath"))
             "Manga" -> Screen.Manga

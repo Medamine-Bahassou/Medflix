@@ -144,11 +144,13 @@ fun MangaSeriesScreen(id: String, nav: Nav) {
                 // type and status under the title; the rating and views lead the actions row
                 listOfNotNull(s.type.takeIf { it.isNotEmpty() }?.let { Manga.typeName(it) to true }, s.status.takeIf { it.isNotEmpty() }?.let { Manga.label(Manga.STATUS, it) to true }) + s.genres.map { it to false },
                 s.story, {
-                    Stat(Ic.star, if (s.rating.isEmpty()) "–" else "${s.rating}/10", t("views", "%,d".format(s.views)))
+                    SourceRating(listOf(s.title) + s.alt.split(Regex("[,،]")), "manga")
+                    Action("%,d".format(s.views), Ic.eye)
                     ListButton("/manga/series/$id", s.title, s.poster, "manga")
                     NotifyButton("/manga/series/$id", s.title, s.poster, full.chs.firstOrNull()?.id ?: "")
                 }, emptyList(), nav, t("chapters"),
                 full.chs.map { Numbered(it.n, seen.has(it.id), r?.optString("chapterId") == it.id, Screen.MangaRead(it.id, s.title, it.n), it.id, com.medanime.app.Downloads.done("manga:${it.id}"), seen.optInt(it.id) == 2) }, t("jumpCh"),
+                after = { item { CreditsSection(listOf(s.title) + s.alt.split(Regex("[,،]")), false, kind = "manga", nav = nav) } },
                 // several chapters: mark them read or unread, download them, or delete their saved copies (manga.js acts)
                 acts = { ids -> listOfNotNull("read" to t("markRead"), "unread" to t("markUnread"),
                     if (ids.any { !com.medanime.app.Downloads.done("manga:$it") }) "dl" to t("downloadShort") else null,

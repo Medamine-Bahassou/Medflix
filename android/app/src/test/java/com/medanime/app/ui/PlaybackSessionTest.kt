@@ -11,7 +11,9 @@ class PlaybackSessionTest {
             Screen.MangaRead("o:test:2", "عنوان", "2"), Screen.Cinema, Screen.CinemaBrowse("movies"),
             Screen.CinemaTitle("season/show", true), Screen.CinemaPlay("episode/show-2"), Screen.Downloads("/anime/show"),
             Screen.Offline("/watch/show/1"), Screen.Section("new"), Screen.Hidden, Screen.Schedule,
-            Screen.Trailer("https://example.com/embed", "Trailer"))
+            Screen.Trailer("https://example.com/embed", "Trailer"),
+            Screen.Characters(listOf("Naruto", "ナルト"), "anime"), Screen.Characters(listOf("Solo Leveling"), "manga"),
+            Screen.Characters(listOf("Inception"), "cinema", "2010"), Screen.Characters(listOf("Breaking Bad"), "series"))
         assertEquals(stack, decodeScreens(encodeScreens(stack)))
     }
     @Test fun emptyNavigationRoundTrips() { assertEquals(emptyList<Screen>(), decodeScreens(encodeScreens(emptyList()))) }

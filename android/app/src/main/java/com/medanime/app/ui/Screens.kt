@@ -164,22 +164,64 @@ fun HiddenScreen(nav: Nav) {
 // the sites match titles literally: "narto" finds nothing and "demon slayer" isn't what they call it. What was typed is asked
 // first; when that finds little, it's asked again as the names typo-tolerant title searches suggest (Kitsu for anime and
 // manga, IMDb for films) and as its other spellings, and everything is ranked by how close its title is to one of them
-private fun fold(s: String) = java.text.Normalizer.normalize(s.lowercase(), java.text.Normalizer.Form.NFKD).replace(Regex("\\p{M}"), "")
-    .replace(Regex("[أإآ]"), "ا").replace('ة', 'ه').replace('ى', 'ي').replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
-private fun pairs(s: String) = " ${s.replace(" ", "")} ".let { t -> (0 until t.length - 1).map { t.substring(it, it + 2) }.toSet() }
-private fun dice(a: String, b: String): Double { val x = pairs(a); val y = pairs(b); return 2.0 * x.count { it in y } / (x.size + y.size) }
-// 0..1: 1 when the title holds the query (spaces and punctuation aside), else the most letter pairs it shares with the
-// whole title or with a run of as many title words
-private fun closeness(q: String, title: String): Double {
-    val a = fold(q); val b = fold(title)
-    if (a.isEmpty() || b.isEmpty()) return 0.0
-    if (a.replace(" ", "") in b.replace(" ", "")) return 1.0
-    val n = a.split(' ').size; val w = b.split(' ')
-    return (listOf(dice(a, b)) + w.indices.map { dice(a, w.subList(it, minOf(it + n, w.size)).joinToString(" ")) }).max()
+internal fun fold(s: String) = java.text.Normalizer.normalize(s.lowercase(java.util.Locale.ROOT), java.text.Normalizer.Form.NFKD).replace(Regex("\\p{M}"), "")
+    .replace("ـ", "").replace(Regex("[أإآ]"), "ا").replace('ة', 'ه').replace('ى', 'ي')
+    .map { if (it in '٠'..'٩' || it in '۰'..'۹') ('0'.code + it.digitToInt()).toChar() else it }.joinToString("")
+    .replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
+internal fun searchQuery(q: String) = fold(q)
+    .replace(Regex("^(?:(?:please |can you )?(?:search for|find|show me|watch)|(?:ابحث عن|ابحث لي عن|اريد مشاهده|اريد|مشاهده)) +"), "")
+    .replace(Regex(" +(?:مترجم|مدبلج|اون لاين)$"), "").trim()
+// normalize the season wording before joining title words ("Ao Ashi" / "Aoashi")
+internal fun searchTitle(q: String) = fold(q).replace(Regex("\\b(\\d+)(?:st|nd|rd|th)\\b"), "$1")
+    .replace(Regex("\\b(first|second|third|fourth|fifth|sixth) (season|part|cour)\\b")) { m ->
+        "${m.groupValues[2]} ${listOf("first", "second", "third", "fourth", "fifth", "sixth").indexOf(m.groupValues[1]) + 1}"
+    }.replace(Regex("\\b(\\d+) (season|part|cour)\\b"), "$2 $1").replace(Regex("\\b(season|part|cour) ?(\\d+)\\b"), "$1 $2")
+private fun searchNumbersMatch(q: String, title: String): Boolean {
+    val numbers = searchTitle(title).split(' ')
+    return searchTitle(q).split(' ').filter { it.all(Char::isDigit) }.all { it in numbers }
 }
-// "spider-man" -> "spider man", "spiderman", "spider-man", "spider"
-private fun spellings(q: String) = fold(q).split(' ').filter { it.isNotEmpty() }.let { w ->
-    listOf(w.joinToString(" "), w.joinToString(""), w.joinToString("-")) + if (w.size > 1) w.filter { it.length >= 4 }.sortedByDescending { it.length }.take(1) else emptyList()
+// same ranking as desktop: whole words, reordered words, prefixes, then small typos
+private fun wordScore(a: String, b: String): Double {
+    if (a == b) return 1.0
+    if (a.all { it.isDigit() } || b.all { it.isDigit() } || minOf(a.length, b.length) < 3) return 0.0
+    if (b.startsWith(a) && a.length >= 3) return .9
+    val d = Array(a.length + 1) { i -> IntArray(b.length + 1) { j -> if (i == 0) j else if (j == 0) i else 0 } }
+    for (i in 1..a.length) for (j in 1..b.length) {
+        d[i][j] = minOf(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + if (a[i - 1] == b[j - 1]) 0 else 1)
+        if (i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1]) d[i][j] = minOf(d[i][j], d[i - 2][j - 2] + 1)
+    }
+    val edits = d[a.length][b.length]
+    return if (edits <= if (minOf(a.length, b.length) >= 6) 2 else 1) 1.0 - edits.toDouble() / maxOf(a.length, b.length) else 0.0
+}
+internal fun closeness(q: String, title: String): Double {
+    val a = searchTitle(q); val b = searchTitle(title)
+    if (a.isEmpty() || b.isEmpty()) return 0.0
+    if (a.replace(" ", "") == b.replace(" ", "")) return 1.0
+    val words = a.split(' '); val target = b.split(' ')
+    if (words.any { w -> w.all { it.isDigit() } && w !in target }) return 0.0
+    val compact = a.replace(" ", "")
+    if (target.indices.any { i ->
+        var joined = ""; var j = i
+        while (j < target.size && joined.length < compact.length) { joined += target[j++]; if (joined == compact) return@any true }
+        false
+    }) return .96
+    val used = HashSet<Int>()
+    var total = 0.0
+    for (w in words) {
+        var best = 0.0; var at = -1
+        target.forEachIndexed { i, t -> val score = if (i in used) 0.0 else wordScore(w, t); if (score > best) { best = score; at = i } }
+        if (at < 0) return 0.0
+        used.add(at); total += best
+    }
+    return .96 * total / words.size
+}
+// base searches recover titles whose season suffix and word spacing both differ
+internal fun spellings(q: String): List<String> {
+    val canonical = searchTitle(q)
+    val base = canonical.replace(Regex("\\b(?:season|part|cour) \\d+\\b"), "").replace(Regex(" +"), " ").trim()
+    val w = canonical.split(' ').filter { it.isNotEmpty() }
+    return (listOf(base, base.replace(" ", ""), canonical, w.joinToString("-"), w.joinToString("")) +
+        w.filter { it.length >= 4 && it !in listOf("season", "part", "cour") }.sortedByDescending { it.length }.take(1)).filter { it.isNotEmpty() }.distinct()
 }
 // each suggestion: a title's names (Kitsu's: canonical, English, romaji); only those near what was typed (IMDb also lists what's popular)
 private suspend fun suggest(kind: String, q: String): List<String> = try {
@@ -189,23 +231,26 @@ private suspend fun suggest(kind: String, q: String): List<String> = try {
     } else org.json.JSONObject(Net.fetch("https://kitsu.io/api/edge/$kind?${enc("filter[text]")}=${enc(q)}&${enc("page[limit]")}=3&${enc("fields[$kind]")}=canonicalTitle,titles").body).optJSONArray("data").let { d ->
         (0 until (d?.length() ?: 0)).map { d!!.getJSONObject(it).getJSONObject("attributes") }.map { a -> listOf(a.optString("canonicalTitle"), a.optJSONObject("titles")?.optString("en").orEmpty(), a.optJSONObject("titles")?.optString("en_jp").orEmpty()) }
     }
-    all.filter { n -> n.any { closeness(q, it) >= .45 } }.flatten().filter { it.isNotEmpty() }.distinct().take(4)
+    all.filter { n -> n.any { closeness(q, it) >= .65 } }.flatten().filter { it.isNotEmpty() }.distinct().take(4)
 } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { emptyList() }
-// ask(text) -> cards; cards found only by a suggestion or another spelling must be close to one of the names
-private suspend fun fuzzySearch(q: String, kind: String, ask: suspend (String) -> List<Card>): List<Card> = coroutineScope {
-    val found = LinkedHashMap<String, Pair<Card, Boolean>>()
-    fun add(l: List<Card>, other: Boolean) = l.forEach { found.putIfAbsent(it.path, it to other) }
-    add(ask(q), false) // what was typed failing is the search failing (unreachable)
+// ask(text) -> cards; literal results must also match the query or a trusted alias
+internal suspend fun fuzzySearch(query: String, kind: String, suggestions: suspend (String, String) -> List<String> = ::suggest, ask: suspend (String) -> List<Card>): List<Card> = coroutineScope {
+    val q = searchQuery(query)
+    if (q.isEmpty()) return@coroutineScope emptyList()
+    val found = LinkedHashMap<String, Card>()
+    fun add(l: List<Card>) = l.forEach { found.putIfAbsent(it.path, it) }
+    add(ask(q)) // what was typed failing is the search failing (unreachable)
     var names = listOf(q)
-    if (found.values.count { closeness(q, it.first.title) >= .6 } < 3) {
-        val sug = suggest(kind, q)
+    if (found.values.count { closeness(q, it.title) >= .6 } < 3) {
+        val sug = suggestions(kind, q)
         names = listOf(q) + sug
-        (sug + spellings(q)).distinct().filter { it != q }.take(5)
+        val variants = spellings(q)
+        (variants.take(2) + sug + variants.drop(2)).distinct().filter { it != q }.take(7)
             .map { v -> async { try { ask(v) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { emptyList() } } }
-            .forEach { add(it.await(), true) }
+            .forEach { add(it.await()) }
     }
-    found.values.map { (c, other) -> Triple(c, other, names.maxOf { closeness(it, c.title) }) }.filter { !it.second || it.third >= .5 }
-        .sortedWith(compareByDescending<Triple<Card, Boolean, Double>> { it.third }.thenBy { it.first.title.length }).map { it.first } // as close: the shorter title (the show, before its spin-offs)
+    found.values.map { c -> c to maxOf(closeness(q, c.title), names.drop(1).maxOfOrNull { .97 * closeness(it, c.title) } ?: 0.0) }.filter { it.second >= .62 && searchNumbersMatch(q, it.first.title) }
+        .sortedWith(compareByDescending<Pair<Card, Double>> { it.second }.thenBy { it.first.title.length }).map { it.first } // as close: the shorter title (the show, before its spin-offs)
 }
 
 /** search: witanime's titles, the movie sites' and manga, a row each, each with its spelling guesses (app.js search) */
@@ -442,8 +487,8 @@ fun RedButton(label: String, modifier: Modifier = Modifier, onClick: () -> Unit)
  * apps do); on: what it does is set (in the list, notifying), the icon red
  */
 @Composable
-fun FlowRowScope.Action(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, on: Boolean = false, onClick: () -> Unit) =
-    Column(Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+fun FlowRowScope.Action(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, on: Boolean = false, onClick: (() -> Unit)? = null) =
+    Column(Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier).padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Icon(icon, null, Modifier.size(24.dp), tint = if (on) Red else Color.White)
         Text(label, Modifier.padding(top = 4.dp), color = if (on) Color.White else Color(0xFFB3B3B3), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
@@ -483,6 +528,7 @@ fun TitleScreen(path: String, nav: Nav) {
                 "${t("nextEp")} · ${if (a.ep.isNotEmpty()) "${t("epShort")} ${a.ep} · " else ""}$day · ${java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT, loc).format(at)}" to true
             }
             DetailPage(d.banner, d.poster, d.title, d.alt, listOfNotNull(airChip) + d.tags.mapIndexed { i, c -> c to (i == 2) } + d.genres.map { it to false }, d.desc, {
+                SourceRating(listOf(d.title) + d.alt.split(Regex("[,،]")), "anime")
                 ListButton(path, d.title, d.poster, type)
                 if (type == "anime") NotifyButton(path, d.title, d.poster, d.episodes.lastOrNull()?.path ?: "")
             }, d.info, nav, if (d.episodes.size > 1 || type == "anime") t("episodes") else null,
@@ -492,7 +538,7 @@ fun TitleScreen(path: String, nav: Nav) {
                     if (type == "anime") MenuItem(t("autoDlShort"), Ic.download, Alerts.autoDl(path)) { Alerts.toggleDl(path, d.title, d.poster, d.episodes.lastOrNull()?.path ?: "") } else null,
                     if (d.trailer.isNotEmpty()) MenuItem(t("trailer"), Ic.play) { nav.go(Screen.Trailer(d.trailer, d.title)) } else null),
                 play = first?.let { (if (h != null) t("resume", h.optString("ep")) else t("play")) to { nav.go(Screen.Play(it)) } },
-                after = { item { CardRowView(t("moreLike"), d.related, nav) } },
+                after = { item { CreditsSection(listOf(d.title) + d.alt.split(Regex("[,،]")), true, nav = nav) }; item { CardRowView(t("moreLike"), d.related, nav) } },
                 acts = { ids -> listOfNotNull("seen" to t("markWatched"), "unseen" to t("markUnwatched"), if (ids.any { !com.medanime.app.Downloads.done(it) }) "dl" to t("downloadShort") else null) },
                 run = { v, ids ->
                     val seen = Store["seen"]

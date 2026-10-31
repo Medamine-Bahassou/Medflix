@@ -3,6 +3,7 @@ package com.medanime.app.ui
 // app.js STR, generated from it (every key, both languages): functions there take their arguments as %1$s, %2$s...
 private val STR = mapOf(
     "ar" to mapOf(
+        "charactersCast" to "الشخصيات والممثلون", "viewAllCast" to "عرض الكل", "enlargeImage" to "عرض الصورة بحجم كامل", "loadMoreCast" to "تحميل المزيد", "castSearch" to "ابحث عن شخصية أو ممثل…", "loadingCast" to "جارٍ تحميل الشخصيات…", "noCast" to "لا تتوفر معلومات عن الشخصيات لهذا العنوان.", "castUnavailable" to "تعذّر تحميل الشخصيات حالياً.", "japaneseVoice" to "الصوت الياباني", "actor" to "الممثل",
         "home" to "الرئيسية",
         "anime" to "أنمي",
         "remove" to "إزالة",
@@ -280,6 +281,7 @@ private val STR = mapOf(
         "schedNoneHint" to "جرّب اسمه بالإنجليزية أو اليابانية.",
     ),
     "en" to mapOf(
+        "charactersCast" to "Characters & cast", "viewAllCast" to "View all", "enlargeImage" to "View image fullscreen", "loadMoreCast" to "Load more", "castSearch" to "Search characters or actors…", "loadingCast" to "Loading characters…", "noCast" to "Character and cast information is not available for this title.", "castUnavailable" to "Character information could not be loaded right now.", "japaneseVoice" to "Japanese voice", "actor" to "Actor",
         "home" to "Home",
         "anime" to "Anime",
         "remove" to "Remove",

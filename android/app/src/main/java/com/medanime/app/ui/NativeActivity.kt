@@ -96,6 +96,7 @@ sealed interface Screen {
     data class Search(val q: String = "", val kind: String = "") : Screen // kind: one section only ("anime"...), else all
     data object MyList : Screen
     data class Settings(val part: String = "") : Screen // part: one of its pages ("": its menu)
+    data class Characters(val names: List<String>, val kind: String, val year: String = "") : Screen
     data class Title(val path: String) : Screen
     data class Play(val epPath: String) : Screen
     data object Manga : Screen
@@ -197,6 +198,11 @@ class NativeActivity : ComponentActivity() {
         if (playerUp && autoPipEnabled(Store["prefs"]) && android.os.Build.VERSION.SDK_INT in 26..30 && packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE))
             runCatching { enterPictureInPictureMode(pipParams().build()) }
     }
+    override fun onPictureInPictureUiStateChanged(state: android.app.PictureInPictureUiState) {
+        super.onPictureInPictureUiStateChanged(state)
+        // Android 15+: hide overlays as the window starts shrinking, before PiP mode is reported.
+        if (android.os.Build.VERSION.SDK_INT >= 35 && state.isTransitioningToPip) inPip.value = true
+    }
     override fun onPictureInPictureModeChanged(on: Boolean, c: android.content.res.Configuration) {
         super.onPictureInPictureModeChanged(on, c)
         inPip.value = on
@@ -264,11 +270,16 @@ fun App() {
     LaunchedEffect(top) {
         if (top !is Screen.Play && top !is Screen.CinemaPlay && top !is Screen.Offline) PlaybackSession.navigation(null)
     }
-    val drawer = rememberDrawerState(DrawerValue.Closed)
+    val pip = inPip.value
+    val drawerBlocked = pip || top.full()
+    val blockDrawer by rememberUpdatedState(drawerBlocked)
+    // drawer visibility is transient; restoring an open drawer must not cover a restored player.
+    val drawer = remember { DrawerState(DrawerValue.Closed) { it == DrawerValue.Closed || !blockDrawer } }
+    LaunchedEffect(drawerBlocked) { if (drawerBlocked) drawer.snapTo(DrawerValue.Closed) }
     val scope = rememberCoroutineScope()
     // a section opens over Home: back from it (search included) goes home first, then twice to leave
     val tab: (Screen) -> Unit = { stack.clear(); stack.add(Screen.Home); if (it != Screen.Home) stack.add(it); scope.launch { drawer.close() } }
-    val nav = Nav({ stack.add(it) }, { stack[stack.lastIndex] = it }, { if (stack.size > 1) stack.removeAt(stack.lastIndex) }, { scope.launch { drawer.open() } })
+    val nav = Nav({ stack.add(it) }, { stack[stack.lastIndex] = it }, { if (stack.size > 1) stack.removeAt(stack.lastIndex) }, { if (!drawerBlocked) scope.launch { drawer.open() } })
     val saved = rememberSaveableStateHolder() // each page keeps its scroll when it's come back to
     var backAt by remember { mutableLongStateOf(0L) }
     val ctx = LocalContext.current
@@ -281,7 +292,11 @@ fun App() {
     BackHandler(drawer.isOpen) { scope.launch { drawer.close() } }
     val owner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     DisposableEffect(owner) { // back from Android's "all files access" page
-        val o = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_RESUME) Store.check() }
+        val o = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            if (e == Lifecycle.Event.ON_RESUME) Store.check()
+            // leaving and returning (including PiP) starts with the current page unobstructed.
+            if (e == Lifecycle.Event.ON_PAUSE || e == Lifecycle.Event.ON_RESUME) scope.launch { drawer.snapTo(DrawerValue.Closed) }
+        }
         owner.lifecycle.addObserver(o)
         onDispose { owner.lifecycle.removeObserver(o) }
     }
@@ -299,7 +314,14 @@ fun App() {
     // in a left-to-right layout), so an Arabic paragraph reads and aligns from the right on its own
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         MaterialTheme(darkColorScheme(primary = Red, background = Bg, surface = Bg, surfaceContainer = CardC, onPrimary = Color.White, secondaryContainer = Red)) {
-            ModalNavigationDrawer({ Drawer(top, tab, { scope.launch { drawer.close() } }) { feedback = true; scope.launch { drawer.close() } } }, drawerState = drawer, gesturesEnabled = !top.full() || drawer.isOpen) {
+            // keep the player in the same composition slot: removing the drawer wrapper would recreate its WebView.
+            ModalNavigationDrawer({
+                // keep the sheet measured in PiP: removing it changes its anchors and can reopen it on return.
+                Drawer(top, tab, { scope.launch { drawer.close() } }, Modifier.graphicsLayer { alpha = if (drawerBlocked) 0f else 1f }) {
+                    feedback = true; scope.launch { drawer.close() }
+                }
+            }, drawerState = drawer, gesturesEnabled = !drawerBlocked,
+                scrimColor = if (drawerBlocked) Color.Transparent else DrawerDefaults.scrimColor) {
                 Scaffold(containerColor = Bg, bottomBar = { if (!top.full()) Dock(top, tab) }) { pad ->
                     // the reader takes the whole screen, under the phone's bars, so its pages don't move as they hide; its own bars pad themselves
                     Box(Modifier.padding(if (top is Screen.MangaRead) PaddingValues() else pad).fillMaxSize()) {
@@ -311,6 +333,7 @@ fun App() {
                                 is Screen.Search -> SearchScreen(top.q, nav, top.kind)
                                 Screen.MyList -> MyListScreen(nav)
                                 is Screen.Settings -> SettingsScreen(top.part, nav)
+                                is Screen.Characters -> CreditsScreen(top, nav)
                                 is Screen.Title -> TitleScreen(top.path, nav)
                                 is Screen.Play -> PlayerScreen(top.epPath, nav)
                                 Screen.Manga -> MangaHomeScreen(nav)
@@ -355,6 +378,7 @@ private fun Dock(top: Screen, tab: (Screen) -> Unit) {
 
 // the section a page belongs to (app.js markActive)
 private fun section(s: Screen) = when (s) {
+    is Screen.Characters -> when (s.kind) { "manga" -> "manga"; "cinema", "series" -> "cinema"; else -> "anime" }
     Screen.Home -> "home"
     Screen.Anime, is Screen.Grid, is Screen.Title, is Screen.Play, is Screen.Section, is Screen.Trailer -> "anime" // a trailer: full screen, no dock to light
     Screen.Cinema, is Screen.CinemaBrowse, is Screen.CinemaTitle, is Screen.CinemaPlay -> "cinema"
@@ -368,10 +392,10 @@ private fun section(s: Screen) = when (s) {
 
 /** the side drawer: every section, settings, feedback, language (app.js renderNav) */
 @Composable
-private fun Drawer(top: Screen, tab: (Screen) -> Unit, close: () -> Unit, feedback: () -> Unit) {
+private fun Drawer(top: Screen, tab: (Screen) -> Unit, close: () -> Unit, modifier: Modifier = Modifier, feedback: () -> Unit) {
     // Material 3's navigation drawer, as its spec lays it out: a header, pill rows inset 12dp, a divider between groups.
     // the scheme's own drawer colour is a purple-tinted grey: the app's card colour instead
-    ModalDrawerSheet(drawerContainerColor = CardC) {
+    ModalDrawerSheet(modifier = modifier, drawerContainerColor = CardC) {
         Row(Modifier.fillMaxWidth().padding(start = 28.dp, end = 12.dp, top = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Logo(Modifier.weight(1f))
             IconButton(close) { Icon(Ic.x, t("close"), Modifier.size(22.dp)) } // a plain way out: not everyone knows to swipe it away or tap beside it
@@ -598,7 +622,14 @@ fun PosterCard(c: Card, nav: Nav, width: Dp? = 112.dp) {
             PickMark(on)
         }
         Text(c.title, Modifier.padding(top = 4.dp), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (c.rating.isNotEmpty() || c.year.isNotEmpty()) Text(listOf(c.rating.let { if (it.isEmpty()) "" else "★ $it" }, c.year).filter { it.isNotEmpty() }.joinToString("  "), color = Muted, fontSize = 11.sp)
+        // the site's own score (scraped with the card), gold like the page's rating, then the year
+        if (c.rating.isNotEmpty() || c.year.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically) {
+            if (c.rating.isNotEmpty()) {
+                Icon(Ic.star, null, Modifier.size(11.dp), tint = Color(0xFFF5C518))
+                Text(c.rating, Modifier.padding(start = 3.dp, end = 8.dp), color = Color(0xFFF5C518), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+            if (c.year.isNotEmpty()) Text(c.year, color = Muted, fontSize = 11.sp)
+        }
     }
 }
 

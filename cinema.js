@@ -343,7 +343,7 @@ async function cinemaTitle(slug, force) {
           <h1 dir="auto">${esc(m.title)}</h1>
           <div class="chips">${m.cat.map(c => `<span class="chip red">${esc(c)}</span>`).join('')}${[...m.tags, ...m.genres].map(g => `<span class="chip">${esc(g)}</span>`).join('')}</div>
           <p class="desc" dir="auto">${esc(m.desc)}</p>
-          <div class="actions">
+          <div class="actions">${Ratings.slot({title:m.title, type:"cinema", year:m.year})}
             ${play ? `<a class="btn red" href="${play.href}">${ICON.play} ${esc(play.label)}</a>` : ''}
             <button class="btn ghost" id="fav">${inList(path) ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList')}</button>
             ${m.trailer ? `<button class="btn ghost" id="trl">${ICON.play} ${t('trailer')}</button>` : ''}
@@ -352,10 +352,12 @@ async function cinemaTitle(slug, force) {
         </div>
       </div>
     </div>
+    <section class="section" id="title-cast" hidden></section>
     ${m.seasons.length > 1 ? `<div class="section"><h2>${t('seasons')}</h2><div class="fchips">${m.seasons.map(s => `<a class="fchip ${s.path === path ? 'on' : ''}" href="#${s.path}" dir="auto">${esc(s.title.match(/(الموسم|الجزء)\s+\S+/)?.[0] || s.title)}</a>`).join('')}</div></div>` : ''}
     ${eps.length ? `<div class="section"><h2>${t('episodes')} <small>${eps.length}</small></h2><div class="eps list">${eps.map(e => // the site gives no episode names or stills
       epRow(e.n, null, m.banner || m.poster, edHref(e.slug), store.seen['/cinema/' + e.slug], h?.slug === e.slug)).join('')}</div></div>` : ''}
     ${row(t('moreLike'), dubbed(m.related))}`;
+  CastInfo.mount($('#title-cast'), [m.title], slug.includes('/') ? 'series' : 'cinema', slug.includes('/') ? '' : m.year);
   $('#fav').onclick = e => { const on = toggleList({ path, title: m.title, poster: m.poster, type: 'cinema' }); e.currentTarget.innerHTML = on ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList'); };
   pageRefresh = () => cinemaTitle(slug, true);
   $('#rf').onclick = () => pageRefresh().then(() => toast(t('updated')));

@@ -2,7 +2,7 @@
 // Capacitor's native HTTP (no CORS, any headers, shared cookie jar), IndexedDB, and an iframe player.
 if (!window.api && window.Capacitor) (() => {
   const SITE = 'https://witanime.site', AR = 'https://eva.animerco.org', MANGA = 'https://appswat.com', OLY = 'https://olympustaff.com', AS = 'https://animeschedule.net', MC = 'https://cima.my-cima.net', WC = 'https://wecima.singles', RA = 'https://ristoanime.me';
-  const SUGGEST = ['https://kitsu.io', 'https://v3.sg.media-imdb.com']; // the search's title suggestions (app.js)
+  const SUGGEST = ['https://graphql.anilist.co', 'https://api.tvmaze.com', 'https://api.jikan.moe', 'https://www.wikidata.org', 'https://kitsu.io', 'https://v3.sg.media-imdb.com', 'https://www.imdb.com']; // the search's title suggestions (app.js)
   // same desktop Chrome UA as the Electron build, so the sites serve the markup the scraper expects
   const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0 Safari/537.36';
   // witanime sits behind Cloudflare: talk to it as this WebView (same markup as desktop), the browser its cookies were earned in

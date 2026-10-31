@@ -18,7 +18,7 @@ const MC = 'https://cima.my-cima.net'; // the movies section's backup servers (M
 // pages (pop-up ads and all) are never opened in a window for the check (see refused below)
 const WC = 'https://wecima.singles';
 const RA = 'https://ristoanime.me'; // anime backup servers
-const SUGGEST = ['https://kitsu.io', 'https://v3.sg.media-imdb.com']; // the search's typo-tolerant title suggestions (app.js)
+const SUGGEST = ['https://graphql.anilist.co', 'https://api.tvmaze.com', 'https://api.jikan.moe', 'https://www.wikidata.org', 'https://kitsu.io', 'https://v3.sg.media-imdb.com', 'https://www.imdb.com']; // the search's typo-tolerant title suggestions (app.js)
 const EGYDEAD = /^https:\/\/([a-z0-9-]+\.)*(egydead|myseed|arabseed)\.[a-z]+$/; // the movies section: the site hops between domains
 // plain Chrome of the version Electron really runs: Cloudflare's check fails a user agent that disagrees with the
 // browser's client hints (they name the real version)
@@ -140,7 +140,7 @@ const pagerFetch = (url, headers) => new Promise((ok, fail) => {
 // A saved image shows at once and is re-downloaded from the site once per app run.
 const IMG_DIR = path.join(app.getPath('userData'), 'images');
 // manga: only appswat's (or its meshmanga.com mirror's) sized posters/covers and olympus's covers; chapter pages are read once and would just fill the disk
-const IMG_HOSTS = /^https:\/\/(images\.witanime\.site|eva\.animerco\.org\/wp-content\/uploads|(appswat|meshmanga)\.com\/v2\/media\/__sized__|cdn\.olympustaff\.com\/images\/manga|img\.animeschedule\.net\/production|media\.kitsu\.app\/episodes|([a-z0-9-]+\.)*(egydead|myseed|arabseed)\.[a-z]+\/wp-content\/uploads)\//;
+const IMG_HOSTS = /^https:\/\/(s4\.anilist\.co|static\.tvmaze\.com|cdn\.myanimelist\.net|upload\.wikimedia\.org|commons\.wikimedia\.org|images\.witanime\.site|eva\.animerco\.org\/wp-content\/uploads|(appswat|meshmanga)\.com\/v2\/media\/__sized__|cdn\.olympustaff\.com\/images\/manga|img\.animeschedule\.net\/production|media\.kitsu\.app\/episodes|([a-z0-9-]+\.)*(egydead|myseed|arabseed)\.[a-z]+\/wp-content\/uploads)\//;
 const imgChecked = new Set();
 protocol.registerSchemesAsPrivileged([{ scheme: 'medimg', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 

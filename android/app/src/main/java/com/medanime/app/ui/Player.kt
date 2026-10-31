@@ -208,7 +208,7 @@ fun ServerMenu(servers: List<Pair<String, String>>, cur: Int, busy: Boolean, pic
             Text(servers.getOrNull(cur)?.let { "${it.first} ${it.second}".trim() } ?: t("chooseServer"), color = Color.White, fontSize = 13.sp, maxLines = 1)
             Icon(Ic.caretDown, null, Modifier.padding(start = 4.dp).size(14.dp), tint = Color.White)
         }
-        DropdownMenu(open, { open = false }, containerColor = CardC) {
+        DropdownMenu(open && !inPip.value, { open = false }, containerColor = CardC) {
             servers.forEachIndexed { i, (label, q) ->
                 DropdownMenuItem({ Text("$label  $q".trim()) }, { open = false; pick(i) }, trailingIcon = { if (i == cur) Icon(Ic.check, null, Modifier.size(18.dp), tint = Red) })
             }
@@ -232,7 +232,7 @@ private fun DownloadMenu(epPath: String, show: String, ep: String, d: Details?, 
             open = true
             if (links == null) scope.launch { links = runCatching { Witanime.downloadLinks(epPath) }.getOrElse { if (it is CancellationException) throw it; emptyList() } }
         }) { Icon(Ic.download, t("download"), Modifier.size(20.dp)) }
-        DropdownMenu(open, { open = false }, containerColor = CardC) {
+        DropdownMenu(open && !inPip.value, { open = false }, containerColor = CardC) {
             when (com.medanime.app.Downloads.of(epPath)?.optString("state")) {
                 "done" -> DropdownMenuItem({ Text(t("playOffline")) }, { open = false; nav.replace(Screen.Offline(epPath)) }, leadingIcon = { Icon(Ic.play, null, Modifier.size(18.dp), tint = Red) })
                 "active", "queued" -> DropdownMenuItem({ Text(t("dlOpenList")) }, { open = false; nav.go(Screen.Downloads(show)) }, leadingIcon = { Icon(Ic.download, null, Modifier.size(18.dp), tint = Red) })
@@ -265,7 +265,7 @@ fun LinksMenu(links: List<Link>?) {
     val browse = openUrl()
     Box {
         IconButton({ open = true }, enabled = links != null) { Icon(Ic.download, t("download"), Modifier.size(20.dp)) }
-        DropdownMenu(open, { open = false }, containerColor = CardC) {
+        DropdownMenu(open && !inPip.value, { open = false }, containerColor = CardC) {
             if (links.isNullOrEmpty()) DropdownMenuItem({ Text(t("dlNone"), color = Muted) }, {}, enabled = false)
             links?.forEach { l ->
                 DropdownMenuItem({ Text("${l.label}  ${l.quality}".trim()) }, { open = false; browse(l.url); toast(t("openedBrowser")) },

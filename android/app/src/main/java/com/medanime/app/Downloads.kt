@@ -55,7 +55,8 @@ object Downloads {
     private lateinit var app: Context
 
     fun all(): JSONObject = Store["downloads"]
-    fun of(id: String): JSONObject? = all().optJSONObject(id)
+    fun of(id: String): JSONObject? = all().optJSONObject(id) ?: if (id.startsWith("manga:"))
+        all().keys().asSequence().mapNotNull { all().optJSONObject(it) }.find { id.removePrefix("manga:") in ChapterDownloads.ids(it) } else null
     fun done(id: String) = of(id)?.optString("state") == "done"
     fun busy() = all().keys().asSequence().any { of(it)?.optString("state") == "active" } // a show's next starts as one ends: no gap
     private fun dir() = if (Store.granted()) File(Store.shared, "Downloads") else File(app.getExternalFilesDir(Environment.DIRECTORY_MOVIES), "MedAnime")
@@ -64,6 +65,7 @@ object Downloads {
     fun init(c: Context) {
         if (::app.isInitialized) return // the same process (a background check got here first, or the activity was recreated): those are still running
         app = c.applicationContext
+        if (ChapterDownloads.repair(all())) save() // old source ids must not leave two rows for one chapter
         all().keys().asSequence().mapNotNull { of(it) }.filter { it.optString("state") == "active" }.forEach { it.put("state", "queued") }
         // the storage view's sizes, for downloads finished before they were kept: counted once, off the main thread (on the
         // phone's shared storage each file is a slow look, and a manga's chapters are thousands of pages: the page hung)
@@ -124,10 +126,16 @@ object Downloads {
         var added = 0
         unhold("/manga/series/$serieId")
         for (c in chs) {
-            val id = "manga:${c.id}"
-            if (of(id)?.optString("state").let { it != null && it != "error" && it != "cancelled" }) continue
-            all().put(id, JSONObject().put("id", id).put("kind", "manga").put("show", "/manga/series/$serieId").put("chapterId", c.id).put("title", title)
-                .put("ep", c.n).put("poster", poster).put("state", "queued").put("received", 0).put("total", 0).put("at", System.currentTimeMillis() + added++))
+            val existing = ChapterDownloads.find(all(), "/manga/series/$serieId", c.n)
+            if (existing != null) {
+                ChapterDownloads.alias(existing, c.id)
+                if (existing.optString("state") !in setOf("error", "cancelled")) continue
+            }
+            val id = existing?.optString("id") ?: "manga:${c.id}"
+            val rec = JSONObject().put("id", id).put("kind", "manga").put("show", "/manga/series/$serieId").put("chapterId", c.id).put("title", title)
+                .put("ep", c.n).put("poster", poster).put("state", "queued").put("received", 0).put("total", 0).put("at", System.currentTimeMillis() + added++)
+            existing?.let { rec.put("chapterIds", JSONArray(ChapterDownloads.ids(it).toList())) }
+            all().put(id, rec)
         }
         save()
         if (!quiet) toast(if (added == 0) t("dlDone") else if (onData()) t("dlWifiWait") else t("dlQueuedN", added))
@@ -284,8 +292,9 @@ object Downloads {
         pump()
     }
     /** the record and its file (an episode's .mp4, a chapter's folder), only ever inside the downloads folders */
-    fun delete(id: String) {
-        val d = of(id) ?: return
+    fun delete(requestedId: String) {
+        val d = of(requestedId) ?: return
+        val id = d.getString("id")
         supersede(id)
         DownloadService.active.remove(id)
         d.optString("file").takeIf { it.isNotEmpty() }?.let { f ->

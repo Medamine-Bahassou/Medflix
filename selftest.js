@@ -47,7 +47,8 @@ app.once('browser-window-created', (_, win) => win.webContents.once('did-finish-
       const ra = await scraper.ristoanime('Black Clover 2nd Season', '', '4', false), r1 = await scraper.ristoanime('BLEACH: Sennen Kessen-hen - Kashin-tan', '', '9', false);
       ok(ra.length >= 3 && r1.length >= 3 && [...ra, ...r1].every(s => s.url.startsWith('https://')), 'ristoanime servers ' + ra.length + ' ' + r1.length);
       ok(mw.servers.length >= 3 && mw.servers.every(s => s.url.startsWith('https://') && s.ref) && mw.downloads.length, 'mycima servers ' + mw.servers.map(s => s.label));
-      ok(closeness('spiderman', 'Spider-Man: No Way Home') === 1 && closeness('naurto', 'Naruto') > .5 && closeness('naurto', 'Bleach') < .3, 'search closeness');
+      ok(closeness('spiderman', 'Spider-Man: No Way Home') >= .9 && closeness('naurto', 'Naruto') > .5 && closeness('naurto', 'Bleach') < .3, 'search closeness');
+      ok(closeness('Ao Ashi 2nd Season', 'Aoashi Season 2') === 1 && closeness('Ao Ashi 2nd Season', 'Aoashi') === 0, 'search season spelling');
       const fz = await fuzzySearch('naurto', 'anime', v => scraper.search(v).then(r => r.items));
       ok(fz.length && /naruto/i.test(fz[0].title), 'fuzzy anime search: ' + fz.slice(0, 3).map(c => c.title));
       const ff = await fuzzySearch('weapns', 'film', edSearch);

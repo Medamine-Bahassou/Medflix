@@ -6,7 +6,7 @@
   "main": "main.js",
   "scripts": {
     "start": "electron . 2>&1 | grep --line-buffered -v '^Fontconfig warning'",
-    "build:web": "rm -rf www && mkdir www && cp index.html icons.js app.js scraper.js mobile.js filter.js manga.js cinema.js style.css www/ && echo \"window.BUILD = '$(date '+%Y-%m-%d %H:%M')';\" > www/build.js",
+    "build:web": "rm -rf www && mkdir www && cp index.html icons.js app.js scraper.js mobile.js filter.js manga.js cinema.js cast-info.js ratings.js style.css www/ && echo \"window.BUILD = '$(date '+%Y-%m-%d %H:%M')';\" > www/build.js",
     "apk": "node release.js",
     "release": "node release.js release"
   },

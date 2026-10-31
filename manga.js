@@ -275,11 +275,11 @@ async function mangaSeries(id, force) {
           <h1>${esc(s.title)}</h1>${s.alt ? `<div class="alt">${esc(s.alt)}</div>` : ''}
           <div class="chips">
             ${s.type ? `<span class="chip">${esc(mTypeName(s.type))}</span>` : ''}${s.status ? `<span class="chip">${esc(mLabel(MSTATUS, s.status))}</span>` : ''}
-            ${s.rating ? `<span class="chip red">${ICON.star} ${s.rating}</span>` : ''}<span class="chip">${t('views', s.views.toLocaleString(lang))}</span>
+            <span class="chip">${t('views', s.views.toLocaleString(lang))}</span>
             ${s.genres.map(g => `<span class="chip">${esc(g)}</span>`).join('')}
           </div>
           <p class="desc" dir="auto">${esc(s.story)}</p>
-          <div class="actions">
+          <div class="actions">${Ratings.slot({title:s.title, type:"manga"})}
             ${start ? `<a class="btn red" href="#/manga/read/${start.id}">${ICON.play} ${esc(start.label)}</a>` : ''}
             <button class="btn ghost" id="fav">${inList(path) ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList')}</button>
             <button class="btn ghost" id="rf">${ICON.refresh} ${t('refresh')}</button>
@@ -287,6 +287,7 @@ async function mangaSeries(id, force) {
         </div>
       </div>
     </div>
+    <section class="section" id="title-cast" hidden></section>
     <div class="section"><h2>${t('chapters')} <small>${chs.length}</small>
       <div class="ep-tools"><input id="epf" placeholder="${t('jumpCh')}" type="number"><button class="btn ghost small" id="rev" aria-label="${t('reverse')}" title="${t('reverse')}">${ICON.sort}</button>
         ${selBtn('btn ghost small')}</div></h2>
@@ -304,6 +305,7 @@ async function mangaSeries(id, force) {
   $('#epf').oninput = () => drawChs();
   $('#rev').onclick = () => { rev = !rev; drawChs(); };
   $('#fav').onclick = e => { const on = toggleList({ path, title: s.title, poster: s.poster, type: 'manga' }); e.currentTarget.innerHTML = on ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList'); };
+  CastInfo.mount($('#title-cast'), [s.title, ...(s.alt || '').split(/[,،]/)], 'manga');
   // chapters' actions, on one (long-press) or several picked: mark them read or unread (both ids: the listed chapter's and
   // its saved copy's, which may come from the other site), or every one before; download them or delete their saved copies
   const pick = cids => chs.filter(c => cids.includes(String(c.id))); // newest first, as listed
