@@ -45,7 +45,7 @@ import kotlinx.coroutines.flow.first
 
 private fun animeSlides(d: HomePage) = d.hero.map { Slide(it.banner, it.title, it.desc, Screen.Title(it.path), it.watch.takeIf { w -> w.isNotEmpty() }?.let { w -> Screen.Play(w) }) }
 fun mangaSlides(top: List<MSeries>) = top.filter { it.cover.isNotEmpty() }.map { s ->
-    Slide(s.cover, s.title, s.story, Screen.MangaSeries(s.id), Store["manga"].optJSONObject(s.id)?.optString("chapterId")?.let { Screen.MangaRead(it) })
+    Slide(s.cover, s.title, s.story, Screen.MangaSeries(s.id), Store["manga"].optJSONObject(s.id)?.optString("chapterId")?.let { Screen.MangaRead(it, s.title) })
 }
 fun filmSlides(items: List<Card>) = items.filter { it.poster.isNotEmpty() }.map { Slide(it.poster, it.title, it.desc, screenFor(it), Screen.CinemaPlay(it.path.removePrefix("/cinema/"))) }
 suspend fun mangaTop(items: List<Card>) = coroutineScope { items.map { async { runCatching { Manga.seriesOf(it.path.substringAfterLast('/')) }.getOrNull() } }.map { it.await() }.filterNotNull() }
@@ -113,10 +113,7 @@ private var schedQ by mutableStateOf("") // stays through refreshes and coming b
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScheduleScreen(nav: Nav) = Column {
-    PageTitle(t("schedule"), nav)
-    TextField(schedQ, { schedQ = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), placeholder = { Text(t("schedSearch")) }, singleLine = true,
-        leadingIcon = { Icon(Ic.search, null, Modifier.size(20.dp)) }, trailingIcon = { if (schedQ.isNotEmpty()) IconButton({ schedQ = "" }) { Icon(Ic.x, t("clear"), Modifier.size(18.dp)) } },
-        shape = RoundedCornerShape(6.dp), colors = TextFieldDefaults.colors(focusedContainerColor = CardC, unfocusedContainerColor = CardC, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, cursorColor = Red))
+    SearchTitle(t("schedule"), nav, schedQ, { schedQ = it }, t("schedSearch"), back = false)
     val (l, refresh) = loadedOnce("schedule") { Witanime.airTimes(it) }
     PullToRefreshBox(l.busy && l.data != null, refresh) {
         Body(l, refresh) { shows ->
@@ -265,14 +262,8 @@ fun MyListScreen(nav: Nav) {
     val kindOf = { c: Card -> when (c.type) { "manga" -> "manga"; "cinema" -> "cinema"; else -> "anime" } }
     val items = all.filter { (kind.isEmpty() || kindOf(it) == kind) && it.title.contains(q.trim(), ignoreCase = true) }
     Column {
-        TopBar(nav)
-        Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(t("myList"), Modifier.weight(1f), fontWeight = FontWeight.Bold, fontSize = 22.sp)
-        }
-        if (all.isEmpty()) return@Column Empty(t("listEmpty"), t("listHint"))
-        TextField(q, { q = it }, Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp), placeholder = { Text(t("listSearchPh")) }, singleLine = true,
-            leadingIcon = { Icon(Ic.search, null, Modifier.size(20.dp)) }, trailingIcon = { if (q.isNotEmpty()) IconButton({ q = "" }) { Icon(Ic.x, t("clear"), Modifier.size(18.dp)) } },
-            shape = RoundedCornerShape(6.dp), colors = TextFieldDefaults.colors(focusedContainerColor = CardC, unfocusedContainerColor = CardC, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, cursorColor = Red))
+        if (all.isEmpty()) { PageTitle(t("myList"), nav, back = false); return@Column Empty(t("listEmpty"), t("listHint")) }
+        SearchTitle(t("myList"), nav, q, { q = it }, t("listSearchPh"), back = false)
         // only the kinds the list holds, and none when it holds one
         val kinds = listOf("anime", "cinema", "manga").filter { k -> all.any { kindOf(it) == k } }
         if (kinds.size > 1) Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -379,7 +370,8 @@ fun DetailPage(banner: String, poster: String, title: String, alt: String, chips
                     val tags = chips.filter { !it.second }
                     if (desc.isNotEmpty() || tags.isNotEmpty() || info.isNotEmpty()) item {
                         Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(CardC).padding(14.dp)) {
-                            if (desc.isNotEmpty()) Text(desc, Modifier.clickable { more = !more }, color = Color(0xFFCCCCCC), fontSize = 14.sp, lineHeight = 22.sp,
+                            if (desc.isNotEmpty()) Text(desc, Modifier.fillMaxWidth().clickable { more = !more }, color = Color(0xFFCCCCCC), fontSize = 14.sp, lineHeight = 22.sp,
+                                style = LocalTextStyle.current.copy(textDirection = androidx.compose.ui.text.style.TextDirection.Content), textAlign = androidx.compose.ui.text.style.TextAlign.Start,
                                 maxLines = if (more) Int.MAX_VALUE else 5, overflow = TextOverflow.Ellipsis)
                             if (tags.isNotEmpty()) FlowRow(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 tags.forEach { (c, _) -> Text(c, Modifier.border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(99.dp)).padding(horizontal = 10.dp, vertical = 3.dp), fontSize = 12.sp) }

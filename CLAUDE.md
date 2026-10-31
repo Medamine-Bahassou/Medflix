@@ -22,7 +22,7 @@ The UI only talks to `window.api`. It never calls the network or storage directl
 |------|------|
 | `app.js` | UI: strings (`STR`), nav/dock/drawer, router (`route()`), every page, player, downloads, settings, sheets, toasts, pull-to-refresh |
 | `scraper.js` | witanime HTML → plain objects, plus the page cache (`load()`) |
-| `manga.js` | Manga section: MeshManga JSON API (`appswat.com`) merged with MangaTek |
+| `manga.js` | Manga section: MeshManga JSON API (`appswat.com`) merged with Olympus Staff |
 | `cinema.js` | Movies & series: ArabSeed/MySeed/EgyDead (WordPress) |
 | `filter.js` | witanime browse filters page |
 | `icons.js` | Inline SVG icons (`ICON.x`), filled into `data-icon` elements |
@@ -42,7 +42,7 @@ Java no longer ship, except `DownloadService` (the download notification), which
 
 ## Data
 
-- **Sources**: witanime.site (anime, the main source), eva.animerco.org (backup servers), appswat.com + mangatek.com (manga),
+- **Sources**: witanime.site (anime, the main source), eva.animerco.org (backup servers), appswat.com + olympustaff.com (manga),
   myseed/arabseed/egydead (movies, which hop between domains), cima.my-cima.net and wecima.singles (backup servers),
   animeschedule.net (air times), kitsu.io + IMDb suggest (search suggestions).
 - **Adding a host**: update the allowlist in `main.js`, the `fetch` allowlist in `mobile.js` (and its constants at the top),

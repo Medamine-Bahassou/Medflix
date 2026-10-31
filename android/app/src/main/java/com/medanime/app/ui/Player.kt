@@ -24,6 +24,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -79,6 +80,7 @@ fun PlayerScreen(epPath: String, nav: Nav) {
                         e.getJSONObject("list").put("${s.label}|${s.quality}", JSONObject().put("url", u).put("referrer", ""))
                         st.put(epPath, e.put("at", System.currentTimeMillis())); Store.persist("streams")
                     }
+                    PlaybackSession.server(epPath, s.label, s.quality)
                     Store["prefs"].put("server", s.label); Store.persist("prefs")
                     return@launch
                 } catch (e: CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("medflix", "server ${s.label}", e) }
@@ -91,7 +93,10 @@ fun PlayerScreen(epPath: String, nav: Nav) {
         val known = Store["streams"].optJSONObject(epPath)?.optJSONObject("list")?.let { l ->
             l.keys().asSequence().mapNotNull { k -> l.optJSONObject(k)?.optString("url")?.takeIf { it.isNotEmpty() }?.let { Server(k.substringBefore('|'), k.substringAfter('|', ""), "", it) } }.toList()
         } ?: emptyList()
-        val first = { l: List<Server> -> l.indexOfFirst { it.label == Store["prefs"].optString("server") }.coerceAtLeast(0) }
+        val first = { l: List<Server> ->
+            l.indexOfFirst { "${it.label}|${it.quality}" == PlaybackSession.server(epPath) }.takeIf { it >= 0 }
+                ?: l.indexOfFirst { it.label == Store["prefs"].optString("server") }.coerceAtLeast(0)
+        }
         if (known.isNotEmpty()) { servers = known; tryFrom(first(known)) }
         try {
             val l = Witanime.sources(epPath)
@@ -117,7 +122,7 @@ fun PlayerScreen(epPath: String, nav: Nav) {
         prev?.let { { nav.replace(Screen.Play(it.path)) } }, next?.let { { nav.replace(Screen.Play(it.path)) } }, { nav.go(Screen.Title(show)) }, { DownloadMenu(epPath, show, ep, d, nav) }, { castTo("${d?.title ?: ""} · ${t("episode")} $ep", null, url) }) {
         val u = url
         when {
-            u != null -> HostPlayer(u)
+            u != null -> HostPlayer(u, epPath)
             dead -> Empty(t("noneWorked"), t("noneWorkedHint")) { OutlinedButton({ open(SITE + epPath) }) { Text(t("openBrowser"), color = Color.White) } }
             servers?.isEmpty() == true && extra.isEmpty() -> if ("rate-limited" in why) Empty(t("rateLimited"), t("rateLimitedHint"))
                 else Empty(t("noServers"), noNames(why)) { OutlinedButton({ open(SITE + epPath) }) { Text(t("openBrowser"), color = Color.White) } }
@@ -134,9 +139,11 @@ fun castTo(title: String, file: String?, page: String?) {
     })
 }
 
-// picture-in-picture (NativeActivity): offered while a player page is up (pipLeave: leaves it); in its window, only the video
+// picture-in-picture (NativeActivity): offered while a player page is up; in its window, only the video. Its window closed
+// (✕, or dragged away): pause the retained video. Checkpoints restore it if Android finishes the activity.
 val inPip = mutableStateOf(false)
-var pipLeave: (() -> Unit)? = null
+val pipStopped = mutableStateOf(false)
+var playerUp = false
 
 /**
  * a player page: back and the title, then a bar with the server menu, download, cast, fullscreen and previous / next; the
@@ -147,8 +154,9 @@ var pipLeave: (() -> Unit)? = null
 fun PlayerChrome(title: String, sub: String, nav: Nav, servers: List<Pair<String, String>>?, cur: Int, busy: Boolean, pick: (Int) -> Unit,
                  prev: (() -> Unit)?, next: (() -> Unit)?, onTitle: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {},
                  cast: (() -> Unit)? = null, stage: @Composable BoxScope.() -> Unit) {
-    var full by remember { mutableStateOf(false) }
     val act = Net.activity
+    var full by rememberSaveable { mutableStateOf((act as? NativeActivity)?.takeRestoredFullscreen() ?: false) }
+    SideEffect { PlaybackSession.fullscreen = full }
     val bars = remember { WindowCompat.getInsetsController(act.window, act.window.decorView) }
     val on = full // the value this effect ran for: its cleanup reading `full` itself saw the new one (false) and skipped
     DisposableEffect(on) {
@@ -161,7 +169,7 @@ fun PlayerChrome(title: String, sub: String, nav: Nav, servers: List<Pair<String
         // landscape; it stays upright until the player page closes
         onDispose { if (on) { bars.show(WindowInsetsCompat.Type.systemBars()); act.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT } }
     }
-    DisposableEffect(Unit) { pipLeave = nav.back; onDispose { pipLeave = null; act.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED } } // the page closed: rotation as the phone likes
+    DisposableEffect(Unit) { playerUp = true; (act as? NativeActivity)?.pip(true); onDispose { playerUp = false; (act as? NativeActivity)?.pip(false); act.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED } } // the page closed: rotation as the phone likes
     val bare = full || inPip.value
     BackHandler(full) { full = false }
     Column(Modifier.fillMaxSize().background(Color.Black)) {
@@ -184,7 +192,7 @@ fun PlayerChrome(title: String, sub: String, nav: Nav, servers: List<Pair<String
                 IconButton({ next?.invoke() }, enabled = next != null) { Icon(Ic.next, t("nextEp"), Modifier.size(20.dp)) }
             }
         }
-        Box(Modifier.weight(1f).fillMaxWidth(), Alignment.Center, content = stage)
+        Box(Modifier.weight(1f).fillMaxWidth(), Alignment.Center) { stage() } // retain the video and its position; PlaybackSession pauses it after PiP is dismissed
     }
 }
 
@@ -275,10 +283,15 @@ fun LinksMenu(links: List<Link>?) {
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun HostPlayer(url: String) {
+fun HostPlayer(url: String, playbackKey: String = url) = key(url, playbackKey) { HostPlayerView(url, playbackKey) }
+
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+private fun HostPlayerView(url: String, playbackKey: String) {
     var full by remember { mutableStateOf<Pair<View, WebChromeClient.CustomViewCallback>?>(null) }
     var loading by remember { mutableStateOf(true) } // the host's page still coming: black until then, so a spinner over it
     val act = Net.activity
+    var detach by remember { mutableStateOf<(() -> Unit)?>(null) }
     val bars = remember { WindowCompat.getInsetsController(act.window, act.window.decorView) }
     // leaving fullscreen can come from the player, back, or the page closing (its WebView may be going): each step on its own
     fun exit() {
@@ -296,7 +309,8 @@ fun HostPlayer(url: String) {
     Box(Modifier.fillMaxSize(), Alignment.Center) {
     AndroidView({ ctx ->
         WebView(ctx).apply {
-            keepScreenOn = true // the host's player holds no wake lock: the screen stays on mid-episode
+            detach = PlaybackSession.attach(this, playbackKey)
+            keepScreenOn = !PlaybackSession.suspended // the host's player holds no wake lock: the screen stays on mid-episode
             setBackgroundColor(AColor.BLACK)
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
@@ -330,7 +344,7 @@ fun HostPlayer(url: String) {
                 override fun onHideCustomView() = exit()
             }
         }
-    }, Modifier.fillMaxSize(), onRelease = { exit(); it.destroy() }, update = {
+    }, Modifier.fillMaxSize(), onRelease = { detach?.invoke(); exit(); it.destroy() }, update = {
         if (it.tag != url) {
             it.tag = url
             loading = true

@@ -12,7 +12,7 @@ const SITE = 'https://witanime.site';
 const AR = 'https://eva.animerco.org'; // backup video servers
 const MANGA = 'https://appswat.com'; // the manga section's API (MeshManga)
 const AS = 'https://animeschedule.net'; // the schedule's air times
-const TEK = ['https://api.mangatek.com', 'https://mangatek.com']; // the manga section's second source (its API, and reader pages for the page lists)
+const OLY = 'https://olympustaff.com'; // the manga section's second source (Olympus Staff / Team-X)
 const MC = 'https://cima.my-cima.net'; // the movies section's backup servers (MyCima)
 // more backup servers, films' and anime's: Cloudflare lets a request through that names the site as its referrer, so its
 // pages (pop-up ads and all) are never opened in a window for the check (see refused below)
@@ -81,7 +81,7 @@ const passCheck = (origin, page) => checks[siteKey(origin)] ||= new Promise((ok,
 // form: POSTs these fields instead of a GET (egydead's watch page, MyCima's search)
 ipcMain.handle('fetch', async (_, url, form) => {
   const u = new URL(url, SITE);
-  if (![SITE, AR, RA, MANGA, AS, MC, WC, ...TEK, ...SUGGEST].includes(u.origin) && !EGYDEAD.test(u.origin)) throw new Error('blocked: ' + u.origin);
+  if (![SITE, AR, RA, MANGA, AS, MC, WC, OLY, ...SUGGEST].includes(u.origin) && !EGYDEAD.test(u.origin)) throw new Error('blocked: ' + u.origin);
   const headers = { 'User-Agent': UA, 'Accept-Language': 'ar,en;q=0.8', ...(u.origin === WC && { Referer: WC + '/' }) };
   if (u.pathname === '/new-episodes') return pagerFetch(u.href, headers);
   if (/(^|\.)egydead\./.test(u.hostname)) return edFetch(u);
@@ -139,8 +139,8 @@ const pagerFetch = (url, headers) => new Promise((ok, fail) => {
 // Posters/banners from the scraped sites load through medimg://i/?u=<url> and are kept on disk for good.
 // A saved image shows at once and is re-downloaded from the site once per app run.
 const IMG_DIR = path.join(app.getPath('userData'), 'images');
-// manga: only appswat's (or its meshmanga.com mirror's) sized posters/covers and mangatek's covers; chapter pages are read once and would just fill the disk
-const IMG_HOSTS = /^https:\/\/(images\.witanime\.site|eva\.animerco\.org\/wp-content\/uploads|(appswat|meshmanga)\.com\/v2\/media\/__sized__|api\.mangatek\.com\/covers|img\.animeschedule\.net\/production|media\.kitsu\.app\/episodes|([a-z0-9-]+\.)*(egydead|myseed|arabseed)\.[a-z]+\/wp-content\/uploads)\//;
+// manga: only appswat's (or its meshmanga.com mirror's) sized posters/covers and olympus's covers; chapter pages are read once and would just fill the disk
+const IMG_HOSTS = /^https:\/\/(images\.witanime\.site|eva\.animerco\.org\/wp-content\/uploads|(appswat|meshmanga)\.com\/v2\/media\/__sized__|cdn\.olympustaff\.com\/images\/manga|img\.animeschedule\.net\/production|media\.kitsu\.app\/episodes|([a-z0-9-]+\.)*(egydead|myseed|arabseed)\.[a-z]+\/wp-content\/uploads)\//;
 const imgChecked = new Set();
 protocol.registerSchemesAsPrivileged([{ scheme: 'medimg', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 
@@ -319,7 +319,7 @@ ipcMain.handle('download-open', async (_, token) => {
 ipcMain.on('download:cancel', (_, id) => downloads.get(id)?.ac.abort());
 // a manga chapter: its page images, one file each, in Videos/MedAnime/Manga/<series>/<chapter>/
 ipcMain.handle('download-pages', async (e, id, urls, folder, labels = {}) => {
-  if (!Array.isArray(urls) || !urls.length || !urls.every(u => /^https:\/\/((appswat|meshmanga)\.com\/v2\/media|img\.mangatek\.com)\//.test(u))) throw new Error('bad urls');
+  if (!Array.isArray(urls) || !urls.length || !urls.every(u => /^https:\/\/((appswat|meshmanga)\.com\/v2\/media|cdn\.olympustaff\.com\/uploads)\//.test(u))) throw new Error('bad urls');
   const clean = s => String(s).replace(/[\\/:*?"<>|]+/g, ' ').trim() || '_';
   const dir = path.join(DL_DIR, 'Manga', ...folder.map(clean));
   await fs.promises.mkdir(dir, { recursive: true });

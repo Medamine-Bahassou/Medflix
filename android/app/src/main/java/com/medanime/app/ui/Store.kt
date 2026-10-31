@@ -57,6 +57,7 @@ object Store {
      */
     fun persist(key: String, quiet: Boolean = false) {
         if (!quiet) version.intValue++
+        if (key == "history" || key == "prefs") Widget.refresh() // the widget's shows, or its language
         val text = get(key).toString()
         io.execute {
             val f = file(key)

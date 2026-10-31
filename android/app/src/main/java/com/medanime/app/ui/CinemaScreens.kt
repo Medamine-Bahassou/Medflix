@@ -127,13 +127,17 @@ fun CinemaPlayScreen(slug: String, nav: Nav) {
         fun pick(n: Int) {
             val s = servers?.getOrNull(n) ?: return
             cur = n; url = null
+            PlaybackSession.server("/cinema/$slug", s.label, s.quality)
             Store["prefs"].put("edServer", s.label); Store.persist("prefs")
             job?.cancel()
             job = scope.launch { url = if (s.label == "myseed") runCatching { Cinema.myseedNow(m, slug, s.quality) }.getOrElse { if (it is CancellationException) throw it; s.url } else s.url }
         }
         LaunchedEffect(slug, attempt) {
             // the last server used, else the first one; uqload only when it's all there is
-            val start = { l: List<Link> -> l.indexOfFirst { !Cinema.isLast(it) && it.label == Store["prefs"].optString("edServer") }.let { if (it >= 0) it else l.indexOfFirst { s -> !Cinema.isLast(s) }.coerceAtLeast(0) } }
+            val start = { l: List<Link> ->
+                l.indexOfFirst { "${it.label}|${it.quality}" == PlaybackSession.server("/cinema/$slug") }.takeIf { it >= 0 }
+                    ?: l.indexOfFirst { !Cinema.isLast(it) && it.label == Store["prefs"].optString("edServer") }.let { if (it >= 0) it else l.indexOfFirst { s -> !Cinema.isLast(s) }.coerceAtLeast(0) }
+            }
             // the answer saved last time (kept 90 days) plays at once, while the sites are asked again behind it (cinema.js edWatchSoon)
             val key = "/cinema/$slug"
             val saved = Store["streams"].optJSONObject(key)?.optJSONObject("w")?.let { linksOf(it, "servers") to linksOf(it, "downloads") }
@@ -162,7 +166,7 @@ fun CinemaPlayScreen(slug: String, nav: Nav) {
             { nav.go(Screen.CinemaTitle(if (p.ep != null) m.up.ifEmpty { slug } else slug)) }, { LinksMenu(downloads) }, { castTo(title, null, url) }) { // downloads: third-party hosts, in the browser
             val u = url
             when {
-                u != null -> HostPlayer(u)
+                u != null -> HostPlayer(u, "/cinema/$slug")
                 servers?.isEmpty() == true -> Empty(t("noServers"), t("noServersEdHint") + if (why.isNotEmpty()) "\n" + noNames(why) else "") {
                     Button({ servers = null; attempt++ }, colors = ButtonDefaults.buttonColors(Red)) { Text(t("retry")) }
                 }

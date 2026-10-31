@@ -81,7 +81,7 @@ const GENRES = [
 ];
 // The anime filters on the other sections, so the filter page lists their matches too (see moreResults in app.js).
 // A filter a section has no equivalent for leaves it out (null): nothing there can match it.
-// Manga, in the manga API's terms (MangaSwat's; manga.js's tekQuery turns them into MangaTek's): country and source pick the
+// Manga, in the manga API's terms (MangaSwat's; manga.js's olyQuery turns them into Olympus's): country and source pick the
 // kind (Japan: manga, Korea: manhwa, China: manhua; adapted from a manga or webtoon), genres match by their Arabic names; the
 // API takes one genre, the others (and) are checked on each card. The anime types, year, season and version have no equivalent
 const MGENRES = { action: 32, adventure: 14, comedy: 19, drama: 4, ecchi: 90, fantasy: 12, gore: 369, gourmet: 450, harem: 63, historical: 83,

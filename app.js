@@ -363,7 +363,7 @@ const row = (title, items, href) => !items?.length ? '' : `<section class="row">
 const grid = items => items.length ? `<div class="grid">${items.map(card).join('')}</div>` : `<div class="empty"><b>${t('nothing')}</b>${t('tryElse')}</div>`;
 const spinner = () => { view.innerHTML = '<div class="center"><div class="spin"></div></div>'; };
 // error text shown on screen, without the sources' names or addresses ("no answer from witanime.site" -> "no answer from the site")
-const noNames = m => String(m || '').replace(/https?:\/\/\S+|\b[\w.-]*(wit ?anime|anime ?rco|egy ?dead|my ?seed|arab ?seed|appswat|mesh ?manga|manga ?swat|manga ?tek|anime ?schedule|mega ?max)[\w.-]*/gi, t('theSite'));
+const noNames = m => String(m || '').replace(/https?:\/\/\S+|\b[\w.-]*(wit ?anime|anime ?rco|egy ?dead|my ?seed|arab ?seed|appswat|mesh ?manga|manga ?swat|olympus ?staff|team-?x|anime ?schedule|mega ?max)[\w.-]*/gi, t('theSite'));
 const failed = e => { view.innerHTML = `<div class="center"><div class="empty"><b>${t('unreachable')}</b>${esc(noNames(e.message))}<br><br><button class="btn red">${t('retry')}</button></div></div>`; $('.empty .btn').onclick = route; };
 
 // event delegation for cards, arrows, image fade-in
@@ -586,12 +586,12 @@ const animeRows = d => d.rows.map(r => row(r.title, r.items, '#/section/' + enco
 async function home(force) {
   const hotP = load('mangaList', mUrl('series/', { is_hot: true, page_size: 30 }), force).catch(e => (console.error(e), null));
   const filmsP = edList('all', 1, force).catch(e => (console.error(e), null));
-  const [d, hot, latest, films, tLatest, m, f] = await Promise.all([
+  const [d, hot, latest, films, oLatest, m, f] = await Promise.all([
     scraper.home(force),
     hotP,
     load('mangaLatest', mUrl('chapters/', { page_size: 60, order_by: '-created_at' }), force),
     filmsP,
-    tekLatest(force),
+    olyLatest(force),
     hotP.then(h => mangaHero(h?.items.slice(0, 3) || [])),
     filmsP.then(fl => cinemaHero(fl?.items.slice(0, 3) || [])),
   ].map(p => p.catch(e => (console.error(e), null))));
@@ -604,7 +604,7 @@ async function home(force) {
       ${row(t('myList'), Object.values(store.list).sort((a, b) => b.at - a.at), '#/list')}
       ${d ? animeRows({ rows: d.rows.slice(0, 2) }) : ''}
       ${row(t('mHot'), hot?.items, '#/manga/browse/1?is_hot=true')}
-      ${row(t('mLatest'), mMerge([latest?.items, tLatest?.items]), '#/manga')}
+      ${row(t('mLatest'), mMerge([latest?.items, oLatest?.items]), '#/manga')}
       ${row(t('cinema'), dubbed(films?.items), '#/cinema')}
       ${d ? animeRows({ rows: d.rows.slice(2) }) : ''}`, () => home(true));
 }
@@ -796,11 +796,11 @@ async function search(q) {
 // null to leave that section out. egydead's anime films are already dropped by category; this also drops one it filed
 // elsewhere when witanime listed the same film (same title, same year). asGrid: one grid of both (a search in one section)
 async function moreResults(mq, fq, anime = [], asGrid) {
-  const { and = [], ...api } = mq || {}, tq = mq && !and.length && tekQuery(new URLSearchParams(api));
+  const { and = [], ...api } = mq || {}, oq = mq && !and.length && olyQuery(new URLSearchParams(api));
   const ask = (kind, fn, s) => s ? fuzzySearch(s, kind, fn) : fn(); // a search: what was meant too (see fuzzySearch)
   const [m, tm, f] = await Promise.all([
     mq && ask('manga', s => load('mangaList', mUrl('series/', { ...api, ...(s && { search: s }), page_size: and.length ? 60 : 20 })).then(r => r.items), api.search).catch(() => null),
-    tq && ask('manga', s => load('mangaTekList', tUrl('manga', { ...tq, ...(s && { search: s }), limit: 20 })).then(r => r.items), tq.search).catch(() => null),
+    oq && ask('manga', s => olyList({ ...oq, ...(s && { keyword: s }) }).then(r => r.items), oq.keyword).catch(() => null),
     !fq ? [] : fq.search ? ask('film', edSearch, fq.search).catch(() => []) : edList('all', 1).then(l => dubbed(l.items), () => [])]);
   const manga = mMerge([m?.filter(c => and.every(g => c.g?.includes(g))), tm]);
   let films = f.filter(c => (!fq.year || c.year === fq.year) && (!fq.type || (fq.type === 'TV') === /^\/cinema\/(serie|season|episode)\//.test(c.path))

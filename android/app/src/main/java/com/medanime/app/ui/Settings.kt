@@ -43,126 +43,138 @@ fun requestStorage() {
     }.onFailure { act.startActivity(Intent(AndroidSettings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) } // some phones only have the list of all apps
 }
 
+/** a group of settings: its heading, a line on it, then its rows on one rounded card (Material 3's settings lists) */
 @Composable
-private fun Card(title: String?, hint: String? = null, content: @Composable ColumnScope.() -> Unit) =
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).clip(RoundedCornerShape(8.dp)).background(CardC).padding(16.dp)) {
-        if (title != null) Text(title, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-        if (hint != null) Text(hint, Modifier.padding(top = 4.dp, bottom = 8.dp), color = Muted, fontSize = 13.sp)
-        content()
+private fun Group(title: String?, hint: String? = null, content: @Composable ColumnScope.() -> Unit) =
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        if (title != null) Text(title, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp), color = Red, style = MaterialTheme.typography.titleSmall)
+        if (hint != null) Text(hint, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp), color = Muted, style = MaterialTheme.typography.bodySmall)
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(CardC), content = content)
     }
 
-/** a settings menu row: a page of its own */
+/** a settings row: Material's list item, its icon, title and a line under it; trailing: a switch, a value, buttons */
+@Composable
+private fun Item(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, sub: String? = null, tint: Color = Red, onClick: (() -> Unit)? = null,
+                 trailing: (@Composable () -> Unit)? = null) =
+    ListItem({ Text(title, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
+        if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier,
+        supportingContent = sub?.let { { Text(it) } }, leadingContent = { Icon(icon, null, Modifier.size(24.dp), tint = tint) }, trailingContent = trailing,
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent, supportingColor = Muted, trailingIconColor = Muted))
+
+/** a row opening a page of its own, its count or state beside the arrow */
 @Composable
 private fun Part(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, value: String, tint: Color = Red, open: () -> Unit) =
-    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).clickable(onClick = open).padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, Modifier.size(22.dp), tint = tint)
-        Text(title, Modifier.weight(1f).padding(horizontal = 12.dp))
-        Text(value, color = Muted, fontSize = 13.sp)
-        Icon(Ic.next, null, Modifier.padding(start = 6.dp).size(16.dp), tint = Muted)
+    Item(icon, title, tint = tint, onClick = open) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (value.isNotEmpty()) Text(value, color = Muted, style = MaterialTheme.typography.bodyMedium)
+            Icon(Ic.next, null, Modifier.padding(start = 6.dp).size(16.dp), tint = Muted)
+        }
     }
+
+/** a settings switch: the whole row toggles it */
+@Composable
+private fun Toggle(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, hint: String?, on: Boolean, set: (Boolean) -> Unit) =
+    Item(icon, title, hint, if (on) Red else Muted, { set(!on) }) { Switch(on, set, colors = SwitchDefaults.colors(checkedTrackColor = Red)) }
 
 /**
  * settings (app.js settingsView): a short menu, the long parts (dock, MEDFLIX folder, notifications) on pages of their own
- * (part), so the page isn't one endless scroll; language and updates fit on it
+ * (part), so the page isn't one endless scroll. The bar stays put above it, as in Android's own settings
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(part: String, nav: Nav) {
     Store.version.intValue
     val scope = rememberCoroutineScope()
+    Column(Modifier.fillMaxSize()) {
+        PageTitle(t(when (part) { "dock" -> "dockTitle"; "storage" -> "storage"; "notify" -> "notifyTitle"; else -> "settings" }), nav, back = part.isNotEmpty()) // the menu page is a section's own: ☰; its pages go back to it
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
         val dock = Store.dock()
         val n = Store["notify"]
         when (part) {
             "" -> {
-                PageTitle(t("settings"), nav)
-                Card(null) {
-                    Part(Ic.home, t("dockTitle"), "⁦${dock.size}/4⁩") { nav.go(Screen.Settings("dock")) }
+                Group(null) {
+                    Part(Ic.home, t("dockTitle"), "\u2066${dock.size}/4\u2069") { nav.go(Screen.Settings("dock")) }
                     Part(Ic.folder, t("storage"), "", if (Store.granted()) Red else Muted) { nav.go(Screen.Settings("storage")) }
-                    Part(Ic.eyeSlash, t("hiddenTitle"), "⁦${Store["hidden"].length()}⁩") { nav.go(Screen.Hidden) }
-                    Part(Ic.bell, t("notifyTitle"), "⁦${n.keys().asSequence().count { it != "movies" }}⁩") { nav.go(Screen.Settings("notify")) }
+                    Part(Ic.eyeSlash, t("hiddenTitle"), "\u2066${Store["hidden"].length()}\u2069") { nav.go(Screen.Hidden) }
+                    Part(Ic.bell, t("notifyTitle"), "\u2066${n.keys().asSequence().count { it != "movies" }}\u2069") { nav.go(Screen.Settings("notify")) }
                 }
-                Card(t("language")) { LangSwitch(Modifier.padding(top = 8.dp)) }
-                Card(t("updateTitle")) {
+                if (Build.VERSION.SDK_INT >= 26 && Net.activity.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)) Group(t("playback")) {
+                    Toggle(Ic.play, t("autoPip"), t("autoPipHint"), autoPipEnabled(Store["prefs"])) { on ->
+                        Store["prefs"].put("autoPip", on); Store.persist("prefs")
+                        (Net.activity as? NativeActivity)?.pip(playerUp)
+                    }
+                }
+                Group(t("downloads")) {
+                    Toggle(Ic.download, t("dlWifi"), t("dlWifiHint"), Store["prefs"].optBoolean("dlWifi"), com.medanime.app.Downloads::wifiOnly)
+                    Toggle(Ic.trash, t("dlAutoDel"), t("dlAutoDelHint"), Store["prefs"].optBoolean("dlAutoDel")) { Store["prefs"].put("dlAutoDel", it); Store.persist("prefs") }
+                }
+                Group(t("language")) { LangSwitch(Modifier.fillMaxWidth().padding(16.dp)) }
+                Group(t("updateTitle")) {
                     var busy by remember { mutableStateOf(false) }
                     var found by remember { mutableStateOf<Updater.Release?>(null) }
-                    Text("Build ${BuildConfig.BUILD}", color = Muted, fontSize = 13.sp, modifier = Modifier.padding(vertical = 6.dp))
-                    OutlinedButton({
-                        busy = true
-                        scope.launch {
-                            val u = runCatching { Updater.check() }.getOrNull()
-                            busy = false
-                            if (u == null) toast(if (Store.lang == "ar") "أنت على آخر إصدار" else "You're on the latest version") else found = u
+                    Item(Ic.refresh, if (Store.lang == "ar") "البحث عن تحديث" else "Check for updates", "Build \u2066${BuildConfig.BUILD}\u2069", onClick = {
+                        if (!busy) {
+                            busy = true
+                            scope.launch {
+                                val u = runCatching { Updater.check() }.getOrNull()
+                                busy = false
+                                if (u == null) toast(if (Store.lang == "ar") "أنت على آخر إصدار" else "You're on the latest version") else found = u
+                            }
                         }
-                    }, enabled = !busy) { Icon(Ic.refresh, null, Modifier.size(16.dp), tint = Color.White); Spacer(Modifier.width(6.dp)); Text(if (Store.lang == "ar") "البحث عن تحديث" else "Check for updates", color = Color.White) }
+                    }) { if (busy) CircularProgressIndicator(Modifier.size(20.dp), color = Red, strokeWidth = 2.dp) }
                     found?.let { u -> UpdateSheet(u) { found = null } }
                 }
             }
             "dock" -> {
-                PageTitle(t("dockTitle"), nav)
-                Card(null, t("dockHint")) {
-                    Text("${t("inDock")}  ${dock.size}/4", Modifier.padding(vertical = 6.dp), color = Muted, fontSize = 13.sp)
+                Group("${t("inDock")}  \u2066${dock.size}/4\u2069", t("dockHint")) {
                     dock.forEachIndexed { i, id ->
-                        Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(NAV.getValue(id).second(), null, Modifier.size(22.dp), tint = Red)
-                            Text(navLabel(id), Modifier.weight(1f).padding(horizontal = 12.dp))
-                            val move = { j: Int -> Store.setDock(dock.toMutableList().apply { add(j, removeAt(i)) }) }
-                            IconButton({ move(i - 1) }, enabled = i > 0) { Icon(Ic.caretUp, t("moveUp"), Modifier.size(18.dp)) }
-                            IconButton({ move(i + 1) }, enabled = i < dock.size - 1) { Icon(Ic.caretDown, t("moveDown"), Modifier.size(18.dp)) }
-                            IconButton({ if (dock.size <= 1) toast(t("dockMin")) else Store.setDock(dock - id) }) { Icon(Ic.minus, t("removeDock"), Modifier.size(18.dp)) }
+                        val move = { j: Int -> Store.setDock(dock.toMutableList().apply { add(j, removeAt(i)) }) }
+                        Item(NAV.getValue(id).second(), navLabel(id)) {
+                            Row {
+                                IconButton({ move(i - 1) }, enabled = i > 0) { Icon(Ic.caretUp, t("moveUp"), Modifier.size(18.dp)) }
+                                IconButton({ move(i + 1) }, enabled = i < dock.size - 1) { Icon(Ic.caretDown, t("moveDown"), Modifier.size(18.dp)) }
+                                IconButton({ if (dock.size <= 1) toast(t("dockMin")) else Store.setDock(dock - id) }) { Icon(Ic.minus, t("removeDock"), Modifier.size(18.dp)) }
+                            }
                         }
                     }
-                    Text(t("available"), Modifier.padding(top = 12.dp, bottom = 6.dp), color = Muted, fontSize = 13.sp)
-                    NAV.keys.filter { it !in dock }.forEach { id ->
-                        Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(NAV.getValue(id).second(), null, Modifier.size(22.dp), tint = Muted)
-                            Text(navLabel(id), Modifier.weight(1f).padding(horizontal = 12.dp), color = Color(0xFFCCCCCC))
-                            IconButton({ if (dock.size >= 4) toast(t("dockFull")) else Store.setDock(dock + id) }) { Icon(Ic.plus, t("addDock"), Modifier.size(18.dp)) }
+                }
+                val rest = NAV.keys.filter { it !in dock }
+                if (rest.isNotEmpty()) Group(t("available")) {
+                    rest.forEach { id ->
+                        Item(NAV.getValue(id).second(), navLabel(id), tint = Muted, onClick = { if (dock.size >= 4) toast(t("dockFull")) else Store.setDock(dock + id) }) {
+                            Icon(Ic.plus, t("addDock"), Modifier.size(18.dp))
                         }
                     }
                 }
             }
             "storage" -> {
-                PageTitle(t("storage"), nav)
-                Card(null, t("storageHint")) {
-                    val on = Store.granted()
-                    Row(Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = ::openFolder).padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) { // tap: the folder in the file manager
-                        Icon(Ic.folder, null, Modifier.size(22.dp), tint = if (on) Red else Muted)
-                        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                            Text(Store.shared.absolutePath, fontSize = 13.sp, color = if (on) Red else Color.White, style = LocalTextStyle.current.copy(textDirection = androidx.compose.ui.text.style.TextDirection.Ltr)) // a path reads left to right in Arabic too
-                            Text(if (on) t("storageOn") else t("storageOff"), color = Muted, fontSize = 12.sp)
-                        }
+                val on = Store.granted()
+                Group(null, t("storageHint")) { // tap: the folder in the file manager; a path reads left to right in Arabic too
+                    Item(Ic.folder, "\u2066${Store.shared.absolutePath}\u2069", if (on) t("storageOn") else t("storageOff"), if (on) Red else Muted, ::openFolder) {
                         if (!on) Button(::requestStorage, colors = ButtonDefaults.buttonColors(Red)) { Text(t("storageAllow")) }
                     }
                 }
             }
             "notify" -> {
-                PageTitle(t("notifyTitle"), nav)
-                Card(null, t("notifyHint")) { // the new films switch, then each followed title (✕ stops it)
-                    Row(Modifier.fillMaxWidth().clickable(onClick = Alerts::toggleMovies), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Ic.cinema, null, Modifier.size(22.dp), tint = Red)
-                        Text(t("notifyMovies"), Modifier.weight(1f).padding(horizontal = 12.dp))
-                        Switch(Alerts.moviesOn(), { Alerts.toggleMovies() }, colors = SwitchDefaults.colors(checkedTrackColor = Red))
-                    }
+                Group(null, t("notifyHint")) { // the new films switch, then each followed title (✕ stops it)
+                    Toggle(Ic.cinema, t("notifyMovies"), null, Alerts.moviesOn()) { Alerts.toggleMovies() }
                     n.keys().asSequence().filter { it != "movies" }.toList().forEach { p ->
-                        Row(Modifier.fillMaxWidth().clickable { nav.go(Alerts.screen(p)) }, verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Ic.bellFill, null, Modifier.size(22.dp), tint = Red)
-                            Text(n.getJSONObject(p).optString("title"), Modifier.weight(1f).padding(horizontal = 12.dp), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        Item(Ic.bellFill, n.getJSONObject(p).optString("title"), onClick = { nav.go(Alerts.screen(p)) }) {
                             IconButton({ Alerts.toggle(p, "", "", "") }) { Icon(Ic.x, t("remove"), Modifier.size(18.dp)) }
                         }
                     }
                 }
                 val a = Store["autoDl"]
-                Card(t("autoDl"), t("autoDlHint")) { // the titles downloaded as they come out, each set on its page (✕ stops it)
+                Group(t("autoDl"), t("autoDlHint")) { // the titles downloaded as they come out, each set on its page (✕ stops it)
                     a.keys().asSequence().toList().forEach { p ->
-                        Row(Modifier.fillMaxWidth().clickable { nav.go(Alerts.screen(p)) }, verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Ic.download, null, Modifier.size(22.dp), tint = Red)
-                            Text(a.getJSONObject(p).optString("title"), Modifier.weight(1f).padding(horizontal = 12.dp), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        Item(Ic.download, a.getJSONObject(p).optString("title"), onClick = { nav.go(Alerts.screen(p)) }) {
                             IconButton({ Alerts.toggleDl(p, "", "", "") }) { Icon(Ic.x, t("remove"), Modifier.size(18.dp)) }
                         }
                     }
                 }
             }
         }
+    }
     }
 }
 

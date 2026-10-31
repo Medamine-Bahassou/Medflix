@@ -84,9 +84,9 @@ object Net {
     private fun cfCheck(r: Resp) = r.header("cf-mitigated") == "challenge" || (challenged(r) && Regex("<title>\\s*Just a moment|_cf_chl_opt|cf-chl-|challenge-form", RegexOption.IGNORE_CASE).containsMatchIn(r.body))
     // the movie sites hop domains (egydead.space sends on to the current one)
     private val ED_RE = Regex("^https://([a-z0-9-]+\\.)*(egydead|myseed|arabseed)\\.[a-z]+/")
-    // mangatek's api and reader pages sit behind Cloudflare too: one page per host, their paths differ
-    private val TEK_RE = Regex("^https://((api\\.)?mangatek)\\.com/")
-    private fun site(url: String) = if (url.startsWith(SITE)) "witanime" else ED_RE.find(url)?.groupValues?.get(2) ?: TEK_RE.find(url)?.groupValues?.get(1)
+    // olympus staff's pages sit behind Cloudflare too
+    private const val OLY = "https://olympustaff.com"
+    private fun site(url: String) = if (url.startsWith(SITE)) "witanime" else if (url.startsWith("$OLY/")) "olympustaff" else ED_RE.find(url)?.groupValues?.get(2)
     // site -> the origin its requests go through a real page on, once Cloudflare refused our native client there
     private val via = java.util.concurrent.ConcurrentHashMap<String, String>()
     private val pages = java.util.concurrent.ConcurrentHashMap<String, SitePage>()
@@ -104,8 +104,8 @@ object Net {
             val key = site(url)
             val origin = key?.let { via[it] }
             // the sites at one fixed host: any refusal of our native client sends them through their page, not just Cloudflare's check
-            // (mangatek: some phones' connections get a plain block, or are dropped, where a browser gets through)
-            val home = if (key == "witanime") SITE else if (key?.endsWith("mangatek") == true) "https://$key.com" else null
+            // (a phone's connection may get a plain block, or be dropped, where a browser gets through)
+            val home = if (key == "witanime") SITE else if (key == "olympustaff") OLY else null
             val r = if (origin != null && redirects) pages.getOrPut(origin) { SitePage(origin) }.fetch(origin + url.replace(Regex("^https://[^/]+"), ""), if (post) "POST" else "GET", headers, stopAt)
             else try { native(url, headers, post, redirects, stopAt, asPlayer, form) } catch (e: IOException) {
                 if (home == null || origin != null) throw e

@@ -696,3 +696,6 @@ img.broken:not(.rd-pages img) { content: url("data:image/gif;base64,R0lGODlhAQAB
 .sheet-text { padding: 0 4px 16px; color: #ccc; line-height: 1.6; }
 .fb-in { width: 100%; margin-bottom: 12px; padding: 12px 14px; border-radius: 12px; background: #ffffff12; border: 1px solid #ffffff1a; color: #fff; font: inherit; font-size: 15px; outline: 0; resize: none; transition: border-color .2s; }
 .fb-in:focus { border-color: #ffffff55; }
+
+/* Descriptions already use dir=auto: align to their own text direction on every screen size. */
+.det .desc, .hero .info p { text-align: start; }

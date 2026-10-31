@@ -33,14 +33,23 @@ Object.assign(parsers, {
   mangaGenres: j => (j.results || j).map(g => [String(g.id), g.name]),
 });
 
-// MangaTek (mangatek.com), merged in: a series both sites carry shows once, as MangaSwat's, with MangaTek's chapters
-// filling the numbers MangaSwat lacks. MangaTek ids carry a "t" (series t450, chapter t120500).
-const TEK = 'https://api.mangatek.com/';
-const tUrl = (path, params = {}) => TEK + 'api/' + path + (Object.keys(params).length ? '?' + new URLSearchParams(params) : '');
-const tImg = p => !p ? '' : /^https?:/.test(p) ? p : TEK + p; // detail pages give covers relative
-const tNames = m => [m.title, m.title_ar, ...(m.alternative_titles || '').split('|')];
-const tCard = m => ({ path: '/manga/series/t' + m.id, type: 'manga', title: m.title, poster: tImg(m.cover_image), names: tNames(m),
-  rating: +m.rating_blended ? (+m.rating_blended).toFixed(1) : '', badge: m.type ? mTypeName(m.type) : '' });
+// Olympus Staff (olympustaff.com, Team-X), merged in: a series both sites carry shows once, as MangaSwat's, with Olympus's
+// chapters filling the numbers MangaSwat lacks. Olympus ids carry "o:" (series o:<slug>, chapter o:<slug>:<number>).
+const OLY = 'https://olympustaff.com/';
+const oUrl = (path, params = {}) => OLY + path + (Object.keys(params).length ? '?' + new URLSearchParams(params) : '');
+const O_TYPES = { 'مانهوا كورية': 'Manhwa', 'مانها صيني': 'Manhua', 'مانجا ياباني': 'Manga' };
+const oType = s => O_TYPES[txt({ textContent: s })] ? mTypeName(O_TYPES[txt({ textContent: s })]) : txt({ textContent: s });
+const oCard = (slug, title, poster, type) => ({ path: '/manga/series/o:' + slug, type: 'manga', title: title.trim(), poster: poster || '',
+  rating: '', badge: oType(type), names: [title.trim()] });
+// a listing's cards: the series list's (.bsx) or the search's (.tx-card)
+const oCards = doc => [...doc.querySelectorAll('.bsx > a[href], a.tx-card[href]')].map(a => {
+  const slug = (a.getAttribute('href') || '').split('/series/')[1] || '';
+  if (!slug || /[/?]/.test(slug)) return null;
+  return oCard(slug, a.getAttribute('title') || txt(a.querySelector('.tx-card-title')), a.querySelector('img')?.getAttribute('src'), txt(a.querySelector('.type, .tx-type')));
+}).filter(Boolean);
+// the last of a listing's page links (?page=N), 1 when there are none
+const oLastPage = (doc, base) => Math.max(1, ...[...doc.querySelectorAll(`a[href^="${base}?page="], a[href^="${base}&page="]`)]
+  .map(a => +((a.getAttribute('href') || '').split('page=').pop().split('&')[0]) || 1));
 // same series on both sites = a shared title, ignoring case and punctuation (Arabic-only titles never match)
 const mKeys = names => names.map(norm).filter(Boolean);
 // lists of cards, interleaved, each series once: a card whose title is already listed (by an earlier list first) is dropped.
@@ -54,32 +63,54 @@ function mMerge(lists, seen = new Set()) {
   }));
   return Array.from({ length: Math.max(0, ...kept.map(l => l.length)) }, (_, i) => kept.map(l => l[i])).flat().filter(Boolean);
 }
-const tStatus = v => MSTATUS.find(o => o[2].toLowerCase() === v)?.[0] || '';
+const oChs = (doc, url) => [...doc.querySelectorAll(`.chapter-card a.chapter-link[href^="${url}/"]`)]
+  .map(a => (a.getAttribute('href') || '').split('/').pop()).filter(Boolean);
 Object.assign(parsers, {
-  mangaTekList: j => ({ items: j.data.mangas.map(tCard), count: j.data.pagination.total }),
-  // by last update: each series opens its newest chapter
-  mangaTekLatest: j => ({ items: j.data.mangas.filter(m => m.MangaChapters?.length)
-    .map(m => ({ ...tCard(m), badge: `${t('chShort')} ${chNum(m.MangaChapters[0].chapter_number)}`, href: '#/manga/read/t' + m.MangaChapters[0].id })) }),
-  mangaTekSeries: ({ data: m }) => ({ id: 't' + m.id, title: m.title, alt: m.alternative_titles || m.title_ar || '', story: m.description || m.description_sid || '',
-    type: m.type || '', status: tStatus(m.status), genres: (m.Tags || []).map(g => g.name), poster: tImg(m.cover_image), cover: tImg(m.cover_image),
-    rating: +m.rating_blended ? (+m.rating_blended).toFixed(1) : '', views: m.views || 0, names: tNames(m),
-    chapters: (m.MangaChapters || []).filter(c => c.visible !== 0 && (c.access ?? !c.price)).map(c => ({ id: 't' + c.id, n: chNum(c.chapter_number) })).reverse() }),
-  mangaTekChapter: ({ data: c }) => ({ id: 't' + c.id, n: chNum(c.chapter_number), num: c.chapter_number, slug: c.MangaSery.slug,
-    serie: { id: 't' + c.manga_id, title: c.MangaSery.title, poster: '' } }),
-  // the page list is only in the reader page, as the props of its image viewer island
-  tekPages: doc => JSON.parse(doc.querySelector('astro-island[component-url*="ChapterImageViewer"]')?.getAttribute('props') || '{}').imageUrls?.[1]?.map(x => x[1]) || [],
+  olyList: (doc, url) => { const base = url.split('?')[0]; return { items: oCards(doc), pages: oLastPage(doc, base) }; },
+  // its home page's updates: a series each, its newest free chapter first (a paid chapter has no link, a "buy" box instead)
+  olyLatest: doc => ({ items: [...doc.querySelectorAll('.uta')].map(b => {
+    const slug = (b.querySelector('.imgu a[href]')?.getAttribute('href') || '').split('/series/')[1] || '';
+    if (!slug || slug.includes('/')) return null;
+    const n = (b.querySelector(`li a[href^="${OLY}series/${slug}/"]`)?.getAttribute('href') || '').split('/').pop();
+    if (!n) return null;
+    return { ...oCard(slug, txt(b.querySelector('.info h3')), b.querySelector('.imgu img')?.getAttribute('src'), ''),
+      badge: `${t('chShort')} ${chNum(n)}`, href: `#/manga/read/o:${slug}:${n}` };
+  }).filter(Boolean) }),
+  olySeries: (doc, url) => {
+    const slug = url.split('/series/')[1].split('?')[0], base = OLY + 'series/' + slug;
+    const info = label => txt([...doc.querySelectorAll('.full-list-info')].find(e => e.textContent.includes(label))?.querySelector('a'));
+    const st = info('الحالة'), title = txt(doc.querySelector('.author-info-title h1, .author-info-title h6')) || slug;
+    const poster = doc.querySelector('.whitebox img.shadow-sm')?.getAttribute('src') || '';
+    return { id: 'o:' + slug, title, alt: '', story: txt(doc.querySelector('.review-content')), type: O_TYPES[info('النوع')] || info('النوع'),
+      status: st.includes('مستمر') ? '79' : st.includes('مكتمل') ? '80' : st ? '81' : '',
+      genres: [...new Set([...doc.querySelectorAll('a[href*="series?genre="]')].map(txt).filter(Boolean))],
+      poster, cover: poster, rating: '', views: 0, names: [title], pages: oLastPage(doc, base), chs: oChs(doc, base) };
+  },
+  olySeriesChs: (doc, url) => oChs(doc, url.split('?')[0]),
+  olyChapter: (doc, url) => {
+    const [, slug, n] = url.match(/\/series\/([^/]+)\/([^/?#]+)/) || [];
+    const images = [...new Set([...doc.querySelectorAll('.image_list img.manga-chapter-img')].map(i => i.getAttribute('src')).filter(Boolean))];
+    return { id: `o:${slug}:${n}`, n: chNum(n), prev: null, next: null,
+      serie: { id: 'o:' + slug, title: txt(doc.querySelector(`a[href="${OLY}series/${slug}"]`)), poster: '' }, images };
+  },
 });
-const tekLatest = force => load('mangaTekLatest', tUrl('manga', { limit: 40 }), force);
-const tekSearch = q => load('mangaTekList', tUrl('manga', { search: q, limit: 20 }));
+const olyLatest = force => load('olyLatest', OLY, force);
+const olyList = (p, page = 1, force = false) => load('olyList', oUrl(p.keyword != null ? 'search' : 'series', { ...p, page }), force);
+// a series' page: its details, and its chapters (about 40 a page, ?page=N), every page. A paid chapter has no link: left out
+async function olySeries(slug, force) {
+  const url = OLY + 'series/' + slug, s = await load('olySeries', url, force);
+  const rest = await Promise.all(Array.from({ length: s.pages - 1 }, (_, i) => load('olySeriesChs', `${url}?page=${i + 2}`, force).catch(() => [])));
+  const chapters = [...new Set([...s.chs, ...rest.flat()])].map(n => ({ id: `o:${slug}:${n}`, n: chNum(n) }));
+  return { ...s, chapters };
+}
 
 // the other site's copy of a series, found by searching its title
-async function tekTwin(s, force) {
+async function olyTwin(s, force) {
   const k = mKeys([s.title, ...String(s.alt || '').split(/[|,،]/)]);
-  const hit = k.length && (await tekSearch(s.title).catch(() => null))?.items.find(c => mKeys(c.names).some(x => k.includes(x)));
-  return hit ? load('mangaTekSeries', tUrl('manga/' + hit.path.split('/t').pop()), force).catch(() => null) : null;
+  const hit = k.length && (await olyList({ keyword: s.title }).catch(() => null))?.items.find(c => mKeys(c.names).some(x => k.includes(x)));
+  return hit ? olySeries(hit.path.split('/o:').pop(), force).catch(() => null) : null;
 }
-// MangaSwat's search only finds its own title, which may be one of MangaTek's alternatives ("The Return Of …" there,
-// "Return of …" here): each Latin name is tried in turn
+// MangaSwat's search only finds its own title, which may be one of the other site's names: each Latin name is tried in turn
 async function swatTwin(m) {
   const k = mKeys(m.names);
   for (const name of [...new Set(m.names.map(n => String(n || '').trim()).filter(n => /[a-z]/i.test(n)))].slice(0, 4)) {
@@ -90,7 +121,7 @@ async function swatTwin(m) {
 }
 // newest first, by number: the sites list chapters in upload order, so an extra added later (37.5, 0.5) sits out of place
 const byNum = chs => [...chs].sort((a, b) => (parseFloat(b.n) || 0) - (parseFloat(a.n) || 0));
-// a series' downloaded chapters, number -> chapter id, from downloads filed under any of its ids (MangaSwat's, MangaTek's).
+// a series' downloaded chapters, number -> chapter id, from downloads filed under any of its ids (MangaSwat's, Olympus's).
 // A chapter may have been saved from either site while the list shows the other's: matched by number, the saved copy is
 // found, and opened (it works offline)
 const savedChs = ids => {
@@ -98,26 +129,40 @@ const savedChs = ids => {
   return new Map(Object.values(store.downloads).filter(d => d.kind === 'manga' && d.state === 'done' && shows.has(d.show))
     .map(d => [String(chNum(d.ep)), String(d.chapterId)]));
 };
-// a series as shown, chapters newest first: MangaSwat's (plus its MangaTek twin's extra chapters), or MangaTek's alone.
+// a series as shown, chapters newest first: MangaSwat's (plus its Olympus twin's extra chapters), or Olympus's alone.
 // ids: the series' ids on both sites (downloads may be filed under either)
 async function mSeriesFull(id, force) {
-  if (id.startsWith('t')) {
-    const m = await load('mangaTekSeries', tUrl('manga/' + id.slice(1)), force);
+  if (/^t\d+$/.test(id)) { // a series saved under a removed source's id: found again by its title
+    const p = '/manga/series/' + id, title = store.manga[id]?.title || store.list[p]?.title || Object.values(store.downloads).find(d => d.show === p)?.title;
+    const hit = title && (await load('mangaList', mUrl('series/', { search: title, page_size: 10 }), force).catch(() => null))?.items[0]
+      || title && (await olyList({ keyword: title }, 1, force).catch(() => null))?.items[0];
+    if (!hit) throw new Error(t('unreachable'));
+    return mSeriesFull(hit.path.split('/').pop(), force);
+  }
+  if (String(id).startsWith('o:')) {
+    const m = await olySeries(String(id).slice(2), force);
     const sw = await swatTwin(m), f = sw && await mSeriesFull(sw, force);
     return f ? { ...f, ids: [...f.ids, m.id] } : { s: m, chs: byNum(m.chapters), ids: [m.id] };
   }
   const [s, chs] = await Promise.all([load('mangaSeries', mUrl(`series/${id}/`), force), mChapters(id, force)]);
-  const tk = await tekTwin(s, force);
-  if (!tk) return { s, chs: byNum(chs), ids: [s.id] };
+  const tw = await olyTwin(s, force);
+  if (!tw) return { s, chs: byNum(chs), ids: [s.id] };
   const have = new Set(chs.map(c => c.n));
-  return { s, chs: byNum([...chs, ...tk.chapters.filter(c => !have.has(c.n))]), ids: [s.id, tk.id] };
+  return { s, chs: byNum([...chs, ...tw.chapters.filter(c => !have.has(c.n))]), ids: [s.id, tw.id] };
 }
 // one chapter from either site: { id, n, prev, next, serie: { id, title, poster }, images }
 async function mChapter(cid, keep) {
   cid = String(cid);
-  if (!cid.startsWith('t')) return load('mangaChapter', mUrl(`chapters/${cid}/`), false, keep);
-  const c = await load('mangaTekChapter', tUrl('chapters/' + cid.slice(1)), false, keep);
-  return { ...c, images: await load('tekPages', `https://mangatek.com/reader/${encodeURIComponent(c.slug)}/${encodeURIComponent(c.num)}`, false, keep) };
+  if (/^t\d+$/.test(cid)) { // a chapter saved under a removed source's id: resolved by its series and number
+    const r = Object.values(store.manga).find(m => String(m.chapterId) === cid), d = store.downloads['manga:' + cid];
+    const sid = r?.id || d?.show?.split('/').pop(), n = chNum(r?.n ?? d?.ep);
+    const ch = sid && (await mSeriesFull(sid)).chs.find(x => x.n === n);
+    if (!ch) throw new Error(t('unreachable'));
+    cid = String(ch.id);
+  }
+  if (!cid.startsWith('o:')) return load('mangaChapter', mUrl(`chapters/${cid}/`), false, keep);
+  const [slug, n] = cid.slice(2).split(':');
+  return load('olyChapter', `${OLY}series/${slug}/${n}`, false, keep);
 }
 
 // the API hands out at most 200 chapters a page, whatever page_size asks for: fetch every page
@@ -143,23 +188,21 @@ async function mangaHero(items) {
 }
 
 async function mangaHome(force) {
-  const none = () => ({ items: [] }); // MangaTek down: just MangaSwat's
-  const [hot, latest, popular, fresh, tLatest, tPopular, tFresh] = await Promise.all([
+  const none = () => ({ items: [] }); // Olympus down: just MangaSwat's
+  const [hot, latest, popular, fresh, oLatest] = await Promise.all([
     load('mangaList', mUrl('series/', { is_hot: true, page_size: 30 }), force),
     load('mangaLatest', mUrl('chapters/', { page_size: 60, order_by: '-created_at' }), force),
     load('mangaList', mUrl('series/', { order_by: '-views_count', page_size: 30 }), force),
     load('mangaList', mUrl('series/', { order_by: '-created_at', page_size: 30 }), force),
-    tekLatest(force).catch(none),
-    load('mangaTekList', tUrl('manga', { sort: 'views', limit: 30 }), force).catch(none),
-    load('mangaTekList', tUrl('manga', { sort: 'created_at', limit: 30 }), force).catch(none),
+    olyLatest(force).catch(none),
   ]);
   heroPage(await mangaHero(hot.items.slice(0, 5)), `
       ${chips([[t('browseAll'), '#/manga/browse/1'], ...MTYPES.map(o => [mLabel(MTYPES, o[0]), '#/manga/browse/1?type=' + o[0]])])}
       ${row(t('continueReading'), continued(['manga']))}
       ${row(t('mHot'), hot.items, '#/manga/browse/1?is_hot=true')}
-      ${row(t('mLatest'), mMerge([latest.items, tLatest.items]))}
-      ${row(t('mPopular'), mMerge([popular.items, tPopular.items]), '#/manga/browse/1?order_by=-views_count')}
-      ${row(t('mNew'), mMerge([fresh.items, tFresh.items]), '#/manga/browse/1')}`, () => mangaHome(true));
+      ${row(t('mLatest'), mMerge([latest.items, oLatest.items]))}
+      ${row(t('mPopular'), popular.items, '#/manga/browse/1?order_by=-views_count')}
+      ${row(t('mNew'), fresh.items, '#/manga/browse/1')}`, () => mangaHome(true));
 }
 
 async function mangaBrowse(force) {
@@ -193,13 +236,13 @@ async function mangaBrowse(force) {
     pickSheet(name, k === 'order_by' ? opts : [['', t('all')], ...opts], p.get(k) || '', v => go(q => v ? q.set(k, v) : q.delete(k)));
   };
 
-  const PER = 30, tq = tekQuery(p), seen = new Set();
+  const PER = 30, oq = olyQuery(p), seen = new Set();
   // a page of each site, merged; past the end of one site's pages, just the other's
   const at = async (page, force) => {
-    const [d, tk] = await Promise.all([load('mangaList', mUrl('series/', { ...Object.fromEntries(p), page, page_size: PER }), force).catch(e => page === 1 && !tq ? Promise.reject(e) : null),
-      tq && load('mangaTekList', tUrl('manga', { ...tq, page, limit: PER }), force).catch(() => null)]);
-    if (!d && !tk) throw new Error(t('unreachable'));
-    return { items: mMerge([d?.items, tk?.items], seen), pages: Math.max(1, Math.ceil((d?.count || 0) / PER), Math.ceil((tk?.count || 0) / PER)) };
+    const [d, o] = await Promise.all([load('mangaList', mUrl('series/', { ...Object.fromEntries(p), page, page_size: PER }), force).catch(e => page === 1 && !oq ? Promise.reject(e) : null),
+      oq && olyList(oq, page, force).catch(() => null)]);
+    if (!d && !o) throw new Error(t('unreachable'));
+    return { items: mMerge([d?.items, o?.items], seen), pages: Math.max(1, Math.ceil((d?.count || 0) / PER), o?.pages || 0) };
   };
   const d = await at(1, force);
   if (!location.hash.startsWith('#/manga/browse')) return;
@@ -208,22 +251,22 @@ async function mangaBrowse(force) {
   pageRefresh = () => mangaBrowse(true);
 }
 
-// the browse filters in MangaTek's terms; null when they can't apply (the two sites' genre lists differ)
-function tekQuery(p) {
-  if (p.get('genres')) return null;
-  const en = (list, v) => list.find(o => o[0] === v)?.[2].toLowerCase();
-  const q = { sort: { '-views_count': 'views', '-rating': 'rating', title: 'title' }[p.get('order_by')] || (p.get('is_hot') ? 'views' : 'created_at') };
-  if (p.get('type')) q.type = en(MTYPES, p.get('type'));
-  if (p.get('status')) q.status = en(MSTATUS, p.get('status'));
-  if (p.get('search')) q.search = p.get('search');
-  return q;
+// the browse filters in Olympus's terms; null when they can't apply: its list only filters by type, and can't sort
+function olyQuery(p) {
+  if (p.get('genres') || p.get('status') || p.get('is_hot') || p.get('order_by')) return null;
+  if (p.get('search')) return { keyword: p.get('search') };
+  if (!p.get('type')) return {};
+  const name = MTYPES.find(o => o[0] === p.get('type'))?.[2];
+  const ar = Object.entries(O_TYPES).find(([, v]) => v === name)?.[0];
+  return ar ? { type: ar } : null;
 }
 
 async function mangaSeries(id, force) {
   const { s, chs, ids } = await mSeriesFull(id, force);
-  if (String(s.id) !== id) return location.replace('#/manga/series/' + s.id); // a MangaTek copy of a MangaSwat series
+  if (String(s.id) !== id) return location.replace('#/manga/series/' + s.id); // an Olympus copy of a MangaSwat series
   const path = '/manga/series/' + id, r = store.manga[id];
-  const start = r ? { id: r.chapterId, label: t('resumeCh', chNum(r.n)) } : chs.length ? { id: chs[chs.length - 1].id, label: t('read') } : null;
+  const rCh = r && (chs.find(c => c.id === r.chapterId) || chs.find(c => c.n === chNum(r.n)));
+  const start = rCh ? { id: rCh.id, label: t('resumeCh', chNum(r.n)) } : chs.length ? { id: chs[chs.length - 1].id, label: t('read') } : null;
   view.innerHTML = `
     <div class="det-hero"><div class="bg" style="background-image:url('${esc(img(s.cover))}')"></div>
       <div class="det">
@@ -307,7 +350,7 @@ async function mangaReader(cid) {
   const c = saved ? { id: /^\d+$/.test(cid) ? +cid : cid, n: dl.ep, prev: dl.meta?.prev, next: dl.meta?.next, serie: { id: dl.show.split('/').pop(), title: dl.title, poster: dl.poster }, images: [] }
     : await mChapter(cid);
   c.n = chNum(c.n);
-  // the series as listed (a MangaTek chapter may belong to a MangaSwat series); prev/next walk its merged chapter list
+  // the series as listed (an Olympus chapter may belong to a MangaSwat series); prev/next walk its merged chapter list
   // a downloaded chapter: within the series it was downloaded from (saved on the phone too, so its list also shows offline)
   const sid = String(c.serie.id), full = await mSeriesFull(dl?.show?.split('/').pop() || sid).catch(() => null), chs = full?.chs || [];
   if (full) c.serie = { id: full.s.id, title: full.s.title, poster: full.s.poster };

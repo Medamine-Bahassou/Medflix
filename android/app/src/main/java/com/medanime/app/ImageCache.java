@@ -23,8 +23,7 @@ import java.util.regex.Pattern;
  */
 final class ImageCache {
 
-    private static final Pattern HOSTS = Pattern.compile("^https://(images\\.witanime\\.site|eva\\.animerco\\.org/wp-content/uploads|(appswat|meshmanga)\\.com/v2/media/__sized__|api\\.mangatek\\.com/covers|img\\.animeschedule\\.net/production|([a-z0-9-]+\\.)*(egydead|myseed|arabseed)\\.[a-z]+/wp-content/uploads)/.*"); // manga posters, not chapter pages
-    private static final Pattern PAGES = Pattern.compile("^https://img\\.mangatek\\.com/.*"); // MangaTek's chapter pages: fetched below, not kept
+    private static final Pattern HOSTS = Pattern.compile("^https://(images\\.witanime\\.site|eva\\.animerco\\.org/wp-content/uploads|(appswat|meshmanga)\\.com/v2/media/__sized__|cdn\\.olympustaff\\.com/images/manga|img\\.animeschedule\\.net/production|([a-z0-9-]+\\.)*(egydead|myseed|arabseed)\\.[a-z]+/wp-content/uploads)/.*"); // manga posters, not chapter pages
     private static final String UA =
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0 Safari/537.36";
     private static final Set<String> checked = ConcurrentHashMap.newKeySet();
@@ -41,20 +40,7 @@ final class ImageCache {
     static WebResourceResponse serve(Context c, WebResourceRequest req) {
         String url = req.getUrl().toString();
         if (!"GET".equals(req.getMethod())) return null;
-        // MangaTek's Cloudflare refuses Android WebViews (the "; wv" in their user agent) and lets Chrome through: its covers
-        // and chapter pages are asked as the app's own requests are. Elsewhere as the WebView, whose Cloudflare clearance
-        // (witanime, egydead: DownloaderPlugin's hidden pages) is tied to its user agent
-        String ua = url.contains("mangatek.com") ? UA : req.getRequestHeaders().getOrDefault("User-Agent", UA);
-        if (PAGES.matcher(url).matches()) {
-            try {
-                HttpURLConnection conn = open(url, ua);
-                if (conn.getResponseCode() != 200) return null;
-                String type = conn.getContentType();
-                return new WebResourceResponse(type == null ? mime(url) : type.split(";")[0].trim(), null, conn.getInputStream());
-            } catch (IOException e) {
-                return null;
-            }
-        }
+        String ua = req.getRequestHeaders().getOrDefault("User-Agent", UA);
         if (!HOSTS.matcher(url).matches()) return null;
         File f = new File(dir(c), sha1(url));
         try {

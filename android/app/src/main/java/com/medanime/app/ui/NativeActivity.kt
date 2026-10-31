@@ -35,10 +35,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -98,7 +101,7 @@ sealed interface Screen {
     data object Manga : Screen
     data class MangaBrowse(val query: Map<String, String> = emptyMap()) : Screen
     data class MangaSeries(val id: String) : Screen
-    data class MangaRead(val cid: String) : Screen
+    data class MangaRead(val cid: String, val title: String = "", val chapter: String = "") : Screen
     data object Cinema : Screen
     data class CinemaBrowse(val cat: String) : Screen
     data class CinemaTitle(val slug: String, val show: Boolean = false) : Screen // show: an episode's card, opening its season
@@ -123,6 +126,18 @@ fun navLabel(id: String) = if (id == "search") (if (Store.lang == "ar") "بحث"
 
 /** the app: one activity, its pages drawn natively (Compose) from what the sites' scrapers give */
 class NativeActivity : ComponentActivity() {
+    internal var sessionStack: List<Screen> = emptyList()
+    internal var restoredStack: List<Screen> = emptyList()
+    private var restoreFullscreen = false
+    private var stopPipControls: (() -> Unit)? = null
+    private val pipControlAction get() = "$packageName.PIP_PLAYBACK"
+    private val pipReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context, intent: android.content.Intent) {
+            if (intent.action == pipControlAction && playerUp && !PlaybackSession.suspended && intent.hasExtra("playing"))
+                PlaybackSession.controls.play(intent.getBooleanExtra("playing", false))
+        }
+    }
+    internal fun takeRestoredFullscreen() = restoreFullscreen.also { restoreFullscreen = false }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(SystemBarStyle.dark(android.graphics.Color.TRANSPARENT), SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)) // light icons on the black app
@@ -140,30 +155,82 @@ class NativeActivity : ComponentActivity() {
         Store["streams"].let { st -> st.keys().asSequence().toList().forEach { k -> if (System.currentTimeMillis() - (st.optJSONObject(k)?.optLong("at") ?: 0) > 90 * 24 * 3600_000L) st.remove(k) } }
         Alerts.migrate() // auto-download: from the notifications' switches to the titles' own
         Alerts.schedule(this)
-        opening.value = intent.getStringExtra("open")
+        opening.value = opened(intent)
+        PlaybackSession.init(this)
+        androidx.core.content.ContextCompat.registerReceiver(this, pipReceiver,
+            android.content.IntentFilter(pipControlAction), androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED)
+        stopPipControls = PlaybackSession.controls.observe {
+            if (android.os.Build.VERSION.SDK_INT >= 26) runCatching { setPictureInPictureParams(pipParams().build()) }
+        }
+        restoredStack = PlaybackSession.navigation()
+        restoreFullscreen = restoredStack.isNotEmpty() && PlaybackSession.fullscreen
+        inPip.value = false
         setContent { App() }
     }
-    override fun onNewIntent(intent: android.content.Intent) { super.onNewIntent(intent); opening.value = intent.getStringExtra("open") } // a notification tapped
+    override fun onNewIntent(intent: android.content.Intent) { super.onNewIntent(intent); opening.value = opened(intent) } // a notification or the widget tapped
+    private fun opened(i: android.content.Intent) = i.getStringExtra("open")?.let(Alerts::screen) ?: i.getStringExtra("resume")?.let(Widget::screen)
     // a player page up: leaving the app (home, another app) keeps its video playing in a small window (Android 8+)
-    override fun onUserLeaveHint() {
+    // android 12+: the window opens by itself as the app goes (a swipe home too, which entering it here came too late for)
+    fun pip(on: Boolean) {
+        if (android.os.Build.VERSION.SDK_INT >= 31) runCatching { setPictureInPictureParams(pipParams().setAutoEnterEnabled(on && autoPipEnabled(Store["prefs"])).build()) }
+    }
+    private fun pipParams(): android.app.PictureInPictureParams.Builder {
+        val playing = PlaybackSession.controls.paused
+        val label = t(if (playing) "play" else "pause")
+        val intent = android.content.Intent(pipControlAction).setPackage(packageName).putExtra("playing", playing)
+        val pending = android.app.PendingIntent.getBroadcast(this, if (playing) 1 else 2, intent,
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE)
+        val action = android.app.RemoteAction(android.graphics.drawable.Icon.createWithResource(this,
+            if (playing) android.R.drawable.ic_media_play else android.R.drawable.ic_media_pause), label, label, pending)
+        action.isEnabled = PlaybackSession.controls.available
+        return android.app.PictureInPictureParams.Builder().setAspectRatio(android.util.Rational(16, 9)).setActions(listOf(action)).apply {
+            if (android.os.Build.VERSION.SDK_INT >= 31) setAutoEnterEnabled(playerUp && autoPipEnabled(Store["prefs"]))
+        }
+    }
+    override fun onDestroy() {
+        stopPipControls?.invoke()
+        unregisterReceiver(pipReceiver)
+        super.onDestroy()
+    }
+    override fun onUserLeaveHint() { // android 8 to 11
         super.onUserLeaveHint()
-        if (pipLeave != null && android.os.Build.VERSION.SDK_INT >= 26 && packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE))
-            runCatching { enterPictureInPictureMode(android.app.PictureInPictureParams.Builder().setAspectRatio(android.util.Rational(16, 9)).build()) }
+        if (playerUp && autoPipEnabled(Store["prefs"]) && android.os.Build.VERSION.SDK_INT in 26..30 && packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE))
+            runCatching { enterPictureInPictureMode(pipParams().build()) }
     }
     override fun onPictureInPictureModeChanged(on: Boolean, c: android.content.res.Configuration) {
         super.onPictureInPictureModeChanged(on, c)
         inPip.value = on
-        // its window closed (✕, or dragged away): the activity is stopped by then. The player page goes, and its sound with it
-        if (!on && lifecycle.currentState == Lifecycle.State.CREATED) pipLeave?.invoke()
+        // its window closed (✕, or dragged away): the activity is stopped by then. The video stops (its sound with it), but
+        // the page stays: the app wasn't closed, so coming back finds the episode where it was (onStart brings the video back)
+        if (!on && lifecycle.currentState == Lifecycle.State.CREATED && playerUp) {
+            pipStopped.value = true
+            PlaybackSession.suspendPlayback(true)
+        }
+    }
+    override fun onPause() {
+        if (playerUp) PlaybackSession.navigation(sessionStack)
+        super.onPause()
+    }
+    override fun onStop() {
+        // Closing PiP can finish the activity. Pause synchronously; Compose may already be stopped.
+        if (playerUp && (android.os.Build.VERSION.SDK_INT < 26 || !isInPictureInPictureMode)) {
+            pipStopped.value = true
+            PlaybackSession.suspendPlayback(true)
+        }
+        super.onStop()
+    }
+    override fun onStart() {
+        super.onStart()
+        pipStopped.value = false
+        PlaybackSession.suspendPlayback(false)
     }
 }
 
 /** Coil's loader, for the app and for the background check's notifications (Alerts), whichever starts first */
 fun setImageLoader(c: android.content.Context) {
-    // posters as the WebView fetched them: its user agent and Cloudflare cookies, and no Referer (witanime 403s hotlinks);
-    // MangaTek's Cloudflare lets Chrome through, not the WebView (ImageCache)
+    // posters as the WebView fetched them: its user agent and Cloudflare cookies, and no Referer (witanime 403s hotlinks)
     val images = Net.client.newBuilder().addInterceptor {
-        val req = it.request().newBuilder().header("User-Agent", if ("mangatek.com" in it.request().url.host) UA else Net.wvUa).build()
+        val req = it.request().newBuilder().header("User-Agent", Net.wvUa).build()
         var r = it.proceed(req)
         for (i in 0 until 2) { if (r.code != 429 && r.code != 503) break; r.close(); Thread.sleep(1000L shl i); r = it.proceed(req) } // a grid's burst, rate-limited: once more, later
         // a page sent in place of the image (a block, an error page, as 200) fails here: Coil keeps any 2xx for good and never asks again
@@ -182,14 +249,21 @@ fun setImageLoader(c: android.content.Context) {
         .crossfade(true).build() }
 }
 
-val opening = mutableStateOf<String?>(null) // a notification's title, opened over the current page
+val opening = mutableStateOf<Screen?>(null) // a notification's title or the widget's show, opened over the current page
 
 class Nav(val go: (Screen) -> Unit, val replace: (Screen) -> Unit, val back: () -> Unit, val menu: () -> Unit)
 
 @Composable
 fun App() {
-    val stack = remember { mutableStateListOf<Screen>(Screen.Home) }
+    val activity = LocalContext.current as NativeActivity
+    val stack = rememberSaveable(saver = Saver<androidx.compose.runtime.snapshots.SnapshotStateList<Screen>, String>(
+        save = { encodeScreens(it) }, restore = { runCatching { decodeScreens(it).toMutableStateList() }.getOrNull() }
+    )) { activity.restoredStack.ifEmpty { listOf(Screen.Home) }.toMutableStateList() }
+    SideEffect { activity.sessionStack = stack.toList() }
     val top = stack.last()
+    LaunchedEffect(top) {
+        if (top !is Screen.Play && top !is Screen.CinemaPlay && top !is Screen.Offline) PlaybackSession.navigation(null)
+    }
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     // a section opens over Home: back from it (search included) goes home first, then twice to leave
@@ -203,7 +277,7 @@ fun App() {
         else { backAt = System.currentTimeMillis(); toast(t("backAgain")) }
     }
     BackHandler(stack.size > 1) { nav.back() }
-    LaunchedEffect(opening.value) { opening.value?.let { stack.add(Alerts.screen(it)); opening.value = null } }
+    LaunchedEffect(opening.value) { opening.value?.let { stack.add(it); opening.value = null } }
     BackHandler(drawer.isOpen) { scope.launch { drawer.close() } }
     val owner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     DisposableEffect(owner) { // back from Android's "all files access" page
@@ -220,9 +294,12 @@ fun App() {
         if (!Store.granted() && !Store["prefs"].has("storageAsked")) askStorage = true
         else update = runCatching { Updater.check() }.getOrNull()
     }
-    CompositionLocalProvider(LocalLayoutDirection provides if (Store.lang == "ar") LayoutDirection.Rtl else LayoutDirection.Ltr) {
+    // the layout stays left to right in Arabic too (bars, rows, icons where they are in English; a phone set to Arabic
+    // would mirror it otherwise): only the text runs right to left. Text's direction follows its own words (the default
+    // in a left-to-right layout), so an Arabic paragraph reads and aligns from the right on its own
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         MaterialTheme(darkColorScheme(primary = Red, background = Bg, surface = Bg, surfaceContainer = CardC, onPrimary = Color.White, secondaryContainer = Red)) {
-            ModalNavigationDrawer({ Drawer(top, tab) { feedback = true; scope.launch { drawer.close() } } }, drawerState = drawer, gesturesEnabled = !top.full() || drawer.isOpen) {
+            ModalNavigationDrawer({ Drawer(top, tab, { scope.launch { drawer.close() } }) { feedback = true; scope.launch { drawer.close() } } }, drawerState = drawer, gesturesEnabled = !top.full() || drawer.isOpen) {
                 Scaffold(containerColor = Bg, bottomBar = { if (!top.full()) Dock(top, tab) }) { pad ->
                     // the reader takes the whole screen, under the phone's bars, so its pages don't move as they hide; its own bars pad themselves
                     Box(Modifier.padding(if (top is Screen.MangaRead) PaddingValues() else pad).fillMaxSize()) {
@@ -239,7 +316,7 @@ fun App() {
                                 Screen.Manga -> MangaHomeScreen(nav)
                                 is Screen.MangaBrowse -> MangaBrowseScreen(top.query, nav)
                                 is Screen.MangaSeries -> MangaSeriesScreen(top.id, nav)
-                                is Screen.MangaRead -> MangaReaderScreen(top.cid, nav)
+                                is Screen.MangaRead -> MangaReaderScreen(top.cid, nav, top.title, top.chapter)
                                 Screen.Cinema -> CinemaHomeScreen(nav)
                                 is Screen.CinemaBrowse -> Column { PageTitle(Cinema.catName(top.cat), nav); PagedGrid(top.cat, { f -> flow { emit(Cinema.list(top.cat, 1, f)) } }, { Cinema.list(top.cat, it) }, nav) }
                                 is Screen.CinemaTitle -> CinemaTitleScreen(top.slug, top.show, nav)
@@ -291,22 +368,27 @@ private fun section(s: Screen) = when (s) {
 
 /** the side drawer: every section, settings, feedback, language (app.js renderNav) */
 @Composable
-private fun Drawer(top: Screen, tab: (Screen) -> Unit, feedback: () -> Unit) {
-    ModalDrawerSheet(drawerContainerColor = Color(0xFF141414), modifier = Modifier.width(290.dp)) {
-        Logo(Modifier.padding(start = 24.dp, top = 28.dp, bottom = 16.dp))
-        val item = @Composable { id: String, s: Screen, icon: ImageVector ->
-            NavigationDrawerItem({ Text(navLabel(id), fontSize = 15.sp) }, section(top) == id, { tab(s) }, Modifier.padding(horizontal = 12.dp), { Icon(icon, null, Modifier.size(22.dp)) },
-                colors = NavigationDrawerItemDefaults.colors(selectedContainerColor = Color(0x33E50914), selectedIconColor = Red, selectedTextColor = Color.White, unselectedIconColor = Color(0xFFCCCCCC), unselectedTextColor = Color(0xFFCCCCCC)))
+private fun Drawer(top: Screen, tab: (Screen) -> Unit, close: () -> Unit, feedback: () -> Unit) {
+    // Material 3's navigation drawer, as its spec lays it out: a header, pill rows inset 12dp, a divider between groups.
+    // the scheme's own drawer colour is a purple-tinted grey: the app's card colour instead
+    ModalDrawerSheet(drawerContainerColor = CardC) {
+        Row(Modifier.fillMaxWidth().padding(start = 28.dp, end = 12.dp, top = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Logo(Modifier.weight(1f))
+            IconButton(close) { Icon(Ic.x, t("close"), Modifier.size(22.dp)) } // a plain way out: not everyone knows to swipe it away or tap beside it
+        }
+        val colors = NavigationDrawerItemDefaults.colors(selectedContainerColor = Color(0x40E50914), selectedIconColor = Red, selectedTextColor = Color.White,
+            unselectedContainerColor = Color.Transparent, unselectedIconColor = Color(0xFFCCCCCC), unselectedTextColor = Color(0xFFCCCCCC))
+        val item = @Composable { label: String, on: Boolean, icon: ImageVector, go: () -> Unit ->
+            NavigationDrawerItem({ Text(label) }, on, go, Modifier.padding(NavigationDrawerItemDefaults.ItemPadding), { Icon(icon, null, Modifier.size(24.dp)) }, colors = colors)
         }
         // the rows scroll and the language stays pinned below them: on shorter phones they no longer fit with it
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-            NAV.forEach { (id, v) -> item(id, v.first, v.second()) }
-            HorizontalDivider(Modifier.padding(vertical = 12.dp, horizontal = 24.dp), color = Color(0x22FFFFFF))
-            item("settings", Screen.Settings(), Ic.settings)
-            NavigationDrawerItem({ Text(t("feedback"), fontSize = 15.sp) }, false, feedback, Modifier.padding(horizontal = 12.dp), { Icon(Ic.info, null, Modifier.size(22.dp)) },
-                colors = NavigationDrawerItemDefaults.colors(unselectedIconColor = Color(0xFFCCCCCC), unselectedTextColor = Color(0xFFCCCCCC)))
+            NAV.forEach { (id, v) -> item(navLabel(id), section(top) == id, v.second()) { tab(v.first) } }
+            HorizontalDivider(Modifier.padding(horizontal = 28.dp, vertical = 8.dp), color = Color(0x22FFFFFF))
+            item(navLabel("settings"), section(top) == "settings", Ic.settings) { tab(Screen.Settings()) }
+            item(t("feedback"), false, Ic.info, feedback)
         }
-        LangSwitch(Modifier.padding(24.dp))
+        LangSwitch(Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 16.dp))
     }
 }
 
@@ -333,28 +415,59 @@ fun Logo(modifier: Modifier = Modifier, size: Dp = 26.dp) = CompositionLocalProv
 }
 
 @Composable
-fun LangSwitch(modifier: Modifier = Modifier) = Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-    listOf("ar" to "العربية", "en" to "English").forEach { (l, label) ->
-        val on = Store.lang == l
-        Box(Modifier.clip(RoundedCornerShape(99.dp)).background(if (on) Red else Color(0x1AFFFFFF)).clickable { Store["prefs"].put("lang", l); Store.persist("prefs") }
-            .padding(horizontal = 16.dp, vertical = 8.dp)) { Text(label, fontSize = 14.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal) }
+/** the language: Material's segmented buttons, one of two side by side (the drawer and settings) */
+fun LangSwitch(modifier: Modifier = Modifier) = SingleChoiceSegmentedButtonRow(modifier) {
+    val langs = listOf("ar" to "العربية", "en" to "English")
+    langs.forEachIndexed { i, (l, label) ->
+        // no checkmark (it squeezed the label in the drawer: the red fill says which), and a faint border, not the theme's purple-grey outline
+        SegmentedButton(Store.lang == l, { Store["prefs"].put("lang", l); Store.persist("prefs") }, SegmentedButtonDefaults.itemShape(i, langs.size),
+            colors = SegmentedButtonDefaults.colors(activeContainerColor = Red, activeContentColor = Color.White, activeBorderColor = Red,
+                inactiveContainerColor = Color.Transparent, inactiveContentColor = Color(0xFFCCCCCC), inactiveBorderColor = Color(0x33FFFFFF)),
+            icon = {}) { Text(label, maxLines = 1) }
     }
 }
 
-/** a section's top bar over its slider: the logo, search, and ☰ for the drawer (app.js phones' top bar) */
+/**
+ * a section's top bar: the logo, search, and ☰ for the drawer (app.js phones' top bar). solid: over a section's slider
+ * it's see-through (a shade keeps its icons readable), going black once the page scrolls under it
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TopBar(nav: Nav, modifier: Modifier = Modifier) = Row(modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0xCC000000), Color.Transparent)))
-    .padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-    Box(Modifier.weight(1f)) { Logo(size = 22.dp) }
-    IconButton({ nav.go(Screen.Search()) }) { Icon(Ic.search, navLabel("search"), Modifier.size(24.dp)) }
-    IconButton(nav.menu) { Icon(Ic.menu, t("more"), Modifier.size(24.dp)) }
+fun TopBar(nav: Nav, modifier: Modifier = Modifier, solid: Boolean = true) {
+    val bg by androidx.compose.animation.animateColorAsState(if (solid) Bg else Color.Transparent, label = "bar")
+    TopAppBar({ Logo(size = 22.dp) }, modifier.background(Brush.verticalGradient(listOf(Color(0xCC000000), Color.Transparent))),
+        navigationIcon = { IconButton(nav.menu) { Icon(Ic.menu, t("more"), Modifier.size(24.dp)) } }, // ☰ at the start, as Android's own apps have it
+        actions = { IconButton({ nav.go(Screen.Search()) }) { Icon(Ic.search, navLabel("search"), Modifier.size(24.dp)) } }, windowInsets = WindowInsets(0), colors = TopAppBarDefaults.topAppBarColors(containerColor = bg)) // the scaffold already pads the status bar
 }
 
-/** an inner page's title, with back */
+/**
+ * a page's title: Material's top app bar, kept above the page (the page scrolls under it, never it). back: an inner page's;
+ * a section's own (my list, downloads) has ☰ for the drawer in its place
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PageTitle(title: String, nav: Nav) = Row(Modifier.fillMaxWidth().padding(end = 16.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-    IconButton(nav.back) { Icon(Ic.back, null, Modifier.size(22.dp)) }
-    Text(title, fontWeight = FontWeight.Bold, fontSize = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+fun PageTitle(title: String, nav: Nav, back: Boolean = true, actions: @Composable RowScope.() -> Unit = {}) = TopAppBar({ Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+    navigationIcon = { if (back) IconButton(nav.back) { Icon(Ic.back, t("back"), Modifier.size(22.dp)) } else IconButton(nav.menu) { Icon(Ic.menu, t("more"), Modifier.size(24.dp)) } },
+    actions = actions,
+    windowInsets = WindowInsets(0), colors = TopAppBarDefaults.topAppBarColors(containerColor = Bg))
+
+/** a page's title with a search button: tapped, the bar becomes the search box; back (or its arrow) closes it, clearing it */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SearchTitle(title: String, nav: Nav, q: String, set: (String) -> Unit, hint: String, back: Boolean = true, actions: @Composable RowScope.() -> Unit = {}) {
+    var open by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(q.isNotEmpty()) } // a search kept (schedule): open on coming back
+    if (!open) return PageTitle(title, nav, back) { IconButton({ open = true }) { Icon(Ic.search, navLabel("search"), Modifier.size(22.dp)) }; actions() }
+    val close = { open = false; set("") }
+    BackHandler(onBack = close)
+    val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+    LaunchedEffect(Unit) { focus.requestFocus() }
+    TopAppBar({
+        TextField(q, set, Modifier.fillMaxWidth().focusRequester(focus), placeholder = { Text(hint, maxLines = 1) }, singleLine = true,
+            colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent, focusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Transparent, cursorColor = Red))
+    }, navigationIcon = { IconButton(close) { Icon(Ic.back, t("back"), Modifier.size(22.dp)) } },
+        actions = { if (q.isNotEmpty()) IconButton({ set("") }) { Icon(Ic.x, t("clear"), Modifier.size(20.dp)) } },
+        windowInsets = WindowInsets(0), colors = TopAppBarDefaults.topAppBarColors(containerColor = Bg))
 }
 
 // ---------- loading: a page's data as its flow gives it (saved copy, then the site's if it changed) ----------
@@ -415,7 +528,7 @@ fun Empty(title: String, hint: String, action: @Composable () -> Unit = {}) =
     }
 
 // error text without the sources' names or addresses (app.js noNames)
-fun noNames(m: String?) = (m ?: "").replace(Regex("https?://\\S+|\\b[\\w.-]*(wit ?anime|anime ?rco|egy ?dead|my ?seed|arab ?seed|appswat|mesh ?manga|manga ?swat|manga ?tek|anime ?schedule|mega ?max)[\\w.-]*", RegexOption.IGNORE_CASE),
+fun noNames(m: String?) = (m ?: "").replace(Regex("https?://\\S+|\\b[\\w.-]*(wit ?anime|anime ?rco|egy ?dead|my ?seed|arab ?seed|appswat|mesh ?manga|manga ?swat|olympus ?staff|team-?x|anime ?schedule|mega ?max)[\\w.-]*", RegexOption.IGNORE_CASE),
     t("theSite"))
 
 fun toast(msg: String) { if (Net.hasWindow()) Toast.makeText(Net.activity, msg, Toast.LENGTH_SHORT).show() } // none from a background check (Alerts)
@@ -459,7 +572,9 @@ private fun CardMenu(c: Card, done: () -> Unit) = ModalBottomSheet(done, contain
 }
 
 /** where a card leads (app.js card's href) */
-fun screenFor(c: Card): Screen = c.open ?: when {
+fun screenFor(c: Card): Screen = c.open?.let { open ->
+    if (open is Screen.MangaRead && open.title.isBlank()) open.copy(title = c.title) else open
+} ?: when {
     c.type == "episode" -> Screen.Play(c.path)
     c.showPath.startsWith("/manga/series/") -> Screen.MangaSeries(c.showPath.substringAfterLast('/'))
     c.showPath.startsWith("/cinema/") -> Screen.CinemaTitle(c.showPath.removePrefix("/cinema/"))
@@ -612,7 +727,8 @@ fun HeroPager(hero: List<Slide>, nav: Nav) {
         val h = hero[pager.currentPage.coerceAtMost(hero.size - 1)]
         Column(Modifier.align(Alignment.BottomStart).padding(16.dp)) {
             Text(h.title, fontWeight = FontWeight.ExtraBold, fontSize = 26.sp, lineHeight = 30.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(h.desc, Modifier.padding(vertical = 8.dp), color = Color(0xFFDDDDDD), fontSize = 13.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            Text(h.desc, Modifier.fillMaxWidth().padding(vertical = 8.dp), color = Color(0xFFDDDDDD), fontSize = 13.sp, maxLines = 3, overflow = TextOverflow.Ellipsis,
+                style = LocalTextStyle.current.copy(textDirection = androidx.compose.ui.text.style.TextDirection.Content), textAlign = androidx.compose.ui.text.style.TextAlign.Start)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 h.play?.let { p ->
                     Button({ nav.go(p) }, colors = ButtonDefaults.buttonColors(Color.White, Color.Black), shape = RoundedCornerShape(4.dp)) {
@@ -638,11 +754,13 @@ fun <T> SectionPage(l: Loaded<T>, refresh: () -> Unit, nav: Nav, hero: (T) -> Li
         Body(l, refresh) { d ->
             Store.version.intValue
             Box {
-                androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+                val list = androidx.compose.foundation.lazy.rememberLazyListState()
+                val scrolled by remember { derivedStateOf { list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > 0 } }
+                androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize(), list, contentPadding = PaddingValues(bottom = 24.dp)) {
                     item { HeroPager(hero(d), nav) }
                     rows(d)
                 }
-                TopBar(nav)
+                TopBar(nav, solid = scrolled)
             }
         }
     }
@@ -659,7 +777,7 @@ fun continued(kinds: Set<String>): List<Card> {
     }
     val read = Store["manga"].values().map { r ->
         "manga" to Card("/manga/series/${r.optString("id")}", "manga", r.optString("title"), r.optString("poster"), "", "", "${t("chShort")} ${Manga.chNum(r.opt("n"))}", null,
-            "/manga/series/${r.optString("id")}", open = Screen.MangaRead(r.optString("chapterId"))) to r.optLong("at")
+            "/manga/series/${r.optString("id")}", open = Screen.MangaRead(r.optString("chapterId"), r.optString("title"), Manga.chNum(r.opt("n")))) to r.optLong("at")
     }
     return (watch + read).filter { it.first.first in kinds }.sortedByDescending { it.second }.map { it.first.second }
 }

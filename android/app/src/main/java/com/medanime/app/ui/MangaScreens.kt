@@ -64,7 +64,7 @@ import org.json.JSONObject
 
 private class MangaHome(val hot: List<Card>, val latest: List<Card>, val popular: List<Card>, val fresh: List<Card>, val slides: List<Slide>)
 
-/** Manga: MeshManga's catalogue with MangaTek's merged in (manga.js mangaHome) */
+/** Manga: MeshManga's catalogue with Olympus Staff's merged in (manga.js mangaHome) */
 @Composable
 fun MangaHomeScreen(nav: Nav) {
     val (l, refresh) = loadedOnce("manga", quiet = true) { f ->
@@ -131,11 +131,15 @@ fun MangaSeriesScreen(id: String, nav: Nav) {
     androidx.compose.material3.pulltorefresh.PullToRefreshBox(l.busy && l.data != null, refresh) {
         Body(l, refresh) { full ->
             val s = full.s
-            if (s.id != id) return@Body LaunchedEffect(s.id) { nav.replace(Screen.MangaSeries(s.id)) } // a MangaTek copy of a MangaSwat series
+            if (s.id != id) return@Body LaunchedEffect(s.id) { nav.replace(Screen.MangaSeries(s.id)) } // an Olympus copy of a MangaSwat series
             Store.version.intValue
             val r = Store["manga"].optJSONObject(id)
             val seen = Store["mangaSeen"]
-            val start = r?.let { it.optString("chapterId") to t("resumeCh", Manga.chNum(it.opt("n"))) } ?: full.chs.lastOrNull()?.let { it.id to t("read") }
+            val start = r?.let {
+                val rn = Manga.chNum(it.opt("n"))
+                val cid = it.optString("chapterId").takeIf { c -> full.chs.any { x -> x.id == c } } ?: full.chs.find { x -> x.n == rn }?.id
+                cid?.let { c -> c to t("resumeCh", rn) }
+            } ?: full.chs.lastOrNull()?.let { it.id to t("read") }
             DetailPage(s.cover, s.poster, s.title, s.alt,
                 // type and status under the title; the rating and views lead the actions row
                 listOfNotNull(s.type.takeIf { it.isNotEmpty() }?.let { Manga.typeName(it) to true }, s.status.takeIf { it.isNotEmpty() }?.let { Manga.label(Manga.STATUS, it) to true }) + s.genres.map { it to false },
@@ -144,7 +148,7 @@ fun MangaSeriesScreen(id: String, nav: Nav) {
                     ListButton("/manga/series/$id", s.title, s.poster, "manga")
                     NotifyButton("/manga/series/$id", s.title, s.poster, full.chs.firstOrNull()?.id ?: "")
                 }, emptyList(), nav, t("chapters"),
-                full.chs.map { Numbered(it.n, seen.has(it.id), r?.optString("chapterId") == it.id, Screen.MangaRead(it.id), it.id, com.medanime.app.Downloads.done("manga:${it.id}"), seen.optInt(it.id) == 2) }, t("jumpCh"),
+                full.chs.map { Numbered(it.n, seen.has(it.id), r?.optString("chapterId") == it.id, Screen.MangaRead(it.id, s.title, it.n), it.id, com.medanime.app.Downloads.done("manga:${it.id}"), seen.optInt(it.id) == 2) }, t("jumpCh"),
                 // several chapters: mark them read or unread, download them, or delete their saved copies (manga.js acts)
                 acts = { ids -> listOfNotNull("read" to t("markRead"), "unread" to t("markUnread"),
                     if (ids.any { !com.medanime.app.Downloads.done("manga:$it") }) "dl" to t("downloadShort") else null,
@@ -158,7 +162,7 @@ fun MangaSeriesScreen(id: String, nav: Nav) {
                     }
                     Store.persist("mangaSeen")
                 }, unit = t("chapter"),
-                menu = listOf(MenuItem(t("autoDlShort"), Ic.download, Alerts.autoDl("/manga/series/$id")) { Alerts.toggleDl("/manga/series/$id", s.title, s.poster, full.chs.firstOrNull()?.id ?: "") }), play = start?.let { (cid, label) -> label to { nav.go(Screen.MangaRead(cid)) } })
+                menu = listOf(MenuItem(t("autoDlShort"), Ic.download, Alerts.autoDl("/manga/series/$id")) { Alerts.toggleDl("/manga/series/$id", s.title, s.poster, full.chs.firstOrNull()?.id ?: "") }), play = start?.let { (cid, label) -> label to { nav.go(Screen.MangaRead(cid, s.title, full.chs.find { it.id == cid }?.n.orEmpty())) } })
         }
     }
 }
@@ -183,10 +187,34 @@ private suspend fun chapterOf(cid: String): MChapter {
  */
 @OptIn(FlowPreview::class, ExperimentalMaterial3Api::class)
 @Composable
-fun MangaReaderScreen(cid: String, nav: Nav) {
+fun MangaReaderScreen(cid: String, nav: Nav, title: String = "", chapter: String = "") {
+    val known = remember(cid, title, chapter) {
+        val saved = com.medanime.app.Downloads.of("manga:$cid")?.let { it.optString("title") to it.optString("ep") }
+            ?: Store["manga"].let { o -> o.keys().asSequence().mapNotNull { o.optJSONObject(it) }.find { it.optString("chapterId") == cid } }
+                ?.let { it.optString("title") to Manga.chNum(it.opt("n")) }
+        (title.ifBlank { saved?.first.orEmpty() }) to (chapter.ifBlank { saved?.second.orEmpty() })
+    }
+    var loadingTitle by remember(cid, known) { mutableStateOf(known.first) }
+    var loadingChapter by remember(cid, known) { mutableStateOf(known.second) }
     val (l, retry) = loadedOnce(cid) { _ ->
+        // a chapter id from a removed source (t<digits>, in Continue Reading or a queued download): its series and number find its current id
+        if (cid.matches(Regex("t\\d+")) && com.medanime.app.Downloads.of("manga:$cid")?.optString("state") != "done") {
+            val saved = Store["manga"].let { o -> o.keys().asSequence().mapNotNull { o.optJSONObject(it) }.find { it.optString("chapterId") == cid } }
+                ?.let { it.optString("id") to Manga.chNum(it.opt("n")) }
+                ?: com.medanime.app.Downloads.of("manga:$cid")?.let { it.optString("show").substringAfterLast('/') to Manga.chNum(it.opt("ep")) }
+            if (saved != null) {
+                val full = Manga.full(saved.first)
+                val ch = (full.chs.find { it.n == saved.second } ?: full.chs.lastOrNull()) ?: throw java.io.IOException(t("unreachable"))
+                val c = chapterOf(ch.id)
+                loadingTitle = full.s.title
+                loadingChapter = c.n
+                return@loadedOnce Reading(c, full.chs, full.s.id, full.s.title, full.s.poster, full.alts)
+            }
+        }
         val c = chapterOf(cid)
-        // the series as listed (a MangaTek chapter may belong to a MangaSwat series); prev / next walk its merged chapter list
+        if (c.serieTitle.isNotBlank()) loadingTitle = c.serieTitle
+        loadingChapter = c.n
+        // the series as listed (an Olympus chapter may belong to a MangaSwat series); prev / next walk its merged chapter list
         val full = runCatching { Manga.full(c.serieId) }.getOrNull()
         Reading(c, full?.chs ?: emptyList(), full?.s?.id ?: c.serieId, full?.s?.title ?: c.serieTitle, full?.s?.poster ?: c.seriePoster, full?.alts ?: emptyMap())
     }
@@ -329,7 +357,7 @@ fun MangaReaderScreen(cid: String, nav: Nav) {
                         Spacer(Modifier.height(12.dp))
                         if (nx == null) GhostButton(t("chapters"), Ic.manga) { nav.replace(Screen.MangaSeries(d.sid)) }
                         else if (cont && failed != nx) CircularProgressIndicator(Modifier.size(28.dp), color = Red)
-                        else RedButton(t("nextCh")) { nav.replace(Screen.MangaRead(nx)) }
+                        else RedButton(t("nextCh")) { nav.replace(Screen.MangaRead(nx, d.title, d.chs.find { it.id == nx }?.n.orEmpty())) }
                     }
                 }
             }
@@ -437,7 +465,7 @@ fun MangaReaderScreen(cid: String, nav: Nav) {
                                     leadingIcon = { Icon(icon, null, Modifier.size(18.dp)) }, trailingIcon = { Icon(Ic.next, null, Modifier.size(14.dp), tint = Muted) })
                             }
                             when (page) {
-                                "source" -> { head(t("source")); alts.forEachIndexed { i, a -> option(t("sourceN", i + 1), a.id == c.id) { menu = false; if (a.id != c.id) nav.replace(Screen.MangaRead(a.id)) } } }
+                                "source" -> { head(t("source")); alts.forEachIndexed { i, a -> option(t("sourceN", i + 1), a.id == c.id) { menu = false; if (a.id != c.id) nav.replace(Screen.MangaRead(a.id, d.title, a.n)) } } }
                                 "mode" -> { head(t("readingMode")); option(t("vertical"), !horiz) { mode(false) }; option(t("horizontal"), horiz) { mode(true) } }
                                 else -> {
                                     DropdownMenuItem({ Text(t("downloadShort")) }, { menu = false; if (done) toast(t("dlDone")) else com.medanime.app.Downloads.chapters(d.sid, d.title, d.poster, listOf(Ch(c.id, c.n))) },
@@ -470,9 +498,9 @@ fun MangaReaderScreen(cid: String, nav: Nav) {
                         Icon(if (auto) Ic.pause else Ic.play, t("autoScroll"), Modifier.size(20.dp), tint = if (auto) Red else Color.White)
                     }
                     Spacer(Modifier.weight(1f))
-                    IconButton({ prev?.let { nav.replace(Screen.MangaRead(it)) } }, enabled = prev != null) { Icon(Ic.prev, t("prevCh"), Modifier.size(22.dp)) }
+                    IconButton({ prev?.let { nav.replace(Screen.MangaRead(it, d.title, d.chs.find { ch -> ch.id == it }?.n.orEmpty())) } }, enabled = prev != null) { Icon(Ic.prev, t("prevCh"), Modifier.size(22.dp)) }
                     if (d.chs.isNotEmpty()) TextButton({ picker = true }) { Text("${t("chShort")} ${c.n}", color = Color.White, fontSize = 15.sp); Icon(Ic.caretUp, null, Modifier.padding(start = 6.dp).size(14.dp), tint = Color.White) }
-                    IconButton({ next?.let { nav.replace(Screen.MangaRead(it)) } }, enabled = next != null) { Icon(Ic.next, t("nextCh"), Modifier.size(22.dp)) }
+                    IconButton({ next?.let { nav.replace(Screen.MangaRead(it, d.title, d.chs.find { ch -> ch.id == it }?.n.orEmpty())) } }, enabled = next != null) { Icon(Ic.next, t("nextCh"), Modifier.size(22.dp)) }
                 }
                 if (!horiz && c.images.isNotEmpty()) ReaderScrollbar(list, base, c.images.size) { seekAt = System.currentTimeMillis() } }
             }
@@ -484,13 +512,33 @@ fun MangaReaderScreen(cid: String, nav: Nav) {
                 val seen = Store["mangaSeen"]
                 LazyColumn(state = rememberLazyListState(maxOf(0, atOf(c) - 3))) {
                     itemsIndexed(d.chs) { _, x ->
-                        Row(Modifier.fillMaxWidth().clickable { picker = false; nav.replace(Screen.MangaRead(x.id)) }.padding(horizontal = 24.dp, vertical = 14.dp)) {
+                        Row(Modifier.fillMaxWidth().clickable { picker = false; nav.replace(Screen.MangaRead(x.id, d.title, x.n)) }.padding(horizontal = 24.dp, vertical = 14.dp)) {
                             Text("${t("chapter")} ${x.n}", Modifier.weight(1f), color = if (x.id == c.id) Red else if (seen.has(x.id)) Muted else Color.White, fontWeight = if (x.id == c.id) FontWeight.Bold else FontWeight.Normal)
                             if (com.medanime.app.Downloads.done("manga:${x.id}")) Icon(Ic.download, t("offline"), Modifier.padding(end = 8.dp).size(14.dp), tint = Muted)
                             if (seen.optInt(x.id) == 2) ReadBadge()
                         }
                     }
                 }
+            }
+        }
+        // still loading (or failed): the bars stay, as the reader has them, with what's known of the chapter already (its
+        // download, or where it was left), so moving chapter to chapter never drops them; the spinner shows between them
+        if (l.data == null) {
+            Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().background(Color(0xE6000000)).statusBarsPadding().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(nav.back) { Icon(Ic.back, null, Modifier.size(22.dp)) }
+                Column(Modifier.weight(1f)) {
+                    Text(loadingTitle.ifBlank { t("manga") }, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(loadingChapter.takeIf { it.isNotBlank() }?.let { "${t("chapter")} $it" } ?: t("loading"), color = Muted, fontSize = 12.sp)
+                }
+                IconButton({}, enabled = false) { Icon(Ic.dots, t("more"), Modifier.size(22.dp)) }
+            }
+            Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color(0xE6000000)).navigationBarsPadding().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton({}, enabled = false) { Icon(Ic.lock, t("lockUi"), Modifier.size(20.dp)) }
+                if (!Store["prefs"].optBoolean("mangaH")) IconButton({}, enabled = false) { Icon(Ic.play, t("autoScroll"), Modifier.size(20.dp)) }
+                Spacer(Modifier.weight(1f))
+                IconButton({}, enabled = false) { Icon(Ic.prev, t("prevCh"), Modifier.size(22.dp)) }
+                TextButton({}, enabled = false) { Text(loadingChapter.takeIf { it.isNotBlank() }?.let { "${t("chShort")} $it" } ?: "…", fontSize = 15.sp) }
+                IconButton({}, enabled = false) { Icon(Ic.next, t("nextCh"), Modifier.size(22.dp)) }
             }
         }
     }
@@ -512,25 +560,49 @@ internal fun ReadBadge() = Text(t("chRead"), Modifier.padding(start = 8.dp).back
 @Composable
 private fun MangaPage(src: String, modifier: Modifier, known: Int? = null, onSize: (Int) -> Unit = {}) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
-    val strips by androidx.compose.runtime.produceState<List<androidx.compose.ui.graphics.ImageBitmap>?>(null, src) {
-        val req = coil3.request.ImageRequest.Builder(ctx).data(src).memoryCachePolicy(coil3.request.CachePolicy.DISABLED) // the strips are what's kept
-            .size(coil3.size.Size.ORIGINAL).allowHardware(false)
-            .maxBitmapSize(coil3.size.Size.ORIGINAL).build() // Coil shrinks past 4096px (800x9000 -> 364x4096, blurry): the strips make that needless
-        val bmp = ((coil3.SingletonImageLoader.get(ctx).execute(req) as? coil3.request.SuccessResult)?.image ?: return@produceState).toBitmap()
-        ratios[src] = bmp.width.toFloat() / bmp.height
-        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-            (0 until bmp.height step 2048).map { y -> android.graphics.Bitmap.createBitmap(bmp, 0, y, bmp.width, minOf(2048, bmp.height - y)).asImageBitmap() }
+    var attempt by remember(src) { mutableIntStateOf(0) }
+    var strips by remember(src, attempt) { mutableStateOf<List<androidx.compose.ui.graphics.ImageBitmap>?>(null) }
+    var failed by remember(src, attempt) { mutableStateOf(false) }
+    LaunchedEffect(ctx, src, attempt) {
+        try {
+            val req = coil3.request.ImageRequest.Builder(ctx).data(src).memoryCachePolicy(coil3.request.CachePolicy.DISABLED)
+                .size(coil3.size.Size.ORIGINAL).allowHardware(false)
+                .maxBitmapSize(coil3.size.Size.ORIGINAL).build()
+            val result = coil3.SingletonImageLoader.get(ctx).execute(req)
+            if (result !is coil3.request.SuccessResult) {
+                failed = true
+                return@LaunchedEffect
+            }
+            val bmp = result.image.toBitmap()
+            ratios[src] = bmp.width.toFloat() / bmp.height
+            strips = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                (0 until bmp.height step 2048).map { y -> android.graphics.Bitmap.createBitmap(bmp, 0, y, bmp.width, minOf(2048, bmp.height - y)).asImageBitmap() }
+            }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            failed = true
         }
     }
     val dens = androidx.compose.ui.platform.LocalDensity.current
-    // drawn: its height is told. Until then: the height it had when last drawn, or its shape if measured, else 480dp
-    androidx.compose.foundation.layout.Column(modifier.then(when {
+    // Keep the placeholder's measured height so loading feedback doesn't shift the saved reading position.
+    Box(modifier.then(when {
         strips != null -> Modifier.onSizeChanged { onSize(it.height) }
         known != null -> Modifier.height(with(dens) { known.toDp() })
         ratios[src] != null -> Modifier.aspectRatio(ratios.getValue(src))
         else -> Modifier.heightIn(min = 480.dp)
-    })) {
-        strips?.forEach { androidx.compose.foundation.Image(it, null, Modifier.fillMaxWidth(), contentScale = ContentScale.FillWidth) }
+    }), contentAlignment = Alignment.Center) {
+        val pages = strips
+        if (pages != null) Column {
+            pages.forEach { androidx.compose.foundation.Image(it, null, Modifier.fillMaxWidth(), contentScale = ContentScale.FillWidth) }
+        } else Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (failed) {
+                Text(t("imageFailed"), color = Muted, fontSize = 13.sp)
+                TextButton({ attempt++ }) { Text(t("retry"), color = Red) }
+            } else {
+                CircularProgressIndicator(Modifier.size(28.dp), color = Red, strokeWidth = 2.dp)
+                Text(t("loadingImage"), color = Muted, fontSize = 13.sp)
+            }
+        }
     }
 }
 
@@ -547,7 +619,7 @@ private suspend fun measure(srcs: List<String>) = coroutineScope {
     } }.forEach { it.await() }
 }
 
-/** how far the chapter is read, under the bottom bar's buttons: a tap or a drag jumps there (from the right in Arabic) */
+/** how far the chapter is read, under the bottom bar's buttons: a tap or a drag jumps there (from the right in a right-to-left layout) */
 @Composable
 private fun ReaderScrollbar(list: androidx.compose.foundation.lazy.LazyListState, base: Int, pages: Int, onSeek: () -> Unit) { // base: the chapter's first item
     val scope = rememberCoroutineScope()

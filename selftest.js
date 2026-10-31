@@ -60,13 +60,13 @@ app.once('browser-window-created', (_, win) => win.webContents.once('did-finish-
       ok(sl.items.length >= 15 && sl.items.every(i => i.path.startsWith('/cinema/serie/')), 'cinema series list');
       const fe = (await edList('english-series', 1, true)).items.find(i => i.path.startsWith('/cinema/episode/')), fm = await load('edMovie', edUrl(fe.path.slice(8)), true);
       ok(fe.href.endsWith('/show') && !/الحلقة/.test(fe.title) && ['season/', 'serie/'].some(d => fm.up.startsWith(d)), 'episode card opens its show: ' + fe.title + ' ' + fm.up);
-      const tl = await load('mangaTekList', tUrl('manga', { sort: 'views', limit: 30 }), true);
-      ok(tl.items.length === 30 && tl.items.every(i => i.title && i.poster && i.path.startsWith('/manga/series/t')), 'mangatek list');
-      const solo = await mSeriesFull('t701', true); // Solo Leveling: on both sites, shown as MangaSwat's
-      ok(solo.s.id === 247366 && solo.chs.length > 100, 'manga twins ' + solo.s.id);
+      const tl = await olyList({}, 1, true);
+      ok(tl.items.length === 10 && tl.items.every(i => i.title && i.poster && i.path.startsWith('/manga/series/o:')), 'olympus list');
+      const solo = await mSeriesFull('o:demonic-emperor', true); // Demonic Emperor: on both sites, shown as MangaSwat's
+      ok(solo.s.id === 1702433 && solo.chs.length > 900, 'manga twins ' + solo.s.id);
       ok(mMerge([[{ title: 'Solo Leveling' }], [{ title: 'Solo leveling!' }, { title: 'Other' }]]).length === 2, 'manga dedupe');
-      const tc = await mChapter('t120500'); // Magic Emperor ch.1, MangaTek only
-      ok(tc.images.length === 6 && tc.images.every(u => u.startsWith('https://img.mangatek.com/')), 'mangatek pages ' + tc.images.length);
+      const tc = await mChapter('o:demonic-emperor:0'); // Demonic Emperor ch.0, Olympus only
+      ok(tc.images.length > 0 && tc.images.every(u => u.startsWith('https://cdn.olympustaff.com/uploads/')), 'olympus pages ' + tc.images.length);
       return { manga: [tl.items.length, solo.chs.length + ' solo chapters'], cinema: [em.title, em.year, em.origin, ew.servers.length + ' servers', ew.downloads.length + ' downloads', es.length + ' non-anime demon slayer hits'], rows: h.rows.map(r => r.title + ':' + r.items.length), hero: h.hero.length, pages: b.pages, eps: d.episodes.length, tags: d.tags, genres: d.genres, info: d.info.length, related: d.related.length, trailer: !!d.trailer, movie: mv.title };
     })()`);
     console.log('PASS', JSON.stringify(r, null, 1));

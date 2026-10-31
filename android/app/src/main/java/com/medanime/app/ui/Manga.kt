@@ -8,7 +8,7 @@ import org.json.JSONObject
 import org.jsoup.Jsoup
 import java.net.URLEncoder
 
-// manga.js in Kotlin: MeshManga's catalogue (the JSON API its site runs on, appswat.com) merged with MangaTek's
+// manga.js in Kotlin: MeshManga's catalogue (the JSON API its site runs on, appswat.com) merged with Olympus Staff's (Team-X)
 data class MSeries(val id: String, val title: String, val alt: String, val story: String, val type: String, val status: String,
                    val genres: List<String>, val poster: String, val cover: String, val rating: String, val views: Long,
                    val names: List<String> = emptyList(), val chapters: List<Ch> = emptyList())
@@ -19,11 +19,12 @@ class MFull(val s: MSeries, val chs: List<Ch>, val ids: List<String>, val alts: 
 
 object Manga {
     private const val API = "https://appswat.com/v2/api/v2/"
-    private const val TEK = "https://api.mangatek.com/"
+    // Olympus Staff: plain pages (no API), read with Jsoup. Its ids carry "o:": series o:<slug>, chapter o:<slug>:<number>
+    private const val OLY = "https://olympustaff.com/"
     private fun q(params: Map<String, Any>) = if (params.isEmpty()) "" else "?" + params.entries.joinToString("&") { "${it.key}=${URLEncoder.encode(it.value.toString(), "UTF-8")}" }
     fun mUrl(path: String, params: Map<String, Any> = emptyMap()) = API + path + q(params)
-    private fun tUrl(path: String, params: Map<String, Any> = emptyMap()) = TEK + "api/" + path + q(params)
     private suspend fun json(url: String, force: Boolean = false) = JSONObject(Pages.load(url, force))
+    private suspend fun doc(url: String, force: Boolean = false) = Jsoup.parse(Pages.load(url, force), url)
 
     // the API's fixed ids, with labels
     val TYPES = listOf(Triple("131", "مانهوا", "Manhwa"), Triple("132", "مانها", "Manhua"), Triple("133", "مانجا", "Manga"), Triple("134", "كوميك", "Comic"))
@@ -45,15 +46,26 @@ object Manga {
     private fun mCard(s: JSONObject) = Card("/manga/series/${s.get("id")}", "manga", s.str("title"),
         s.optJSONObject("poster")?.let { it.str("medium").ifEmpty { it.str("thumbnail") } } ?: "", rating(s.optDouble("rating", 0.0)), "",
         s.optJSONObject("type")?.str("name")?.let(::typeName) ?: "", null, "/manga/series/${s.get("id")}")
-    private fun tImg(p: String) = if (p.isEmpty() || p.startsWith("http")) p else TEK + p // detail pages give covers relative
-    private fun tNames(m: JSONObject) = listOf(m.str("title"), m.str("title_ar")) + m.str("alternative_titles").split('|')
-    private fun tCard(m: JSONObject) = Card("/manga/series/t${m.get("id")}", "manga", m.str("title"), tImg(m.str("cover_image")),
-        rating(m.optDouble("rating_blended", 0.0)), "", m.str("type").let { if (it.isEmpty()) "" else typeName(it) }, null, "/manga/series/t${m.get("id")}", names = tNames(m))
+    // its types in its words, as MangaSwat's (the rest kept as they are)
+    private val O_TYPES = mapOf("مانهوا كورية" to "Manhwa", "مانها صيني" to "Manhua", "مانجا ياباني" to "Manga")
+    private fun oType(s: String) = O_TYPES[s.trim()]?.let(::typeName) ?: s.trim()
+    private fun oCard(slug: String, title: String, poster: String, type: String) =
+        Card("/manga/series/o:$slug", "manga", title.trim(), poster, "", "", oType(type), null, "/manga/series/o:$slug", names = listOf(title.trim()))
+    // a listing's cards: the series list's (.bsx) or the search's (.tx-card)
+    private fun oCards(d: org.jsoup.nodes.Document) = d.select(".bsx > a[href], a.tx-card[href]").mapNotNull { a ->
+        val slug = a.attr("href").substringAfter("/series/", "").takeIf { it.isNotEmpty() && '/' !in it && '?' !in it } ?: return@mapNotNull null
+        oCard(slug, a.attr("title").ifEmpty { a.selectFirst(".tx-card-title")?.text() ?: "" }, a.selectFirst("img")?.attr("src") ?: "", a.selectFirst(".type, .tx-type")?.text() ?: "")
+    }
+    // the last of a listing's page links (?page=N), 1 when there are none
+    private fun lastPage(d: org.jsoup.nodes.Document, base: String) = d.select("a[href^=$base?page=], a[href^=$base&page=]").maxOfOrNull { it.attr("href").substringAfterLast("page=").substringBefore('&').toIntOrNull() ?: 1 } ?: 1
 
     class Page(val items: List<Card>, val count: Int)
     suspend fun list(params: Map<String, Any>, force: Boolean = false) = json(mUrl("series/", params), force).let { j -> Page(j.getJSONArray("results").objs().map(::mCard), j.optInt("count")) }
-    private suspend fun tekList(params: Map<String, Any>, force: Boolean = false) = json(tUrl("manga", params), force).getJSONObject("data").let { d ->
-        Page(d.getJSONArray("mangas").objs().map(::tCard), d.optJSONObject("pagination")?.optInt("total") ?: 0)
+    // its listing (type) or its search (keyword): a page of cards, and how many pages there are
+    private suspend fun oList(p: Map<String, Any>, page: Int, force: Boolean = false): Pair<List<Card>, Int> {
+        val base = OLY + if (p["keyword"] != null) "search" else "series"
+        val d = doc(base + q(p + mapOf("page" to page)), force)
+        return oCards(d) to lastPage(d, base)
     }
 
     // latest chapters feeds: one card per series, opening that chapter
@@ -64,26 +76,22 @@ object Manga {
                 .filter { it.optJSONObject("serie") != null && seen.add(it.getJSONObject("serie").get("id").toString()) }
                 .map { mCard(it.getJSONObject("serie")).copy(badge = "${t("chShort")} ${chNum(it.opt("chapter"))}", open = Screen.MangaRead(it.get("id").toString())) }
         }
-        val tek = async {
-            runCatching { // MangaTek down: just MangaSwat's
-                json(tUrl("manga", mapOf("limit" to 40)), force).getJSONObject("data").getJSONArray("mangas").objs().filter { (it.optJSONArray("MangaChapters")?.length() ?: 0) > 0 }.map {
-                    val c = it.getJSONArray("MangaChapters").getJSONObject(0)
-                    tCard(it).copy(badge = "${t("chShort")} ${chNum(c.opt("chapter_number"))}", open = Screen.MangaRead("t" + c.get("id")))
+        val oly = async {
+            runCatching { // Olympus down: just MangaSwat's. Its home page's updates: a series each, its newest free chapter first
+                doc(OLY, force).select(".uta").mapNotNull { b ->
+                    val slug = b.selectFirst(".imgu a[href]")?.attr("href")?.substringAfter("/series/", "")?.takeIf { it.isNotEmpty() && '/' !in it } ?: return@mapNotNull null
+                    // a paid chapter has no link (a "buy" box instead): the first that has one
+                    val n = b.select("li a[href^=${OLY}series/$slug/]").firstOrNull()?.attr("href")?.substringAfterLast('/') ?: return@mapNotNull null
+                    oCard(slug, b.selectFirst(".info h3")?.text() ?: "", b.selectFirst(".imgu img")?.attr("src") ?: "", "")
+                        .copy(badge = "${t("chShort")} ${chNum(n)}", open = Screen.MangaRead("o:$slug:$n"))
                 }
             }.getOrDefault(emptyList())
         }
-        merge(listOf(swat.await(), tek.await()))
+        merge(listOf(swat.await(), oly.await()))
     }
-    suspend fun popular(force: Boolean = false) = coroutineScope {
-        val a = async { list(mapOf("order_by" to "-views_count", "page_size" to 30), force).items }
-        val b = async { runCatching { tekList(mapOf("sort" to "views", "limit" to 30), force).items }.getOrDefault(emptyList()) }
-        merge(listOf(a.await(), b.await()))
-    }
-    suspend fun fresh(force: Boolean = false) = coroutineScope {
-        val a = async { list(mapOf("order_by" to "-created_at", "page_size" to 30), force).items }
-        val b = async { runCatching { tekList(mapOf("sort" to "created_at", "limit" to 30), force).items }.getOrDefault(emptyList()) }
-        merge(listOf(a.await(), b.await()))
-    }
+    // Olympus's list can't sort by views or by date: these are MangaSwat's
+    suspend fun popular(force: Boolean = false) = list(mapOf("order_by" to "-views_count", "page_size" to 30), force).items
+    suspend fun fresh(force: Boolean = false) = list(mapOf("order_by" to "-created_at", "page_size" to 30), force).items
     suspend fun hot(force: Boolean = false) = list(mapOf("is_hot" to true, "page_size" to 30), force).items
 
     // same series on both sites = a shared title, ignoring case and punctuation (Arabic-only titles never match)
@@ -100,13 +108,19 @@ object Manga {
         j.optJSONObject("poster")?.str("medium") ?: "", j.optJSONObject("cover")?.str("medium")?.ifEmpty { null } ?: j.optJSONObject("poster")?.str("medium") ?: "",
         rating(j.optDouble("rating", 0.0)), j.optLong("views_count"))
     suspend fun seriesOf(id: String, force: Boolean = false) = series(json(mUrl("series/$id/"), force))
-    private suspend fun tekSeries(id: String, force: Boolean = false): MSeries {
-        val m = json(tUrl("manga/$id"), force).getJSONObject("data")
-        return MSeries("t" + m.get("id"), m.str("title"), m.str("alternative_titles").ifEmpty { m.str("title_ar") }, m.str("description").ifEmpty { m.str("description_sid") },
-            m.str("type"), STATUS.find { it.third.equals(m.str("status"), true) }?.first ?: "", m.optJSONArray("Tags")?.objs()?.map { it.str("name") } ?: emptyList(),
-            tImg(m.str("cover_image")), tImg(m.str("cover_image")), rating(m.optDouble("rating_blended", 0.0)), m.optLong("views"), tNames(m),
-            m.optJSONArray("MangaChapters")?.objs()?.filter { it.optInt("visible", 1) != 0 && (if (it.has("access") && !it.isNull("access")) it.optBoolean("access") else it.optDouble("price", 0.0) == 0.0) }
-                ?.map { Ch("t" + it.get("id"), chNum(it.opt("chapter_number"))) }?.reversed() ?: emptyList())
+    // a series' page: its details, and its chapters (about 40 a page, ?page=N), every page. A paid chapter has no link: left out
+    private suspend fun oSeries(slug: String, force: Boolean = false): MSeries = coroutineScope {
+        val url = OLY + "series/" + slug
+        val d = doc(url, force)
+        val rest = (2..lastPage(d, url)).map { n -> async { runCatching { doc("$url?page=$n", force) }.getOrNull() } }.awaitAll()
+        val chs = (listOf(d) + rest.filterNotNull()).flatMap { p -> p.select(".chapter-card a.chapter-link[href^=$url/]").map { it.attr("href").substringAfterLast('/') } }
+            .distinct().map { Ch("o:$slug:$it", chNum(it)) }
+        val info = { label: String -> d.select(".full-list-info").find { label in it.text() }?.select("a")?.text() ?: "" }
+        val st = info("الحالة") // its words: مستمرة, مكتملة, متوقفة, متروك
+        val title = d.selectFirst(".author-info-title h1, .author-info-title h6")?.text() ?: slug
+        MSeries("o:$slug", title, "", d.selectFirst(".review-content")?.text() ?: "", O_TYPES[info("النوع")] ?: info("النوع"),
+            when { "مستمر" in st -> "79"; "مكتمل" in st -> "80"; st.isNotEmpty() -> "81"; else -> "" }, d.select("a[href*=series?genre=]").map { it.text() }.distinct(),
+            d.selectFirst(".whitebox img.shadow-sm")?.attr("src") ?: "", d.selectFirst(".whitebox img.shadow-sm")?.attr("src") ?: "", "", 0, listOf(title), chs)
     }
 
     // the API hands out at most 200 chapters a page, whatever page_size asks for: every page
@@ -120,18 +134,18 @@ object Manga {
     private fun byNum(chs: List<Ch>) = chs.sortedByDescending { it.n.toDoubleOrNull() ?: 0.0 }
     // one entry per chapter number (a site may list one twice: "FREE 1" and "1"); MangaSwat's copy first, the rest kept as alternatives
     private fun merged(s: MSeries, all: List<Ch>, ids: List<String>): MFull {
-        val groups = byNum(all).groupBy { it.n } // stable: within a number, the order given (MangaSwat's, then MangaTek's)
+        val groups = byNum(all).groupBy { it.n } // stable: within a number, the order given (MangaSwat's, then Olympus's)
         return MFull(s, groups.values.map { it.first() }, ids, groups.filterValues { it.size > 1 })
     }
 
     // the other site's copy of a series, found by searching its title
-    private suspend fun tekTwin(s: MSeries, force: Boolean): MSeries? {
+    private suspend fun oTwin(s: MSeries, force: Boolean): MSeries? {
         val k = keys(listOf(s.title) + s.alt.split(Regex("[|,،]")))
         if (k.isEmpty()) return null
-        val hit = runCatching { tekList(mapOf("search" to s.title, "limit" to 20)).items }.getOrNull()?.find { c -> keys(c.names).any { it in k } } ?: return null
-        return runCatching { tekSeries(hit.path.substringAfterLast("/t"), force) }.getOrNull()
+        val hit = runCatching { oList(mapOf("keyword" to s.title), 1).first }.getOrNull()?.find { c -> keys(c.names).any { it in k } } ?: return null
+        return runCatching { oSeries(hit.path.substringAfterLast("/o:"), force) }.getOrNull()
     }
-    // MangaSwat's search only finds its own title, which may be one of MangaTek's alternatives: each Latin name in turn
+    // MangaSwat's search only finds its own title, which may be one of the other site's names: each Latin name in turn
     private suspend fun swatTwin(m: MSeries): String? {
         val k = keys(m.names)
         for (name in m.names.map { it.trim() }.filter { Regex("[a-z]", RegexOption.IGNORE_CASE).containsMatchIn(it) }.distinct().take(4)) {
@@ -140,54 +154,62 @@ object Manga {
         }
         return null
     }
-    /** a series as shown: MangaSwat's (plus its MangaTek twin's extra chapters), or MangaTek's alone */
+    /** a series as shown: MangaSwat's (plus its Olympus twin's extra chapters), or Olympus's alone */
     suspend fun full(id: String, force: Boolean = false): MFull {
-        if (id.startsWith("t")) {
-            val m = tekSeries(id.drop(1), force)
+        if (id.matches(Regex("t\\d+"))) { // a series saved under a removed source's id: found again by its title
+            val title = listOf("manga" to id, "list" to "/manga/series/$id", "notify" to "/manga/series/$id", "autoDl" to "/manga/series/$id")
+                .firstNotNullOfOrNull { (k, key) -> Store[k].optJSONObject(key)?.optString("title")?.takeIf { it.isNotEmpty() } }
+                ?: com.medanime.app.Downloads.all().let { o -> o.keys().asSequence().mapNotNull { o.optJSONObject(it) }.find { it.optString("show") == "/manga/series/$id" }?.optString("title") }
+                ?: throw java.io.IOException(t("unreachable"))
+            val hit = browse(mapOf("search" to title), 1, HashSet(), force).items.firstOrNull() ?: throw java.io.IOException(t("unreachable"))
+            return full(hit.path.substringAfterLast('/'), force)
+        }
+        if (id.startsWith("o:")) {
+            val m = oSeries(id.drop(2), force)
             val f = swatTwin(m)?.let { runCatching { full(it, force) }.getOrNull() }
             return if (f != null) MFull(f.s, f.chs, f.ids + m.id, f.alts) else merged(m, m.chapters, listOf(m.id))
         }
         val (s, chs) = coroutineScope { val a = async { seriesOf(id, force) }; val b = async { chapters(id, force) }; a.await() to b.await() }
-        val tk = tekTwin(s, force) ?: return merged(s, chs, listOf(s.id))
-        return merged(s, chs + tk.chapters, listOf(s.id, tk.id)) // MangaTek fills the numbers MangaSwat lacks, and is an alternative for the rest
+        val tw = oTwin(s, force) ?: return merged(s, chs, listOf(s.id))
+        return merged(s, chs + tw.chapters, listOf(s.id, tw.id)) // Olympus fills the numbers MangaSwat lacks, and is an alternative for the rest
     }
 
     /** one chapter from either site */
     suspend fun chapter(cid: String): MChapter {
-        if (!cid.startsWith("t")) {
-            val j = json(mUrl("chapters/$cid/"))
-            val s = j.getJSONObject("serie")
-            return MChapter(j.get("id").toString(), chNum(j.opt("chapter")), j.opt("previous_chapter_id")?.takeIf { it != JSONObject.NULL }?.toString(),
-                j.opt("next_chapter_id")?.takeIf { it != JSONObject.NULL }?.toString(), s.get("id").toString(), s.str("title"), s.optJSONObject("poster")?.str("medium") ?: "",
-                (j.optJSONArray("images")?.objs() ?: emptyList()).sortedBy { it.optInt("order") }.map { it.str("image") })
+        if (cid.startsWith("o:")) { // its page lists the page images; prev / next come from the series' merged list (the reader's)
+            val slug = cid.drop(2).substringBefore(':'); val n = cid.substringAfterLast(':')
+            val d = doc(OLY + "series/$slug/$n")
+            val imgs = d.select(".image_list img.manga-chapter-img").map { it.attr("src") }.filter { it.isNotEmpty() }.distinct() // each is there twice
+            if (imgs.isEmpty()) throw Locked() // a paid chapter: its page comes without them
+            return MChapter(cid, chNum(n), null, null, "o:$slug", d.selectFirst("a[href=${OLY}series/$slug]")?.text() ?: "", "", imgs)
         }
-        val c = json(tUrl("chapters/" + cid.drop(1))).getJSONObject("data")
-        val sery = c.getJSONObject("MangaSery")
-        // the page list is only in the reader page, as the props of its image viewer island
-        val html = Pages.load("https://mangatek.com/reader/${URLEncoder.encode(sery.str("slug"), "UTF-8")}/${URLEncoder.encode(c.opt("chapter_number").toString(), "UTF-8")}")
-        val props = Jsoup.parse(html).selectFirst("astro-island[component-url*=ChapterImageViewer]")?.attr("props") ?: "{}"
-        val urls = JSONObject(props).optJSONArray("imageUrls")?.optJSONArray(1)
-        return MChapter("t" + c.get("id"), chNum(c.opt("chapter_number")), null, null, "t" + c.get("manga_id"), sery.str("title"), "",
-            (0 until (urls?.length() ?: 0)).map { urls!!.getJSONArray(it).getString(1) })
+        val j = json(mUrl("chapters/$cid/"))
+        val s = j.getJSONObject("serie")
+        return MChapter(j.get("id").toString(), chNum(j.opt("chapter")), j.opt("previous_chapter_id")?.takeIf { it != JSONObject.NULL }?.toString(),
+            j.opt("next_chapter_id")?.takeIf { it != JSONObject.NULL }?.toString(), s.get("id").toString(), s.str("title"), s.optJSONObject("poster")?.str("medium") ?: "",
+            (j.optJSONArray("images")?.objs() ?: emptyList()).sortedBy { it.optInt("order") }.map { it.str("image") })
     }
 
+    /** a chapter its site keeps back (sold, on Olympus): said plainly, not as a parse error */
+    class Locked : java.io.IOException(t("mLocked"))
+
     // ---------- browse: a page of each site, merged; past the end of one site's pages, just the other's ----------
-    // the filters in MangaTek's terms; null when they can't apply (the two sites' genre lists differ)
-    private fun tekQuery(p: Map<String, String>): Map<String, Any>? {
-        if (p["genres"] != null) return null
-        val q = mutableMapOf<String, Any>("sort" to (mapOf("-views_count" to "views", "-rating" to "rating", "title" to "title")[p["order_by"]] ?: if (p["is_hot"] != null) "views" else "created_at"))
-        p["type"]?.let { v -> TYPES.find { it.first == v }?.let { q["type"] = it.third.lowercase() } }
-        p["status"]?.let { v -> STATUS.find { it.first == v }?.let { q["status"] = it.third.lowercase() } }
-        p["search"]?.let { q["search"] = it }
-        return q
+    // the filters in Olympus's terms; null when they can't apply: its list only filters by type, and can't sort (its genre
+    // and status words differ too). A search is its search page, which takes nothing else
+    private fun oQuery(p: Map<String, String>): Map<String, Any>? {
+        if (p["genres"] != null || p["status"] != null || p["is_hot"] != null || !p["order_by"].isNullOrEmpty()) return null
+        p["search"]?.let { return mapOf("keyword" to it) }
+        val type = p["type"] ?: return emptyMap()
+        val name = TYPES.find { it.first == type }?.third ?: return null
+        return O_TYPES.entries.find { it.value == name }?.let { mapOf("type" to it.key) }
     }
     suspend fun browse(p: Map<String, String>, page: Int, seen: MutableSet<String>, force: Boolean = false): Listing = coroutineScope {
         val per = 30
-        val tq = tekQuery(p)
-        val d = async { runCatching { list(p + mapOf("page" to page, "page_size" to per), force) }.getOrElse { if (page == 1 && tq == null) throw it else null } }
-        val tk = async { tq?.let { runCatching { tekList(it + mapOf("page" to page, "limit" to per), force) }.getOrNull() } }
-        val a = d.await(); val b = tk.await()
+        val oq = oQuery(p)
+        val d = async { runCatching { list(p + mapOf("page" to page, "page_size" to per), force) }.getOrElse { if (page == 1 && oq == null) throw it else null } }
+        val o = async { oq?.let { runCatching { oList(it, page, force) }.getOrNull() } }
+        val a = d.await(); val b = o.await()
         if (a == null && b == null) throw java.io.IOException(t("unreachable"))
-        Listing(merge(listOf(a?.items, b?.items), seen), maxOf(1, ((a?.count ?: 0) + per - 1) / per, ((b?.count ?: 0) + per - 1) / per))
+        Listing(merge(listOf(a?.items, b?.first), seen), maxOf(1, ((a?.count ?: 0) + per - 1) / per, b?.second ?: 0))
     }
 }

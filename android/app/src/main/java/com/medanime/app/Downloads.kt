@@ -3,6 +3,9 @@ package com.medanime.app
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Environment
 import androidx.compose.runtime.mutableIntStateOf
@@ -62,8 +65,33 @@ object Downloads {
         if (::app.isInitialized) return // the same process (a background check got here first, or the activity was recreated): those are still running
         app = c.applicationContext
         all().keys().asSequence().mapNotNull { of(it) }.filter { it.optString("state") == "active" }.forEach { it.put("state", "queued") }
+        // the storage view's sizes, for downloads finished before they were kept: counted once, off the main thread (on the
+        // phone's shared storage each file is a slow look, and a manga's chapters are thousands of pages: the page hung)
+        val todo = all().keys().asSequence().mapNotNull { of(it) }.filter { it.optString("state") == "done" && !it.has("size") }.map { it.optString("id") to it.optString("file") }.toList()
+        if (todo.isNotEmpty()) scope.launch {
+            val sizes = todo.map { (id, f) -> id to disk(f) }
+            withContext(Dispatchers.Main) { sizes.forEach { (id, n) -> of(id)?.put("size", n) }; save() }
+        }
+        // onto Wi-Fi or off it: the queue starts or holds (this fires on every signal change: only a change of metered counts)
+        val main = android.os.Handler(android.os.Looper.getMainLooper())
+        app.getSystemService(ConnectivityManager::class.java).registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {
+            override fun onCapabilitiesChanged(n: Network, c: NetworkCapabilities) {
+                val m = !c.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+                if (m != metered) { metered = m; main.post { if (Store["prefs"].optBoolean("dlWifi")) pump() } }
+            }
+        })
         pump()
     }
+
+    @Volatile private var metered: Boolean? = null // the network callback's word (asking Android can lag a switch), else asked
+    /** Wi-Fi only (settings) and on mobile data: nothing downloads, so Download all can't use up a data plan (a phone's hotspot counts as data) */
+    fun onData() = Store["prefs"].optBoolean("dlWifi") && (metered ?: app.getSystemService(ConnectivityManager::class.java).isActiveNetworkMetered)
+    fun wifiOnly(on: Boolean) { Store["prefs"].put("dlWifi", on); Store.persist("prefs"); pump() }
+
+    /** a finished download's room on disk: the .mp4 (the record's total is the zip's), or a chapter's pages; counted as it finishes (disk) */
+    fun size(d: JSONObject) = d.optLong("size")
+    private fun disk(path: String) = if (path.isEmpty()) 0L else File(path).let { f -> if (f.isDirectory) f.listFiles()?.sumOf { it.length() } ?: 0L else f.length() }
+    fun free() = dir().apply { mkdirs() }.usableSpace
 
     private fun save() { Store.persist("downloads"); tick.intValue++ }
     private suspend fun ui(id: String, run: Int, f: (JSONObject) -> Unit): Boolean = withContext(Dispatchers.Main) {
@@ -89,7 +117,7 @@ object Downloads {
     /** an episode: MediaFire's zip, unpacked into its .mp4 as it downloads; quality: the one picked (else the best there is) */
     fun episode(epPath: String, show: String, title: String, ep: String, poster: String, quality: String, quiet: Boolean = false) {
         queue(epPath, JSONObject().put("show", show).put("epPath", epPath).put("title", title).put("ep", ep).put("poster", poster).put("quality", quality).put("at", System.currentTimeMillis()), quiet)
-        if (!quiet) toast(t("dlPreparing"))
+        if (!quiet) toast(t(if (onData()) "dlWifiWait" else "dlPreparing"))
     }
     /** a series' chapters, oldest first: their page images */
     fun chapters(serieId: String, title: String, poster: String, chs: List<Ch>, quiet: Boolean = false) {
@@ -102,7 +130,7 @@ object Downloads {
                 .put("ep", c.n).put("poster", poster).put("state", "queued").put("received", 0).put("total", 0).put("at", System.currentTimeMillis() + added++))
         }
         save()
-        if (!quiet) toast(if (added > 0) t("dlQueuedN", added) else t("dlDone"))
+        if (!quiet) toast(if (added == 0) t("dlDone") else if (onData()) t("dlWifiWait") else t("dlQueuedN", added))
         askNotifications()
         pump()
     }
@@ -110,14 +138,19 @@ object Downloads {
     /** starts the next waiting item of every show that has nothing downloading */
     @Synchronized fun pump() {
         val items = all().keys().asSequence().mapNotNull { of(it) }.toList()
+        val wait = onData()
+        if (wait) items.filter { it.optString("state") == "active" }.takeIf { it.isNotEmpty() }?.let { l -> // moved onto data mid-download: back in the queue
+            l.forEach { val id = it.getString("id"); supersede(id); DownloadService.active.remove(id); it.put("state", "queued").put("received", 0) }
+            save()
+        }
         for ((show, l) in items.groupBy { it.optString("show") }) {
-            if (held(show) || l.any { it.optString("state") == "active" }) continue
+            if (wait || held(show) || l.any { it.optString("state") == "active" }) continue
             val d = l.filter { it.optString("state") == "queued" }.minByOrNull { it.optLong("at") } ?: continue
             start(d, show)
         }
         DownloadService.held = items.any { it.optString("state").let { s -> s == "queued" || s == "active" } }
         // the service's texts in the app's language
-        DownloadService.labelActive = t("dlNotifActive"); DownloadService.labelMany = t("dlNotifMany"); DownloadService.labelPreparing = t("dlPreparing")
+        DownloadService.labelActive = t("dlNotifActive"); DownloadService.labelMany = t("dlNotifMany"); DownloadService.labelPreparing = t(if (wait) "dlWifiWait" else "dlPreparing")
         DownloadService.labelPause = t("showPause"); DownloadService.labelCancel = t("cancel")
         if (DownloadService.held) DownloadService.start(app) else DownloadService.update(app)
     }
@@ -140,17 +173,22 @@ object Downloads {
             withContext(kotlinx.coroutines.NonCancellable) { old?.join() } // the stopped transfer of the same file winds down first
             if (runs[id] != run) return@launch
             val item = DownloadService.Item(title)
+            var why: String? = null // a reason worth telling (a locked chapter), not the generic failure
             val state = try { if (manga) pages(id, run, chapterId, rawTitle, ep, item) else episode(id, run, epPath, rawTitle, ep, quality, item); "done" }
-                catch (e: Throwable) { android.util.Log.w("medflix", "download $id", e); if (e is CancellationException) "cancelled" else "error" }
+                catch (e: Throwable) { android.util.Log.w("medflix", "download $id", e); if (e is Manga.Locked) why = e.message; if (e is CancellationException) "cancelled" else "error" }
                 finally { DownloadService.active.remove(id, item) }
             if (runs[id] != run) return@launch // stopped: whoever stopped it set its state
+            val file = withContext(Dispatchers.Main) { of(id)?.optString("file") ?: "" }
+            val bytes = if (state == "done") disk(file) else 0L // here, on IO: the storage view only reads it
             withContext(Dispatchers.Main) {
                 val cur = of(id) ?: return@withContext // deleted meanwhile
                 if (runs[id] != run) return@withContext // stopped meanwhile
                 cur.put("state", state)
+                if (state == "done") cur.put("size", bytes)
                 save()
                 if (state == "done") toast(t("dlFinished", "$rawTitle ${t(if (manga) "chapter" else "ep")} $ep"))
-                if (state == "error") toast(t("dlFailed"))
+                // a locked chapter: said once a minute, not once per chapter of a long series' Download all
+                if (state == "error" && (why == null || System.currentTimeMillis() - lockedAt > 60_000)) { toast(why ?: t("dlFailed")); if (why != null) lockedAt = System.currentTimeMillis() }
                 if (state != "cancelled") DownloadService.finished(app, id, t(if (state == "done") "dlNotifDone" else "dlFailed"), title)
                 pump() // that show's next one
             }
@@ -221,6 +259,7 @@ object Downloads {
         val d = of(id)?.takeIf { it.optString("state") == "paused" } ?: return
         val show = d.optString("show")
         if (held(show)) setHeld(show, false)
+        if (onData()) { d.put("state", "queued"); save(); toast(t("dlWifiWait")); pump(); return } // starts once on Wi-Fi
         all().keys().asSequence().mapNotNull { of(it) }.filter { it.optString("show") == show && it.optString("state") == "active" }.forEach {
             supersede(it.getString("id")); DownloadService.active.remove(it.getString("id"))
             it.put("state", "queued").put("received", 0)
@@ -258,6 +297,7 @@ object Downloads {
         pump()
     }
 
+    private var lockedAt = 0L
     private var sentToSettings = false // once a run: not on every download
     fun askNotifications(why: String = "dlNotifAsk") { // the progress shows as a notification (Android 13+: hidden without this); also new episodes' (Alerts)
         if (!Net.hasWindow()) return // a background check (Alerts): no screen to ask on
@@ -341,7 +381,11 @@ object Downloads {
 
     /** a chapter: each page image into <downloads>/Manga/<series>/Chapter <n>/ */
     private suspend fun pages(id: String, run: Int, chapterId: String, rawTitle: String, ep: String, item: DownloadService.Item) {
-        val c = Manga.chapter(chapterId)
+        val cid = if (chapterId.matches(Regex("t\\d+"))) { // queued under a removed source's id: that chapter in the series now
+            val sid = of(id)?.optString("show")?.substringAfterLast('/') ?: throw IOException("no chapter")
+            Manga.full(sid).chs.find { it.n == Manga.chNum(ep) }?.id ?: throw IOException("no chapter")
+        } else chapterId
+        val c = Manga.chapter(cid)
         if (c.images.isEmpty()) throw IOException("no pages")
         val clean = { s: String -> s.replace(Regex("[\\\\/:*?\"<>|]+"), " ").trim() }
         val out = File(File(File(dir(), "Manga"), clean(rawTitle)), clean("Chapter $ep")).apply { mkdirs() }

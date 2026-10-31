@@ -767,7 +767,7 @@ public class DownloaderPlugin extends Plugin {
         DownloadService.update(c);
     }
 
-    /** a manga chapter's page images, from its site's API (MangaSwat's ids are numbers, MangaTek's start with t) */
+    /** a manga chapter's page images, from its site (MangaSwat's ids are numbers, Olympus's start with o:) */
     private static JSONArray chapterPages(String chapterId) throws Exception {
         if (chapterId == null) throw new IOException("no chapter");
         if (chapterId.matches("\\d+")) { // as manga.js's mangaChapter: the images, in their order
@@ -779,23 +779,23 @@ public class DownloaderPlugin extends Plugin {
             for (JSONObject o : l) out.put(o.getString("image"));
             return out;
         }
-        if (!chapterId.matches("t\\d+")) throw new IOException("bad chapter");
-        // MangaTek: the chapter's series and number, then its reader page, whose image viewer island carries the list
-        JSONObject c = new JSONObject(readUntil(get("https://api.mangatek.com/api/chapters/" + chapterId.substring(1)), null)).getJSONObject("data");
-        String page = readUntil(get("https://mangatek.com/reader/" + Uri.encode(c.getJSONObject("MangaSery").getString("slug")) + "/" + Uri.encode(c.getString("chapter_number"))), null);
-        java.util.regex.Matcher m = java.util.regex.Pattern.compile("<astro-island[^>]*component-url=\"[^\"]*ChapterImageViewer[^\"]*\"[^>]*>").matcher(page == null ? "" : page);
-        java.util.regex.Matcher props = java.util.regex.Pattern.compile("\\sprops=\"([^\"]*)\"").matcher(m.find() ? m.group() : "");
-        if (!props.find()) throw new IOException("no pages");
-        String json = props.group(1).replace("&quot;", "\"").replace("&#39;", "'").replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&");
-        JSONArray pairs = new JSONObject(json).getJSONArray("imageUrls").getJSONArray(1); // Astro's encoding: [1, [[0, url], ...]]
+        if (!chapterId.startsWith("o:")) throw new IOException("bad chapter");
+        String[] parts = chapterId.substring(2).split(":", 2);
+        String page = readUntil(get("https://olympustaff.com/series/" + Uri.encode(parts[0]) + "/" + Uri.encode(parts[1])), null);
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("<img[^>]*class=\"[^\"]*manga-chapter-img[^\"]*\"[^>]*>").matcher(page == null ? "" : page);
+        java.util.Set<String> seen = new java.util.LinkedHashSet<>();
+        while (m.find()) {
+            java.util.regex.Matcher src = java.util.regex.Pattern.compile("src=\"([^\"]+)\"").matcher(m.group());
+            if (src.find()) seen.add(src.group(1));
+        }
         JSONArray out = new JSONArray();
-        for (int i = 0; i < pairs.length(); i++) out.put(pairs.getJSONArray(i).getString(1));
+        for (String u : seen) out.put(u);
         return out;
     }
 
     private static HttpURLConnection get(String url) throws IOException {
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
-        c.setRequestProperty("User-Agent", UA); // MangaTek's Cloudflare lets Chrome through, not the WebView (see ImageCache)
+        c.setRequestProperty("User-Agent", UA);
         c.setConnectTimeout(15000);
         c.setReadTimeout(30000);
         return c;
@@ -976,7 +976,7 @@ public class DownloaderPlugin extends Plugin {
             for (int i = 0; i < urls.length(); i++) {
                 if (cancelled.contains(j.id)) throw new IOException("cancelled");
                 String url = urls.getString(i);
-                if (!url.matches("https://(appswat|meshmanga)\\.com/v2/media/.*") && !url.startsWith("https://img.mangatek.com/")) throw new IOException("bad url");
+                if (!url.matches("https://(appswat|meshmanga)\\.com/v2/media/.*") && !url.startsWith("https://cdn.olympustaff.com/uploads/")) throw new IOException("bad url");
                 String ext = url.replaceAll("[?#].*", "");
                 ext = ext.substring(ext.lastIndexOf('.'));
                 File f = new File(out, String.format("%04d%s", i + 1, ext.length() <= 5 ? ext : ".jpg"));
