@@ -242,7 +242,6 @@ fun FeedbackSheet(done: () -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UpdateSheet(u: Updater.Release, done: () -> Unit) {
-    val scope = rememberCoroutineScope()
     var pct by remember { mutableStateOf<Int?>(null) }
     val open = openUrl()
     ModalBottomSheet(done, containerColor = CardC) { // closing mid-download: Android's installer still opens
@@ -253,7 +252,7 @@ fun UpdateSheet(u: Updater.Release, done: () -> Unit) {
                 OutlinedButton(done) { Text(t("later"), color = Color.White) }
                 Button({
                     pct = -1
-                    scope.launch {
+                    Updater.scope.launch {
                         runCatching { Updater.install(u.url) { pct = it } }.onSuccess { done() }.onFailure {
                             pct = null
                             if (it.message == "allow installs") toast(t("updateAllow")) // Android's settings page opened for it
