@@ -64,6 +64,7 @@ fun PlayerScreen(epPath: String, nav: Nav) {
     fun all() = (servers ?: emptyList()) + extra
     val scope = rememberCoroutineScope()
     var job by remember { mutableStateOf<Job?>(null) }
+    val dlLinks = remember(epPath) { mutableStateOf<List<Server>?>(null) } // out here: the menu forgets what's in it when it closes
     // the chosen server, falling through to the next ones until one gives its player (app.js tryFrom)
     fun tryFrom(i: Int) {
         job?.cancel()
@@ -119,7 +120,7 @@ fun PlayerScreen(epPath: String, nav: Nav) {
     val open = openUrl()
     PlayerChrome(d?.title ?: "", if (ep.firstOrNull()?.isDigit() == true) "${t("episode")} $ep" else ep, nav,
         all().takeIf { servers != null || extra.isNotEmpty() }?.map { it.label to it.quality }, all().indexOf(cur), url == null && cur != null, { tryFrom(it) },
-        prev?.let { { nav.replace(Screen.Play(it.path)) } }, next?.let { { nav.replace(Screen.Play(it.path)) } }, { nav.go(Screen.Title(show)) }, { DownloadMenu(epPath, show, ep, d, nav) }, { castTo("${d?.title ?: ""} · ${t("episode")} $ep", null, url) }) {
+        prev?.let { { nav.replace(Screen.Play(it.path)) } }, next?.let { { nav.replace(Screen.Play(it.path)) } }, { nav.go(Screen.Title(show)) }, { page, close -> DownloadItems(page, close, dlLinks, scope, epPath, show, ep, d, nav) }, { castTo("${d?.title ?: ""} · ${t("episode")} $ep", null, url) }) {
         val u = url
         when {
             u != null -> HostPlayer(u, epPath)
@@ -144,18 +145,20 @@ fun castTo(title: String, file: String?, page: String?) {
 val inPip = mutableStateOf(false)
 val pipStopped = mutableStateOf(false)
 var playerUp = false
+var carryFull = false // the next player page opens in fullscreen (a downloaded episode going on to the next one)
 
 /**
- * a player page: back and the title, then a bar with the server menu, download, cast, fullscreen and previous / next; the
- * video below. Fullscreen (ours: some hosts' own only fill their box) hides the rest, landscape; back leaves it.
+ * a player page: back, the title and ⋮ (download, cast and the like: actions, given the menu's page and a way to close it),
+ * then a bar with the server menu, fullscreen and previous / next; the video below. Fullscreen (ours: some hosts' own only fill their box) hides the rest, landscape; back leaves it.
  * servers: null while they're looked up
  */
 @Composable
 fun PlayerChrome(title: String, sub: String, nav: Nav, servers: List<Pair<String, String>>?, cur: Int, busy: Boolean, pick: (Int) -> Unit,
-                 prev: (() -> Unit)?, next: (() -> Unit)?, onTitle: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {},
-                 cast: (() -> Unit)? = null, stage: @Composable BoxScope.() -> Unit) {
+                 prev: (() -> Unit)?, next: (() -> Unit)?, onTitle: (() -> Unit)? = null, actions: @Composable ColumnScope.(page: MutableState<String>, close: () -> Unit) -> Unit = { _, _ -> },
+                 cast: (() -> Unit)? = null, fullButton: Boolean = true, stage: @Composable BoxScope.(full: MutableState<Boolean>) -> Unit) {
     val act = Net.activity
-    var full by rememberSaveable { mutableStateOf((act as? NativeActivity)?.takeRestoredFullscreen() ?: false) }
+    val fullState = rememberSaveable { mutableStateOf(((act as? NativeActivity)?.takeRestoredFullscreen() ?: false) or carryFull.also { carryFull = false }) }
+    var full by fullState
     SideEffect { PlaybackSession.fullscreen = full }
     val bars = remember { WindowCompat.getInsetsController(act.window, act.window.decorView) }
     val on = full // the value this effect ran for: its cleanup reading `full` itself saw the new one (false) and skipped
@@ -174,25 +177,33 @@ fun PlayerChrome(title: String, sub: String, nav: Nav, servers: List<Pair<String
     BackHandler(full) { full = false }
     Column(Modifier.fillMaxSize().background(Color.Black)) {
         // (conditional rows above the video: it keeps its place in the tree, so its WebView and video carry on)
-        if (!bare) Row(Modifier.fillMaxWidth().padding(end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (!bare) Row(Modifier.fillMaxWidth().padding(end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(nav.back) { Icon(Ic.back, t("back"), Modifier.size(22.dp)) }
             Column(Modifier.weight(1f).then(if (onTitle != null) Modifier.clickable(onClick = onTitle) else Modifier)) {
                 Text(title, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (sub.isNotEmpty()) Text(sub, color = Muted, fontSize = 12.sp, maxLines = 1)
             }
+            // a choice with options (download) opens them in the menu's place, as the manga reader's ⋮ does
+            Box {
+                var menu by remember { mutableStateOf(false) }
+                val page = remember { mutableStateOf("") }
+                IconButton({ page.value = ""; menu = true }) { Icon(Ic.dots, t("more"), Modifier.size(22.dp)) }
+                DropdownMenu(menu && !inPip.value, { menu = false }, containerColor = CardC) {
+                    actions(page) { menu = false }
+                    if (cast != null && page.value == "") DropdownMenuItem({ Text(t("cast")) }, { menu = false; cast() }, leadingIcon = { Icon(Ic.cast, null, Modifier.size(18.dp)) })
+                }
+            }
         }
         if (!bare) Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             if (servers != null) ServerMenu(servers, cur, busy, pick)
             Spacer(Modifier.weight(1f))
-            actions()
-            if (cast != null) IconButton(cast) { Icon(Ic.cast, t("cast"), Modifier.size(20.dp)) }
-            IconButton({ full = true }) { Icon(Ic.expand, t("fullscreen"), Modifier.size(20.dp)) }
+            if (fullButton) IconButton({ full = true }) { Icon(Ic.expand, t("fullscreen"), Modifier.size(20.dp)) } // false: the video's own controls have it
             if (prev != null || next != null) {
                 IconButton({ prev?.invoke() }, enabled = prev != null) { Icon(Ic.prev, t("prevEp"), Modifier.size(20.dp)) }
                 IconButton({ next?.invoke() }, enabled = next != null) { Icon(Ic.next, t("nextEp"), Modifier.size(20.dp)) }
             }
         }
-        Box(Modifier.weight(1f).fillMaxWidth(), Alignment.Center) { stage() } // retain the video and its position; PlaybackSession pauses it after PiP is dismissed
+        Box(Modifier.weight(1f).fillMaxWidth(), Alignment.Center) { stage(fullState) } // retain the video and its position; PlaybackSession pauses it after PiP is dismissed
     }
 }
 
@@ -216,62 +227,62 @@ fun ServerMenu(servers: List<Pair<String, String>>, cur: Int, busy: Boolean, pic
     }
 }
 
+/** a ⋮ menu page's first row: its title, going back to the menu */
+@Composable
+fun MenuHead(title: String, back: () -> Unit) {
+    DropdownMenuItem({ Text(title, fontWeight = FontWeight.Bold) }, back, leadingIcon = { Icon(Ic.back, null, Modifier.size(18.dp)) })
+    HorizontalDivider(color = Color(0x22FFFFFF))
+}
+
 /**
- * an episode's download links, by quality (app.js download menu): MediaFire's downloads in the app, the other hosts open in
- * the browser; a downloaded (or downloading) copy first
+ * an episode's download links, by quality (app.js download menu), as the ⋮ menu's "download" page: MediaFire's downloads in
+ * the app, the other hosts open in the browser; a downloaded (or downloading) copy first. links and scope are the player
+ * page's: the menu's own go when it closes, and a host's page is looked up after that
  */
 @Composable
-private fun DownloadMenu(epPath: String, show: String, ep: String, d: Details?, nav: Nav) {
-    var open by remember { mutableStateOf(false) }
-    var links by remember(epPath) { mutableStateOf<List<Server>?>(null) } // fetched on first open
-    val scope = rememberCoroutineScope()
+private fun DownloadItems(page: MutableState<String>, close: () -> Unit, links: MutableState<List<Server>?>, scope: kotlinx.coroutines.CoroutineScope,
+                          epPath: String, show: String, ep: String, d: Details?, nav: Nav) {
     val browse = openUrl()
     com.medanime.app.Downloads.tick.intValue
-    Box {
-        IconButton({
-            open = true
-            if (links == null) scope.launch { links = runCatching { Witanime.downloadLinks(epPath) }.getOrElse { if (it is CancellationException) throw it; emptyList() } }
-        }) { Icon(Ic.download, t("download"), Modifier.size(20.dp)) }
-        DropdownMenu(open && !inPip.value, { open = false }, containerColor = CardC) {
-            when (com.medanime.app.Downloads.of(epPath)?.optString("state")) {
-                "done" -> DropdownMenuItem({ Text(t("playOffline")) }, { open = false; nav.replace(Screen.Offline(epPath)) }, leadingIcon = { Icon(Ic.play, null, Modifier.size(18.dp), tint = Red) })
-                "active", "queued" -> DropdownMenuItem({ Text(t("dlOpenList")) }, { open = false; nav.go(Screen.Downloads(show)) }, leadingIcon = { Icon(Ic.download, null, Modifier.size(18.dp), tint = Red) })
-            }
-            val l = links
-            if (l == null) DropdownMenuItem({ Text(t("searching"), color = Muted) }, {}, enabled = false)
-            else if (l.isEmpty()) DropdownMenuItem({ Text(t("dlNone"), color = Muted) }, {}, enabled = false)
-            else Witanime.QUALITY.forEach { q ->
-                val g = l.filter { it.quality == q }.sortedBy { if (it.label == "mediafire") 0 else 1 }
-                if (g.isEmpty()) return@forEach
-                Text(q, Modifier.padding(horizontal = 16.dp, vertical = 6.dp), color = Muted, fontSize = 12.sp)
-                g.forEach { s ->
-                    val inApp = s.label == "mediafire" // the one host the app can download from itself
-                    DropdownMenuItem({ Text(s.label) }, {
-                        open = false
-                        Store["prefs"].put("dlQuality", s.quality).put("dlHost", s.label); Store.persist("prefs")
-                        if (inApp) com.medanime.app.Downloads.episode(epPath, show, d?.title ?: "", ep, d?.poster ?: "", s.quality)
-                        else scope.launch { runCatching { browse(Witanime.downloadPage(s.token)); toast(t("openedBrowser")) }.onFailure { toast(t("dlFailed")) } }
-                    }, trailingIcon = { Text(if (inApp) t("inApp") else t("browser"), color = if (inApp) Red else Muted, fontSize = 12.sp) })
-                }
-            }
+    if (page.value != "download") return DropdownMenuItem({ Text(t("downloadShort")) }, {
+        page.value = "download"
+        if (links.value == null) scope.launch { links.value = runCatching { Witanime.downloadLinks(epPath) }.getOrElse { if (it is CancellationException) throw it; emptyList() } }
+    }, leadingIcon = { Icon(Ic.download, null, Modifier.size(18.dp)) }, trailingIcon = { Icon(Ic.next, null, Modifier.size(14.dp), tint = Muted) })
+    MenuHead(t("downloadShort")) { page.value = "" }
+    when (com.medanime.app.Downloads.of(epPath)?.optString("state")) {
+        "done" -> DropdownMenuItem({ Text(t("playOffline")) }, { close(); nav.replace(Screen.Offline(epPath)) }, leadingIcon = { Icon(Ic.play, null, Modifier.size(18.dp), tint = Red) })
+        "active", "queued" -> DropdownMenuItem({ Text(t("dlOpenList")) }, { close(); nav.go(Screen.Downloads(show)) }, leadingIcon = { Icon(Ic.download, null, Modifier.size(18.dp), tint = Red) })
+    }
+    val l = links.value
+    if (l == null) DropdownMenuItem({ Text(t("searching"), color = Muted) }, {}, enabled = false)
+    else if (l.isEmpty()) DropdownMenuItem({ Text(t("dlNone"), color = Muted) }, {}, enabled = false)
+    else Witanime.QUALITY.forEach { q ->
+        val g = l.filter { it.quality == q }.sortedBy { if (it.label == "mediafire") 0 else 1 }
+        if (g.isEmpty()) return@forEach
+        Text(q, Modifier.padding(horizontal = 16.dp, vertical = 6.dp), color = Muted, fontSize = 12.sp)
+        g.forEach { s ->
+            val inApp = s.label == "mediafire" // the one host the app can download from itself
+            DropdownMenuItem({ Text(s.label) }, {
+                close()
+                Store["prefs"].put("dlQuality", s.quality).put("dlHost", s.label); Store.persist("prefs")
+                if (inApp) com.medanime.app.Downloads.episode(epPath, show, d?.title ?: "", ep, d?.poster ?: "", s.quality)
+                else scope.launch { runCatching { browse(Witanime.downloadPage(s.token)); toast(t("openedBrowser")) }.onFailure { toast(t("dlFailed")) } }
+            }, trailingIcon = { Text(if (inApp) t("inApp") else t("browser"), color = if (inApp) Red else Muted, fontSize = 12.sp) })
         }
     }
 }
 
-/** a film's download links: third-party hosts, opened in the browser (cinema.js) */
+/** a film's download links, as the ⋮ menu's "links" page: third-party hosts, opened in the browser (cinema.js) */
 @Composable
-fun LinksMenu(links: List<Link>?) {
-    var open by remember { mutableStateOf(false) }
+fun LinksItems(page: MutableState<String>, close: () -> Unit, links: List<Link>?) {
     val browse = openUrl()
-    Box {
-        IconButton({ open = true }, enabled = links != null) { Icon(Ic.download, t("download"), Modifier.size(20.dp)) }
-        DropdownMenu(open && !inPip.value, { open = false }, containerColor = CardC) {
-            if (links.isNullOrEmpty()) DropdownMenuItem({ Text(t("dlNone"), color = Muted) }, {}, enabled = false)
-            links?.forEach { l ->
-                DropdownMenuItem({ Text("${l.label}  ${l.quality}".trim()) }, { open = false; browse(l.url); toast(t("openedBrowser")) },
-                    trailingIcon = { Icon(Ic.external, null, Modifier.size(16.dp), tint = Muted) })
-            }
-        }
+    if (page.value != "links") return DropdownMenuItem({ Text(t("downloadShort")) }, { page.value = "links" }, enabled = links != null,
+        leadingIcon = { Icon(Ic.download, null, Modifier.size(18.dp)) }, trailingIcon = { Icon(Ic.next, null, Modifier.size(14.dp), tint = Muted) })
+    MenuHead(t("downloadShort")) { page.value = "" }
+    if (links.isNullOrEmpty()) DropdownMenuItem({ Text(t("dlNone"), color = Muted) }, {}, enabled = false)
+    links?.forEach { l ->
+        DropdownMenuItem({ Text("${l.label}  ${l.quality}".trim()) }, { close(); browse(l.url); toast(t("openedBrowser")) },
+            trailingIcon = { Icon(Ic.external, null, Modifier.size(16.dp), tint = Muted) })
     }
 }
 

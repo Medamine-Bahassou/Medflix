@@ -150,6 +150,7 @@ class NativeActivity : ComponentActivity() {
         Store.init(this)
         gridCols.intValue = Store["prefs"].optInt("gridCols", 3).coerceIn(2, 5)
         Pages.dir = File(filesDir, "pages") // not cacheDir: Android empties that, and pages are kept 90 days for offline
+        Pages.prune()
         com.medanime.app.Downloads.init(this)
         // the Cast SDK starts with the app, so the TVs are already found when cast is tapped (no Google Play services: none)
         runCatching { com.google.android.gms.cast.framework.CastContext.getSharedInstance(this) }

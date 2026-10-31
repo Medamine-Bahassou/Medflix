@@ -331,7 +331,27 @@ async function load(kind, url, force = false, keep = false) {
   return hit.data;
 }
 
+// lookups built from several requests (ratings, cast lists): the last answer at once, asked again behind it once a day (they
+// hardly change), kept 90 days like pages. A miss or an empty list isn't kept: it may be a blip
+let lookups = null, lookT = null;
+async function remember(key, task) {
+  const all = await (lookups ||= api.get('lookups').then(l => {
+    l ||= {};
+    for (const [k, e] of Object.entries(l)) if (!(Date.now() - e.at < KEEP)) delete l[k];
+    return l;
+  }));
+  const put = data => {
+    if (data != null && !(Array.isArray(data) && !data.length)) { all[key] = { at: Date.now(), data }; clearTimeout(lookT); lookT = setTimeout(() => api.set('lookups', all), 1000); }
+    return data;
+  };
+  const hit = all[key];
+  if (!hit) return put(await task());
+  if (Date.now() - (hit.checked || hit.at) > 24 * HOUR) { hit.checked = Date.now(); task().then(put, () => {}); } // offline: keep it
+  return hit.data;
+}
+
 window.scraper = {
+  remember,
   home: force => load('home', '/', force),
   airTimes: force => load('airTimes', AS + '/', force).then(a => (Array.isArray(a) ? a : [])), // [] : an older cached format
   airScore,

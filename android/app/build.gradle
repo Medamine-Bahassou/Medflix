@@ -53,6 +53,9 @@ dependencies {
     implementation "com.google.android.gms:play-services-cast-framework:22.1.0" // casting to a TV (Cast.java)
     implementation "androidx.mediarouter:mediarouter:1.7.0"
     implementation "androidx.webkit:webkit:$androidxWebkitVersion" // a script in the players' frames (MainActivity)
+    // downloaded episodes' player (OfflineScreen): MediaPlayer's VideoView failed some files, and its controls had no tracks, speed or fullscreen
+    implementation "androidx.media3:media3-exoplayer:1.8.0"
+    implementation "androidx.media3:media3-ui:1.8.0"
     // the native app (ui/): Compose screens, posters through Coil, witanime's HTML through Jsoup, requests through OkHttp
     implementation platform("androidx.compose:compose-bom:2025.10.01")
     implementation "androidx.compose.material3:material3"

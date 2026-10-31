@@ -35,7 +35,7 @@ const Ratings = (() => {
     if (!isIntersecting) return;
     observer.unobserve(target);
     const c = JSON.parse(target.dataset.rating), key = JSON.stringify(c);
-    if (!cache.has(key)) cache.set(key, enqueue(c));
+    if (!cache.has(key)) cache.set(key, scraper.remember('rating:' + key, () => enqueue(c)));
     const r = await cache.get(key);
     if (r && target.isConnected) { target.innerHTML = badge(r.source, r.value); target.title = r.source; }
   }), {rootMargin:'100px'});

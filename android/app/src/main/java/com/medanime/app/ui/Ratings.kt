@@ -29,8 +29,7 @@ internal object SourceRatings {
             val clean = Credits.clean(name)
             val result = if (kind == "anime" || kind == "manga") {
                 val query = "{Page(perPage:10){media(search:${JSONObject.quote(clean)},type:${if (kind == "manga") "MANGA" else "ANIME"}){title{romaji english native} synonyms averageScore}}}"
-                val r = Net.fetch("https://graphql.anilist.co", post = true, form = mapOf("query" to query))
-                val rows = JSONObject(r.body).optJSONObject("data")?.optJSONObject("Page")?.optJSONArray("media")
+                val rows = JSONObject(Pages.load("https://graphql.anilist.co", body = JSONObject().put("query", query).toString(), every = Pages.DAY)).optJSONObject("data")?.optJSONObject("Page")?.optJSONArray("media")
                 val matches = (0 until (rows?.length() ?: 0)).map { rows!!.getJSONObject(it) }.filter { m ->
                     val t = m.getJSONObject("title")
                     val synonyms = m.optJSONArray("synonyms")
@@ -39,9 +38,9 @@ internal object SourceRatings {
                 val score = matches.singleOrNull()?.optDouble("averageScore") ?: 0.0
                 if (score > 0 && score <= 100) "AniList" to String.format(java.util.Locale.US, "%.1f", score / 10) else null
             } else {
-                val rows = JSONObject(Pages.load("https://v3.sg.media-imdb.com/suggestion/x/${URLEncoder.encode(clean, "UTF-8")}.json")).optJSONArray("d")
+                val rows = JSONObject(Pages.load("https://v3.sg.media-imdb.com/suggestion/x/${URLEncoder.encode(clean, "UTF-8")}.json", every = Pages.DAY)).optJSONArray("d")
                 val hit = (0 until (rows?.length() ?: 0)).map { rows!!.getJSONObject(it) }.filter { Credits.norm(it.optString("l")) == Credits.norm(clean) && (year.isBlank() || it.optString("y") == year) && it.optString("id").matches(Regex("tt\\d+")) }.singleOrNull()
-                val doc = hit?.let { Jsoup.parse(Pages.load("https://www.imdb.com/title/${it.getString("id")}/")) }
+                val doc = hit?.let { Jsoup.parse(Pages.load("https://www.imdb.com/title/${it.getString("id")}/", every = Pages.DAY)) }
                 val score = doc?.select("script[type=application/ld+json]")?.mapNotNull { runCatching { JSONObject(it.data()).optJSONObject("aggregateRating")?.optDouble("ratingValue") }.getOrNull() }?.firstOrNull { it > 0 && it <= 10 }
                 score?.let { "IMDb" to String.format(java.util.Locale.US, "%.1f", it) }
             }

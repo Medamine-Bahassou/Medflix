@@ -107,6 +107,7 @@ fun SettingsScreen(part: String, nav: Nav) {
                 Group(t("downloads")) {
                     Toggle(Ic.download, t("dlWifi"), t("dlWifiHint"), Store["prefs"].optBoolean("dlWifi"), com.medanime.app.Downloads::wifiOnly)
                     Toggle(Ic.trash, t("dlAutoDel"), t("dlAutoDelHint"), Store["prefs"].optBoolean("dlAutoDel")) { Store["prefs"].put("dlAutoDel", it); Store.persist("prefs") }
+                    Toggle(Ic.external, t("extPlayer"), t("extPlayerHint"), Store["prefs"].optBoolean("extPlayer")) { Store["prefs"].put("extPlayer", it); Store.persist("prefs") }
                 }
                 Group(t("language")) { LangSwitch(Modifier.fillMaxWidth().padding(16.dp)) }
                 Group(t("updateTitle")) {
@@ -152,6 +153,16 @@ fun SettingsScreen(part: String, nav: Nav) {
                 Group(null, t("storageHint")) { // tap: the folder in the file manager; a path reads left to right in Arabic too
                     Item(Ic.folder, "\u2066${Store.shared.absolutePath}\u2069", if (on) t("storageOn") else t("storageOff"), if (on) Red else Muted, ::openFolder) {
                         if (!on) Button(::requestStorage, colors = ButtonDefaults.buttonColors(Red)) { Text(t("storageAllow")) }
+                    }
+                }
+                // what's kept to open pages and posters instantly and offline: its size, and a way to free it
+                var sizes by remember { mutableStateOf<Pair<Long, Long>?>(null) }
+                LaunchedEffect(sizes == null) { if (sizes == null) sizes = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { Pages.size() to (coil3.SingletonImageLoader.get(Net.app).diskCache?.size ?: 0L) } }
+                val clear = { what: () -> Unit -> scope.launch { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { what() }; sizes = null; toast(t("cacheCleared")) } }
+                Group(t("cacheTitle"), t("cacheHint")) {
+                    Item(Ic.pie, t("cachePages"), sizes?.let { mb(it.first) }) { TextButton({ clear(Pages::clear) }) { Text(t("clear"), color = Red) } }
+                    Item(Ic.pie, t("cacheImages"), sizes?.let { mb(it.second) }) {
+                        TextButton({ clear { coil3.SingletonImageLoader.get(Net.app).run { diskCache?.clear(); memoryCache?.clear() } } }) { Text(t("clear"), color = Red) }
                     }
                 }
             }

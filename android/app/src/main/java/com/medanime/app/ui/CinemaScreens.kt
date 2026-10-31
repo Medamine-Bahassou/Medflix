@@ -164,7 +164,7 @@ fun CinemaPlayScreen(slug: String, nav: Nav) {
         }
         PlayerChrome(title, if (p.ep != null) "${t("ep")} ${p.ep}" else m.year, nav, servers?.map { it.label to it.quality }, cur, cur >= 0 && url == null, { pick(it) },
             prev?.let { { nav.replace(Screen.CinemaPlay(it.slug)) } }, next?.let { { nav.replace(Screen.CinemaPlay(it.slug)) } },
-            { nav.go(Screen.CinemaTitle(if (p.ep != null) m.up.ifEmpty { slug } else slug)) }, { LinksMenu(downloads) }, { castTo(title, null, url) }) { // downloads: third-party hosts, in the browser
+            { nav.go(Screen.CinemaTitle(if (p.ep != null) m.up.ifEmpty { slug } else slug)) }, { page, close -> LinksItems(page, close, downloads) }, { castTo(title, null, url) }) { // downloads: third-party hosts, in the browser
             val u = url
             when {
                 u != null -> HostPlayer(u, "/cinema/$slug")

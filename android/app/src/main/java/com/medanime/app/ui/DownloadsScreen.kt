@@ -1,7 +1,12 @@
 package com.medanime.app.ui
 
-import android.widget.MediaController
-import android.widget.VideoView
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -38,7 +43,7 @@ import kotlin.math.atan2
 import kotlin.math.roundToInt
 
 private fun JSONObject.manga() = optString("kind") == "manga"
-private fun mb(n: Long) = if (n >= 1L shl 30) "\u2066%.1f GB\u2069".format(n / 1073741824.0) else "\u2066%.0f MB\u2069".format(n / 1048576.0) // an LTR isolate: the number stays before MB in Arabic
+internal fun mb(n: Long) = if (n >= 1L shl 30) "\u2066%.1f GB\u2069".format(n / 1073741824.0) else "\u2066%.0f MB\u2069".format(n / 1048576.0) // an LTR isolate: the number stays before MB in Arabic
 private val PENDING = setOf("active", "queued", "paused")
 private val RUNNING = setOf("active", "queued")
 
@@ -312,63 +317,115 @@ private fun ShowToggle(show: String, paused: Boolean) {
     IconButton({ Downloads.hold(show, !paused) }) { Icon(if (paused) Ic.download else Ic.pause, t(if (paused) "showResume" else "showPause"), Modifier.size(20.dp), tint = if (paused) Red else Color.White) }
 }
 
-/** a downloaded episode, from its file: Android's own video view (app.js offline) */
+/**
+ * a downloaded episode, from its file (app.js offline): Media3's player, for its controls (±10s, speed, audio and subtitle
+ * tracks, fullscreen); the show's other downloaded episodes as previous / next, the next one playing after it. Or the
+ * user's own player app, if chosen in the settings
+ */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class) // PlayerView's settings (stable in practice)
 @Composable
 fun OfflineScreen(epPath: String, nav: Nav) {
     val d = Downloads.of(epPath)
     if (d == null || d.optString("state") != "done") return LaunchedEffect(epPath) { nav.replace(Screen.Play(epPath)) }
-    LaunchedEffect(epPath) { Store.watched(d.optString("show"), epPath, d.optString("ep"), d.optString("title"), d.optString("poster")) }
-    val checkpoint = remember(epPath) { PlaybackSession.position(epPath) }
-    var video by remember(epPath) { mutableStateOf<VideoView?>(null) }
-    var detach by remember(epPath) { mutableStateOf<(() -> Unit)?>(null) }
-    var unbind by remember(epPath) { mutableStateOf<(() -> Unit)?>(null) }
-    fun save(v: VideoView) {
-        if (v.duration > 0 && !PlaybackSession.suspended) PlaybackSession.position(epPath,
-            org.json.JSONObject().put("time", v.currentPosition / 1000.0).put("duration", v.duration / 1000.0).put("paused", !v.isPlaying))
+    val file = d.optString("file")
+    var ext by remember(epPath) { mutableStateOf(Store["prefs"].optBoolean("extPlayer")) }
+    LaunchedEffect(epPath) {
+        Store.watched(d.optString("show"), epPath, d.optString("ep"), d.optString("title"), d.optString("poster"))
+        if (ext) { if (openWith(file, false)) nav.back() else ext = false } // no player app: ours
     }
-    LaunchedEffect(video) {
-        while (true) { video?.let { save(it) }; kotlinx.coroutines.delay(500) }
+    if (ext) return
+    val ep = d.optString("ep")
+    val sub = (if (ep.firstOrNull()?.isDigit() == true) "${t("episode")} $ep" else ep) + " · ${t("offline")}" // a film's "ep" is its label
+    val eps = remember(epPath) {
+        Downloads.all().keys().asSequence().mapNotNull { Downloads.of(it) }
+            .filter { it.optString("show") == d.optString("show") && it.optString("state") == "done" && it.has("epPath") }
+            .sortedWith(compareBy({ it.optString("ep").toDoubleOrNull() ?: Double.MAX_VALUE }, { it.optLong("at") })).map { it.optString("epPath") }.toList()
     }
-    PlayerChrome(d.optString("title"), "${t("episode")} ${d.optString("ep")} · ${t("offline")}", nav, null, -1, false, {}, null, null, { nav.go(Screen.Title(d.optString("show"))) }, {}, { castTo("${d.optString("title")} · ${t("episode")} ${d.optString("ep")}", d.optString("file"), null) }) {
-        AndroidView({ ctx ->
-            VideoView(ctx).apply {
-                keepScreenOn = true
-                setMediaController(MediaController(ctx).also { it.setAnchorView(this) })
-                setVideoPath(d.optString("file"))
-                setOnPreparedListener {
-                    var playing = !checkpoint.optBoolean("paused", false)
-                    seekTo((checkpoint.optDouble("time", 0.0) * 1000).toInt())
-                    video = this
-                    unbind?.invoke()
-                    unbind = PlaybackSession.controls.bind(checkpoint.optBoolean("paused", false)) { play ->
-                        if (!PlaybackSession.suspended) {
-                            if (play) start() else pause()
-                            save(this)
-                        }
-                    }
-                    detach?.invoke()
-                    var observed = false
-                    var wasStopped = false
-                    detach = PlaybackSession.observe { stopped ->
-                        keepScreenOn = !stopped
-                        if (stopped) {
-                            // Save before pausing; dismissal must not overwrite the desired playback state.
-                            if (observed && !wasStopped) playing = isPlaying
-                            PlaybackSession.position(epPath, org.json.JSONObject().put("time", currentPosition / 1000.0)
-                                .put("duration", duration / 1000.0).put("paused", !playing))
-                            pause()
-                        } else if ((!observed || wasStopped) && playing) start()
-                        observed = true
-                        wasStopped = stopped
-                    }
-                }
+    val i = eps.indexOf(epPath)
+    val prev = eps.getOrNull(i - 1)?.takeIf { i > 0 }
+    val next = eps.getOrNull(i + 1)?.takeIf { i >= 0 }
+    var failed by remember(epPath) { mutableStateOf(false) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val exo = remember(epPath) {
+        val at = PlaybackSession.position(epPath)
+        ExoPlayer.Builder(ctx).setSeekBackIncrementMs(10_000).setSeekForwardIncrementMs(10_000)
+            .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true) // pauses for a call
+            .setHandleAudioBecomingNoisy(true).build().apply { // headphones pulled out: pause, not the speaker
+                setMediaItem(MediaItem.fromUri(android.net.Uri.fromFile(java.io.File(file))))
+                // watched to the end: from the start again (the end would count as ended, and go on to the next one)
+                val time = at.optDouble("time", 0.0).takeIf { it < at.optDouble("duration", 0.0) * 0.95 } ?: 0.0
+                seekTo((time * 1000).toLong())
+                playWhenReady = !at.optBoolean("paused", false)
+                prepare()
             }
-        }, Modifier.fillMaxWidth().wrapContentHeight(), onRelease = { v ->
-            val ended = v.duration > 0 && v.currentPosition >= v.duration * 0.9 // the end credits skipped still counts as watched
-            save(v)
-            detach?.invoke(); unbind?.invoke(); video = null
-            v.stopPlayback()
-            if (ended && !pipStopped.value && Store["prefs"].optBoolean("dlAutoDel")) { Downloads.delete(epPath); toast(t("dlAutoDeleted")) }
-        })
     }
+    fun save() {
+        if (exo.duration > 0 && !PlaybackSession.suspended) PlaybackSession.position(epPath,
+            JSONObject().put("time", exo.currentPosition / 1000.0).put("duration", exo.duration / 1000.0).put("paused", !exo.playWhenReady))
+    }
+    LaunchedEffect(exo) { while (true) { save(); kotlinx.coroutines.delay(500) } }
+    DisposableEffect(exo) {
+        val unbind = PlaybackSession.controls.bind(!exo.playWhenReady) { play -> if (!PlaybackSession.suspended) { exo.playWhenReady = play; save() } } // the PiP window's button
+        var playing = exo.playWhenReady
+        var wasStopped: Boolean? = null
+        val detach = PlaybackSession.observe { stopped ->
+            if (stopped) {
+                // Save before pausing; dismissal must not overwrite the desired playback state.
+                if (wasStopped == false) playing = exo.playWhenReady
+                PlaybackSession.position(epPath, JSONObject().put("time", exo.currentPosition / 1000.0)
+                    .put("duration", exo.duration.coerceAtLeast(0) / 1000.0).put("paused", !playing))
+                exo.pause()
+            } else if (wasStopped != false && playing) exo.play()
+            wasStopped = stopped
+        }
+        onDispose {
+            val ended = exo.duration > 0 && exo.currentPosition >= exo.duration * 0.9 // the end credits skipped still counts as watched
+            save(); detach(); unbind()
+            exo.release()
+            if (ended && !pipStopped.value && Store["prefs"].optBoolean("dlAutoDel")) { Downloads.delete(epPath); toast(t("dlAutoDeleted")) }
+        }
+    }
+    PlayerChrome(d.optString("title"), sub, nav, null, -1, false, {}, prev?.let { { nav.replace(Screen.Offline(it)) } }, next?.let { { nav.replace(Screen.Offline(it)) } },
+        { nav.go(Screen.Title(d.optString("show"))) }, { _, close -> DropdownMenuItem({ Text(t("openWith")) }, { close(); openWith(file, true) }, leadingIcon = { Icon(Ic.external, null, Modifier.size(18.dp)) }) },
+        { castTo("${d.optString("title")} · $sub", file, null) }, fullButton = false) { full ->
+        if (failed) Empty(t("playFailed"), t("playFailedHint")) { OutlinedButton({ openWith(file, true) }) { Text(t("openWith"), color = Color.White) } }
+        else AndroidView({ c ->
+            PlayerView(c).apply {
+                this.player = exo
+                setShutterBackgroundColor(android.graphics.Color.BLACK)
+                setShowPreviousButton(false); setShowNextButton(false) // one file each: the bar above has the other episodes
+                setShowSubtitleButton(true)
+                setFullscreenButtonClickListener { full.value = it }
+                // pinch out: the video fills the screen (cropped), pinch in: whole again
+                var zoom = 1f
+                val pinch = android.view.ScaleGestureDetector(c, object : android.view.ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                    override fun onScaleBegin(g: android.view.ScaleGestureDetector) = true.also { zoom = 1f }
+                    override fun onScale(g: android.view.ScaleGestureDetector) = true.also { zoom *= g.scaleFactor }
+                    override fun onScaleEnd(g: android.view.ScaleGestureDetector) {
+                        if (zoom > 1.1f) resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM else if (zoom < 0.9f) resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    }
+                })
+                setOnTouchListener { _, e -> pinch.onTouchEvent(e); false } // false: a tap still shows / hides the controls
+                exo.addListener(object : Player.Listener {
+                    override fun onIsPlayingChanged(on: Boolean) { keepScreenOn = on } // the screen sleeps only while paused
+                    override fun onPlayerError(e: androidx.media3.common.PlaybackException) { android.util.Log.w("medflix", "offline", e); failed = true }
+                    override fun onPlaybackStateChanged(state: Int) {
+                        if (state == Player.STATE_ENDED && next != null && !PlaybackSession.suspended) { carryFull = full.value; nav.replace(Screen.Offline(next)) }
+                    }
+                })
+            }
+        }, Modifier.fillMaxSize(), update = {
+            it.useController = !inPip.value // the PiP window: the video only
+            it.setFullscreenButtonState(full.value)
+        }, onRelease = { it.player = null })
+    }
+}
+
+/** the downloaded file in a video player app: the user's default one, or (pick) a choice of them every time */
+fun openWith(file: String, pick: Boolean): Boolean {
+    val act = Net.activity
+    val uri = androidx.core.content.FileProvider.getUriForFile(act, act.packageName + ".fileprovider", java.io.File(file))
+    val view = android.content.Intent(android.content.Intent.ACTION_VIEW).setDataAndType(uri, "video/*").addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    return runCatching { act.startActivity(if (pick) android.content.Intent.createChooser(view, t("openWith")) else view) }
+        .onFailure { toast(t("noPlayerApp")) }.isSuccess
 }

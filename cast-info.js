@@ -111,7 +111,7 @@ const CastInfo = (() => {
     if (onUpdate) { state.listeners.add(onUpdate); if (state.rows) onUpdate(state.rows); }
     const publish = rows => { state.rows = rows; for (const listener of state.listeners) listener(rows); };
     if (!cache.has(key)) {
-      const task = kind === 'anime' || kind === 'manga' ? fallback([() => anilist(names, kind, publish), () => anime(names, kind)]) : film(names, kind, year, slug);
+      const task = scraper.remember('cast:' + key, () => kind === 'anime' || kind === 'manga' ? fallback([() => anilist(names, kind, publish), () => anime(names, kind)]) : film(names, kind, year, slug));
       cache.set(key, task.then(rows => { publish(rows); state.listeners.clear(); return rows; }).catch(e => { state.listeners.clear(); updates.delete(key); cache.delete(key); throw e; }));
     }
     return cache.get(key).finally(() => { if (onUpdate) state.listeners.delete(onUpdate); });

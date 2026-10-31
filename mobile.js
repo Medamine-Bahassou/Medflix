@@ -152,13 +152,13 @@ if (!window.api && window.Capacitor) (() => {
     // everything but the page cache is also kept in the phone's MEDFLIX folder once allowed (see DownloaderPlugin),
     // and read from there first, so settings, lists and downloads come back after reinstalling the app
     async get(key) {
-      const f = key !== 'pages' && (await Downloader.readData({ key }).catch(() => null))?.value;
+      const f = !['pages', 'lookups'].includes(key) && (await Downloader.readData({ key }).catch(() => null))?.value;
       const v = f ? JSON.parse(f) : await kv('readonly', s => s.get(key));
       // files saved while the folder was still called MedAnime (DownloaderPlugin renames it)
       return key === 'downloads' && v ? JSON.parse(JSON.stringify(v).replaceAll('/MedAnime/Downloads/', '/MEDFLIX/Downloads/')) : v;
     },
     set(key, value) {
-      if (key !== 'pages') Downloader.writeData({ key, value: JSON.stringify(value) }).catch(() => {}); // not allowed: IndexedDB only
+      if (!['pages', 'lookups'].includes(key)) Downloader.writeData({ key, value: JSON.stringify(value) }).catch(() => {}); // not allowed: IndexedDB only
       return kv('readwrite', s => s.put(value, key));
     },
     unblock: async () => { viaPage = true; }, // Verify: witanime through the site's page from now on (it shows Cloudflare's check if there is one)

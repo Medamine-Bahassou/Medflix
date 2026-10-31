@@ -35,7 +35,7 @@ internal object Credits {
     private fun value(s: JSONObject?) = s?.optJSONObject("datavalue")?.opt("value")
     private fun claim(e: JSONObject?, p: String) = value(e?.optJSONObject("claims")?.optJSONArray(p)?.optJSONObject(0)?.optJSONObject("mainsnak"))
     private fun label(e: JSONObject?) = e?.optJSONObject("labels")?.let { it.optJSONObject("en")?.optString("value") ?: it.optJSONObject("ar")?.optString("value") }.orEmpty()
-    private suspend fun json(url: String) = JSONObject(Pages.load(url))
+    private suspend fun json(url: String) = JSONObject(Pages.load(url, every = Pages.DAY))
     private suspend fun wd(vararg p: Pair<String, String>) = json("https://www.wikidata.org/w/api.php?format=json&" + p.joinToString("&") { "${it.first}=${enc(it.second)}" })
     private suspend fun entities(ids: List<String>): JSONObject {
         val result = JSONObject()
@@ -46,18 +46,11 @@ internal object Credits {
         return result
     }
     private fun photo(e: JSONObject?): String = (claim(e, "P18") as? String)?.let { "https://commons.wikimedia.org/wiki/Special:FilePath/${enc(it)}?width=240" }.orEmpty()
-    private val responses = java.util.concurrent.ConcurrentHashMap<String, JSONObject>()
     private suspend fun anilist(names: List<String>, kind: String, onUpdate: (List<Credit>) -> Unit): List<Credit> {
         suspend fun ask(args: String, page: Int): JSONObject? {
             val query = "{Media($args){id title{romaji english native} synonyms characters(page:$page,perPage:50,sort:[ROLE,RELEVANCE,ID]){pageInfo{hasNextPage} edges{node{id name{full} image{large}} voiceActors(language:JAPANESE){name{full} image{large}}}}}}"
-            val result = responses[query] ?: run {
-                val r = Net.fetch("https://graphql.anilist.co", post = true, form = mapOf("query" to query))
-                if (r.status >= 400) throw java.io.IOException("HTTP ${r.status}")
-                val j = JSONObject(r.body)
-                if (j.has("errors")) throw java.io.IOException("Character lookup failed")
-                responses[query] = j
-                j
-            }
+            val result = JSONObject(Pages.load("https://graphql.anilist.co", body = JSONObject().put("query", query).toString(), every = Pages.DAY))
+            if (result.has("errors")) throw java.io.IOException("Character lookup failed")
             return result.optJSONObject("data")?.optJSONObject("Media")
         }
         for (name in names) {
@@ -94,9 +87,8 @@ internal object Credits {
             if (!tt.matches(Regex("tt\\d+"))) continue
             val query = "query{title(id:\"$tt\"){credits(first:250,filter:{categories:[\"cast\"]}){edges{node{name{nameText{text} primaryImage{url}} ... on Cast{characters{name}}}}}}}"
             // json only, and answered only to a client naming itself as IMDb's site
-            val r = Net.fetch("https://caching.graphql.imdb.com/", mapOf("x-imdb-client-name" to "imdb-web-next-localized"), json = JSONObject().put("query", query).toString())
-            if (r.status >= 400) throw java.io.IOException("HTTP ${r.status}")
-            return objects(JSONObject(r.body).optJSONObject("data")?.optJSONObject("title")?.optJSONObject("credits")?.optJSONArray("edges")).map { e ->
+            val r = Pages.load("https://caching.graphql.imdb.com/", body = JSONObject().put("query", query).toString(), headers = mapOf("x-imdb-client-name" to "imdb-web-next-localized"), every = Pages.DAY)
+            return objects(JSONObject(r).optJSONObject("data")?.optJSONObject("title")?.optJSONObject("credits")?.optJSONArray("edges")).map { e ->
                 val n = e.getJSONObject("node"); val p = n.getJSONObject("name")
                 Credit(objects(n.optJSONArray("characters")).joinToString(" / ") { it.optString("name") },
                     p.optJSONObject("primaryImage")?.optString("url").orEmpty().replace(Regex("\\._V1_.*(\\.\\w+)$"), "._V1_UX240_$1"), // a 240px-wide copy
@@ -107,10 +99,10 @@ internal object Credits {
     }
     private suspend fun series(names: List<String>, year: String): List<Credit> {
         for (name in names) {
-            val hits = objects(JSONArray(Pages.load("https://api.tvmaze.com/search/shows?q=${enc(clean(name))}"))).map { it.getJSONObject("show") }
+            val hits = objects(JSONArray(Pages.load("https://api.tvmaze.com/search/shows?q=${enc(clean(name))}", every = Pages.DAY))).map { it.getJSONObject("show") }
                 .filter { s -> names.any { norm(it) == norm(s.optString("name")) } && (year.isEmpty() || s.optString("premiered").startsWith(year)) }
             if (hits.size != 1) continue
-            return objects(JSONArray(Pages.load("https://api.tvmaze.com/shows/${hits[0].getInt("id")}/cast"))).map { e ->
+            return objects(JSONArray(Pages.load("https://api.tvmaze.com/shows/${hits[0].getInt("id")}/cast", every = Pages.DAY))).map { e ->
                 val c = e.getJSONObject("character"); val p = e.getJSONObject("person")
                 Credit(c.optString("name"), c.optJSONObject("image")?.optString("medium") ?: p.optJSONObject("image")?.optString("medium").orEmpty(), p.optString("name"), source = hits[0].optString("url"))
             }

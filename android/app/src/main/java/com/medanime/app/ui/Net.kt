@@ -267,16 +267,19 @@ object Pages {
     private val bg = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
     lateinit var dir: java.io.File
 
-    private fun file(url: String) = java.io.File(dir, java.security.MessageDigest.getInstance("SHA-1").digest(url.toByteArray()).joinToString("") { "%02x".format(it) })
-    private fun saved(url: String) = file(url).takeIf { it.isFile && System.currentTimeMillis() - it.lastModified() < KEEP }?.readText()
-    private fun due(url: String) = System.currentTimeMillis() - (checked[url] ?: 0) >= RECHECK
+    const val DAY = 24 * 3600_000L
+    private fun file(key: String) = java.io.File(dir, java.security.MessageDigest.getInstance("SHA-1").digest(key.toByteArray()).joinToString("") { "%02x".format(it) })
+    private fun saved(key: String) = file(key).takeIf { it.isFile && System.currentTimeMillis() - it.lastModified() < KEEP }?.readText()
+    // the file's time too: a page fetched just before the app restarted isn't asked again at once
+    private fun due(key: String, every: Long = RECHECK) = System.currentTimeMillis() - maxOf(checked[key] ?: 0, file(key).lastModified()) >= every
 
-    private suspend fun fresh(url: String): String {
-        checked[url] = System.currentTimeMillis()
-        val r = Net.fetch(url)
+    // body: a POST (AniList's and IMDb's GraphQL), cached under its query as well as its address
+    private suspend fun fresh(url: String, key: String = url, body: String? = null, headers: Map<String, String> = emptyMap()): String {
+        checked[key] = System.currentTimeMillis()
+        val r = if (body != null) Net.fetch(url, headers, json = body) else Net.fetch(url, headers)
         if (r.status >= 400) throw IOException("HTTP ${r.status} ${java.net.URI(url).path}")
         dir.mkdirs()
-        file(url).writeText(r.body)
+        file(key).writeText(r.body) // rewritten even when unchanged: its time is when the site last confirmed it
         return r.body
     }
 
@@ -289,10 +292,17 @@ object Pages {
     }.flowOn(Dispatchers.IO)
 
     /** one answer for pages built from several: the saved copy at once (asked again behind it, for next time), else the site's */
-    suspend fun load(url: String, force: Boolean = false): String = withContext(Dispatchers.IO) {
-        val hit = if (force) null else saved(url)
-        if (hit != null) { if (due(url)) bg.launch { runCatching { fresh(url) } }; return@withContext hit }
-        try { fresh(url) } catch (e: Exception) { saved(url) ?: throw e }
+    // every: how often it's asked again (ratings and cast lists hardly change: a day)
+    suspend fun load(url: String, force: Boolean = false, body: String? = null, headers: Map<String, String> = emptyMap(), every: Long = RECHECK): String = withContext(Dispatchers.IO) {
+        val key = if (body == null) url else "$url\n$body"
+        val hit = if (force) null else saved(key)
+        if (hit != null) { if (due(key, every)) bg.launch { runCatching { fresh(url, key, body, headers) } }; return@withContext hit }
+        try { fresh(url, key, body, headers) } catch (e: Exception) { saved(key) ?: throw e }
     }
+
+    // expired copies (saved() already passes over them), deleted once at launch, else the folder only grows
+    fun prune() = bg.launch { dir.listFiles()?.forEach { if (System.currentTimeMillis() - it.lastModified() >= KEEP) it.delete() } }
+    fun size() = dir.listFiles()?.sumOf { it.length() } ?: 0L
+    fun clear() { dir.listFiles()?.forEach { it.delete() }; checked.clear() }
 
 }
