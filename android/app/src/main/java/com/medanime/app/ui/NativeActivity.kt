@@ -41,6 +41,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -118,6 +120,7 @@ sealed interface Screen {
 var immersed = false // a video or a chapter open (App): no "download finished" toasts over it (Downloads)
     private set
 private fun Screen.full() = this is Screen.Play || this is Screen.CinemaPlay || this is Screen.MangaRead || this is Screen.Offline || this is Screen.Trailer
+private fun Screen.noDock() = full() || this is Screen.Title || this is Screen.MangaSeries || this is Screen.CinemaTitle // a title's page: all its room for its episodes; its own back button leaves it
 
 // the sections (app.js NAV), in the drawer; up to 4 of them in the dock (settings)
 val NAV = linkedMapOf<String, Pair<Screen, () -> ImageVector>>(
@@ -325,7 +328,7 @@ fun App() {
                 }
             }, drawerState = drawer, gesturesEnabled = !drawerBlocked,
                 scrimColor = if (drawerBlocked) Color.Transparent else DrawerDefaults.scrimColor) {
-                Scaffold(containerColor = Bg, bottomBar = { if (!top.full()) Dock(top, tab) }) { pad ->
+                Scaffold(containerColor = Bg, bottomBar = { if (!top.noDock()) Dock(top, tab) }) { pad ->
                     // the reader takes the whole screen, under the phone's bars, so its pages don't move as they hide; its own bars pad themselves
                     Box(Modifier.padding(if (top is Screen.MangaRead) PaddingValues() else pad).fillMaxSize()) {
                         saved.SaveableStateProvider(top.toString()) {
@@ -359,6 +362,7 @@ fun App() {
                 }
             }
             cardMenu?.let { CardMenu(it) { cardMenu = null } }
+            catSheet?.let { CatSheet(it) { catSheet = null } }
             if (askStorage) StorageSheet { askStorage = false }
             update?.let { u -> UpdateSheet(u) { update = null } }
             if (feedback) FeedbackSheet { feedback = false }
@@ -560,7 +564,7 @@ fun noNames(m: String?) = (m ?: "").replace(Regex("https?://\\S+|\\b[\\w.-]*(wit
 
 fun toast(msg: String) { if (Net.hasWindow()) Toast.makeText(Net.activity, msg, Toast.LENGTH_SHORT).show() } // none from a background check (Alerts)
 
-private fun listType(c: Card) = if (c.type == "episode") (if (c.showPath.startsWith("/movie")) "movie" else "anime") else c.type
+internal fun listType(c: Card) = if (c.type == "episode") (if (c.showPath.startsWith("/movie")) "movie" else "anime") else c.type
 fun listToggle(c: Card) {
     val on = Store.toggleList(c.showPath, c.title, c.poster, listType(c))
     toast(if (on) t("added", c.title) else t("removed"))
@@ -568,6 +572,7 @@ fun listToggle(c: Card) {
 
 // ---------- long-press a card: hide it from every page, or (un)list it (app.js cardMenu) ----------
 var cardMenu by mutableStateOf<Card?>(null)
+var catSheet by mutableStateOf<List<Card>?>(null) // their categories (a card's menu, or several picked)
 private var cardMenuPicks: Picks? = null // the grid the card was pressed in: its menu can start picking there
 fun isHidden(c: Card) = Store["hidden"].has(c.showPath)
 fun setHidden(c: Card, on: Boolean, quiet: Boolean = false) {
@@ -582,7 +587,7 @@ private fun hideLabel(c: Card) = t(when { c.type == "manga" -> "hideManga"; c.ty
 @Composable
 private fun CardMenu(c: Card, done: () -> Unit) = ModalBottomSheet(done, containerColor = CardC) {
     Row(Modifier.padding(horizontal = 24.dp).padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        AsyncImage(c.poster, null, Modifier.width(48.dp).aspectRatio(2 / 3f).clip(RoundedCornerShape(4.dp)), contentScale = ContentScale.Crop)
+        NetImage(c.poster, Modifier.width(48.dp).aspectRatio(2 / 3f).clip(RoundedCornerShape(4.dp)), icon = iconOf(c.showPath))
         Text(c.title, Modifier.padding(start = 14.dp), fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
     val hidden = isHidden(c); val listed = Store.inList(c.showPath)
@@ -592,6 +597,7 @@ private fun CardMenu(c: Card, done: () -> Unit) = ModalBottomSheet(done, contain
         }
     }
     if (!c.showPath.startsWith("/airing/")) opt(if (listed) Ic.check else Ic.plus, t(if (listed) "listRemove" else "listAdd")) { listToggle(c) } // a schedule card isn't a show page yet
+    if (!c.showPath.startsWith("/airing/")) opt(Ic.myList, t("catAssign")) { catSheet = listOf(c) }
     if (Alerts.can(c.showPath)) Alerts.on(c.showPath).let { on -> opt(if (on) Ic.bellFill else Ic.bell, t(if (on) "notifyStop" else "notify")) { Alerts.toggleCard(c) } }
     opt(if (hidden) Ic.eye else Ic.eyeSlash, if (hidden) t("unhide") else hideLabel(c)) { setHidden(c, !hidden) }
     cardMenuPicks?.let { p -> opt(Ic.check, t("select")) { p.start(c.showPath) } }
@@ -611,19 +617,58 @@ fun screenFor(c: Card): Screen = c.open?.let { open ->
 }
 
 // ---------- builders (app.js card / row / grid / heroPage) ----------
+/** something on its way (style.css .card .img); drawn, not composed, each frame: a grid has many */
+@Composable
+fun Shimmer(low: Color = Color(0xFF1A1A1A), high: Color = Color(0xFF262626)) {
+    val x by rememberInfiniteTransition().animateFloat(-1.2f, 1.2f, infiniteRepeatable(tween(1400, easing = androidx.compose.animation.core.LinearEasing)))
+    Box(Modifier.fillMaxSize().drawBehind {
+        drawRect(Brush.linearGradient(listOf(low, high, low), Offset(size.width * x, 0f), Offset(size.width * (x + 1), size.height * .4f)))
+    })
+}
+
+/** what an image should have been, for one that's slow or won't come: its section's icon, its title when there's room */
+@Composable
+private fun ImagePlaceholder(icon: ImageVector?, title: String) = BoxWithConstraints(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF262626), CardC))), Alignment.Center) {
+    val w = maxWidth
+    Column(Modifier.padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        if (icon != null) Icon(icon, null, Modifier.size(minOf(w * .4f, 40.dp)), tint = Muted)
+        if (title.isNotEmpty() && w >= 80.dp) Text(title, Modifier.padding(top = 6.dp), color = Muted, fontSize = 11.sp, lineHeight = 14.sp,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 3, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+fun iconOf(path: String) = when { path.startsWith("/manga") -> Ic.manga; path.startsWith("/cinema") -> Ic.cinema; else -> Ic.series }
+
+private const val IMAGE_PATIENCE = 4000L
+
+/** a remote image: a shimmer at first, its placeholder once it's slow or gave up. the download carries on behind either, and the image fades in when it lands */
+@Composable
+fun NetImage(url: String, modifier: Modifier = Modifier, scale: ContentScale = ContentScale.Crop, desc: String? = null, icon: ImageVector? = Ic.series, title: String = "") {
+    // one that failed (a burst rate-limited, the network flaky for a moment): asked again a few times, later each time
+    var tries by remember(url) { mutableIntStateOf(0) }
+    var failed by remember(url) { mutableStateOf(false) }
+    var shown by remember(url) { mutableStateOf(false) }
+    var late by remember(url) { mutableStateOf(false) }
+    val gaveUp = failed && tries >= 3
+    LaunchedEffect(failed) { if (failed && tries < 3) { delay(2000L shl tries); failed = false; tries++ } }
+    LaunchedEffect(url) { delay(IMAGE_PATIENCE); late = true }
+    // scrolled away or left mid-download Coil drops it: a slow one finishes anyway, into the disk cache, so it's there next time
+    DisposableEffect(url) { onDispose { if (late && !shown && !gaveUp && url.isNotEmpty()) SingletonImageLoader.get(Net.app).enqueue(coil3.request.ImageRequest.Builder(Net.app).data(url).size(256).memoryCachePolicy(coil3.request.CachePolicy.DISABLED).build()) } }
+    Box(modifier) {
+        if (!shown) { if (late || gaveUp || url.isEmpty()) ImagePlaceholder(icon, title) else Shimmer() }
+        if (url.isNotEmpty()) key(tries) { AsyncImage(url, desc, Modifier.fillMaxSize(), contentScale = scale, onSuccess = { shown = true }, onError = { failed = true }) }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun PosterCard(c: Card, nav: Nav, width: Dp? = 112.dp) {
     val p = LocalPicks.current
     val on = p?.has(c.showPath) == true
-    // a cover that failed (a burst rate-limited, the network flaky for a moment): asked again a few times, later each time
-    var tries by remember(c.poster) { mutableIntStateOf(0) }
-    var failed by remember(c.poster) { mutableStateOf(false) }
-    LaunchedEffect(failed) { if (failed && tries < 3) { delay(2000L shl tries); failed = false; tries++ } }
     Column((if (width != null) Modifier.width(width) else Modifier.fillMaxWidth())
         .combinedClickable(onLongClick = { if (p?.on == true) p.toggle(c.showPath) else { cardMenuPicks = p; cardMenu = c } }) { if (p?.on == true) p.toggle(c.showPath) else nav.go(screenFor(c)) }) {
         Box(Modifier.fillMaxWidth().aspectRatio(2 / 3f).picked(on).clip(RoundedCornerShape(4.dp)).background(CardC)) {
-            if (c.poster.isNotEmpty()) key(tries) { AsyncImage(c.poster, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop, onError = { failed = true }) }
+            NetImage(c.poster, Modifier.fillMaxSize(), icon = iconOf(c.showPath), title = c.title)
             if (c.badge.isNotEmpty()) Text(c.badge.replace(Regex("\\bEP\\b|الحلقة"), t("ep")), Modifier.padding(4.dp).background(Red, RoundedCornerShape(3.dp)).padding(horizontal = 5.dp, vertical = 1.dp),
                 fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
             PickMark(on)
@@ -758,7 +803,7 @@ fun HeroPager(hero: List<Slide>, nav: Nav) {
     Box(Modifier.fillMaxWidth().height(480.dp).clipToBounds()) { // the zoomed slide stays inside
         HorizontalPager(pager) { i ->
             Box(Modifier.fillMaxSize()) {
-                AsyncImage(hero[i].banner, null, Modifier.fillMaxSize().graphicsLayer { scaleX = zoom; scaleY = zoom }, contentScale = ContentScale.Crop)
+                NetImage(hero[i].banner, Modifier.fillMaxSize().graphicsLayer { scaleX = zoom; scaleY = zoom }, icon = when (hero[i].info) { is Screen.MangaSeries -> Ic.manga; is Screen.CinemaTitle -> Ic.cinema; else -> Ic.series }) // its title is drawn over it
                 Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Transparent, .45f to Color(0x33000000), 1f to Bg)))
             }
         }

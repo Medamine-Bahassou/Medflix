@@ -69,7 +69,7 @@ internal object PlaybackSession {
         listeners.toList().forEach { it(on) }
     }
 
-    fun attach(view: WebView, key: String): () -> Unit {
+    fun attach(view: WebView, key: String, onVideo: () -> Unit = {}): () -> Unit {
         var unbind: (() -> Unit)? = null
         if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) &&
             WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
@@ -79,7 +79,7 @@ internal object PlaybackSession {
             // The bridge accepts playback numbers only; it exposes no files, navigation or arbitrary native calls.
             WebViewCompat.addWebMessageListener(view, "medflixPosition", setOf("*")) { _, message, _, _, _ ->
                 runCatching { JSONObject(message.data.orEmpty()) }.getOrNull()?.let { state ->
-                    if (state.optDouble("duration", 0.0) > 0) position(key, state)
+                    if (state.optDouble("duration", 0.0) > 0) { position(key, state); onVideo() }
                 }
             }
             WebViewCompat.addDocumentStartJavaScript(view, playbackScript(position(key), suspended), setOf("*"))

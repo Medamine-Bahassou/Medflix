@@ -18,7 +18,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
 import com.medanime.app.Downloads
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -106,7 +105,7 @@ fun DownloadsScreen(show: String, nav: Nav) {
                     Row(Modifier.fillMaxWidth().picked(picks.has(key)).clip(RoundedCornerShape(8.dp)).background(CardC)
                         .combinedClickable(onLongClick = { if (picks.on) picks.toggle(key) else picks.start(key) }) { if (picks.on) picks.toggle(key) else nav.go(Screen.Downloads(key)) }
                         .padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        AsyncImage(d0.optString("poster"), null, Modifier.width(56.dp).aspectRatio(2 / 3f).clip(RoundedCornerShape(4.dp)), contentScale = ContentScale.Crop)
+                        NetImage(d0.optString("poster"), Modifier.width(56.dp).aspectRatio(2 / 3f).clip(RoundedCornerShape(4.dp)), icon = if (d0.manga()) Ic.manga else iconOf(key))
                         Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                             Text(d0.optString("title"), fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text("${d0.kindName()} · ${t(if (d0.manga()) "chCount" else "epCount", done)}" + (if (size > 0) " · ${mb(size)}" else "") + if (act.isNotEmpty()) " · ${t("dlActiveN", act.size)}" else "",
@@ -128,7 +127,7 @@ fun DownloadsScreen(show: String, nav: Nav) {
         val d0 = items.first()
         val act = items.filter { it.optString("state") in PENDING }
         Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            AsyncImage(d0.optString("poster"), null, Modifier.width(64.dp).aspectRatio(2 / 3f).clip(RoundedCornerShape(4.dp)), contentScale = ContentScale.Crop)
+            NetImage(d0.optString("poster"), Modifier.width(64.dp).aspectRatio(2 / 3f).clip(RoundedCornerShape(4.dp)), icon = if (d0.manga()) Ic.manga else iconOf(show))
             Column(Modifier.weight(1f).padding(horizontal = 12.dp).clickable { nav.go(showScreen(d0, show)) }) {
                 Text(d0.optString("title"), fontWeight = FontWeight.Bold, fontSize = 17.sp)
                 val size = items.filter { it.optString("state") == "done" }.sumOf(Downloads::size)
@@ -227,7 +226,7 @@ private fun DlMenu(items: List<JSONObject>, picks: Picks, ask: (Pair<String, () 
 
 // the chart's slices, in this order always (largest show first): the dark-surface categorical palette, checked for
 // colour-blind separation and contrast against the sheet's #181818. A 7th show on would be a hue too many: "other", grey
-private val SLICES = listOf(0xFF3987E5, 0xFFD95926, 0xFF199E70, 0xFFC98500, 0xFFD55181, 0xFF008300).map { Color(it) }
+internal val SLICES = listOf(0xFF3987E5, 0xFFD95926, 0xFF199E70, 0xFFC98500, 0xFFD55181, 0xFF008300).map { Color(it) }
 private val OTHER = Color(0xFF6B6B68)
 private class Slice(val show: String?, val title: String, val poster: String, val bytes: Long, val count: String, val color: Color)
 
@@ -292,7 +291,7 @@ private fun StatsSheet(groups: List<Pair<String, List<JSONObject>>>, nav: Nav, d
                     .padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(10.dp).clip(CircleShape).background(s.color))
                     Box(Modifier.padding(horizontal = 10.dp).width(36.dp).aspectRatio(2 / 3f).clip(RoundedCornerShape(4.dp)).background(Color(0xFF242424)), Alignment.Center) {
-                        if (s.poster.isNotEmpty()) AsyncImage(s.poster, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) else Icon(Ic.dots, null, Modifier.size(16.dp), tint = Muted)
+                        if (s.poster.isNotEmpty()) NetImage(s.poster, Modifier.fillMaxSize(), icon = iconOf(s.show.orEmpty())) else Icon(Ic.dots, null, Modifier.size(16.dp), tint = Muted)
                     }
                     Column(Modifier.weight(1f)) {
                         Text(s.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)

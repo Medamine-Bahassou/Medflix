@@ -100,8 +100,11 @@ input:focus-visible, select:focus-visible { outline: none; }
 /* ---------- cards ---------- */
 .card { position: relative; flex: 0 0 auto; width: 190px; border-radius: 6px; overflow: hidden; background: var(--card); cursor: pointer;
   transition: transform .35s var(--ease), box-shadow .35s var(--ease); animation: rise .6s var(--ease) both; animation-delay: calc(var(--i, 0) * 35ms); }
-.card .img { aspect-ratio: 2/3; overflow: hidden; background: linear-gradient(110deg, #1a1a1a 30%, #262626 50%, #1a1a1a 70%) 0 0/300% 100%; animation: shimmer 1.4s infinite; }
-.card img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .6s var(--ease), opacity .4s; opacity: 0; }
+.card .img { position: relative; aspect-ratio: 2/3; overflow: hidden; background: linear-gradient(110deg, #1a1a1a 30%, #262626 50%, #1a1a1a 70%) 0 0/300% 100%; animation: shimmer 1.4s infinite; }
+/* a cover still not here after 4s (or never coming): its title in place of the shimmer. the img carries on loading, and covers it when it lands */
+.card .img[data-ph]::before { content: attr(data-ph); position: absolute; inset: 0; display: grid; place-items: center; padding: 12px; text-align: center; font-size: 13px; color: var(--muted); background: linear-gradient(#262626, var(--card)); opacity: 0; animation: img-late 0s 4s forwards; }
+@keyframes img-late { to { opacity: 1 } }
+.card img { position: relative; width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .6s var(--ease), opacity .4s; opacity: 0; }
 .card img.ok { opacity: 1; }
 .card:hover { transform: scale(1.08) translateY(-6px); z-index: 3; box-shadow: 0 18px 40px #000c, 0 0 0 2px var(--red); }
 .card:hover img { transform: scale(1.06); }
@@ -228,6 +231,9 @@ input:focus-visible, select:focus-visible { outline: none; }
 .dd.open .dd-menu { opacity: 1; transform: none; pointer-events: auto; }
 .dd-group { display: flex; justify-content: space-between; align-items: center; padding: 10px 10px 6px; color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
 .dd-group:not(:first-child) { margin-top: 6px; padding-top: 14px; border-top: 1px solid #ffffff12; }
+.dd-skel { display: grid; gap: 22px; padding: 16px 10px; }
+.dd-skel span { display: block; width: 70%; height: 12px; border-radius: 6px; background: linear-gradient(110deg, #ffffff14 30%, #ffffff2b 50%, #ffffff14 70%) 0 0/300% 100%; animation: shimmer 1.4s infinite; }
+.dd-skel span + span { width: 45%; }
 .dd-group small { padding: 1px 8px; border-radius: 999px; background: #ffffff14; font-size: 11px; letter-spacing: 0; }
 .dd-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border-radius: 8px; background: none; color: #ddd; font-size: 14px; text-align: start; transition: background .15s, color .15s; }
 .dd-item:hover { background: #ffffff14; color: #fff; }

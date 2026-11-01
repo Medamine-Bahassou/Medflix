@@ -19,9 +19,15 @@ object Updater {
     // the download's own: the sheet closed mid-way, it carries on (and Android's installer still opens)
     val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.Main)
     private const val NOTE = 7301 // not the downloads' notification id
+    private const val READY = 7302 // its own id: android silently drops an update to a posted notification past ~5 a second, and this one has to arrive
 
     /** a release's APK in the cache: kept once complete, so a later tap installs it without downloading it again */
     fun apk(tag: String) = File(Net.app.cacheDir, "update-$tag.apk")
+    // complete ones only: a .part is a download still running
+    private fun saved() = Net.app.cacheDir.listFiles { f -> f.name.startsWith("update") && f.name.endsWith(".apk") }.orEmpty()
+    fun savedSize() = saved().sumOf { it.length() }
+    /** the settings' cache page: its "tap to install" goes too, it would open nothing. a later update downloads again */
+    fun clearSaved() { saved().forEach { it.delete() }; note(null) }
     private fun installer(apk: File) = Intent(Intent.ACTION_VIEW)
         .setDataAndType(FileProvider.getUriForFile(Net.app, Net.app.packageName + ".fileprovider", apk), "application/vnd.android.package-archive")
         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -31,12 +37,13 @@ object Updater {
     private fun note(pct: Int?, done: File? = null) {
         val c = Net.app
         val nm = androidx.core.app.NotificationManagerCompat.from(c)
-        if (pct == null && done == null) return nm.cancel(NOTE)
+        if (pct == null && done == null) { nm.cancel(NOTE); nm.cancel(READY); return }
         if (!nm.areNotificationsEnabled()) return
         if (Build.VERSION.SDK_INT >= 26) c.getSystemService(android.app.NotificationManager::class.java)
             .createNotificationChannel(android.app.NotificationChannel("update", t("updateTitle"), android.app.NotificationManager.IMPORTANCE_LOW)) // low: no sound
         // downloaded: it stays, its tap opens Android's installer (the installer itself can't open while the app is in the background)
-        if (done != null) return nm.notify(NOTE, androidx.core.app.NotificationCompat.Builder(c, "update").setSmallIcon(com.medanime.app.R.drawable.ic_stat_download)
+        if (done != null) nm.cancel(NOTE)
+        if (done != null) return nm.notify(READY, androidx.core.app.NotificationCompat.Builder(c, "update").setSmallIcon(com.medanime.app.R.drawable.ic_stat_download)
             .setContentTitle(t("updateReady")).setContentText(t("updateTap")).setOngoing(false) // not auto-cancelled: an installer backed out of can be opened again from it, until the next launch finds it installed
             .setContentIntent(android.app.PendingIntent.getActivity(c, 1, installer(done), android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT)).build())
         if (pct == null) return
@@ -81,14 +88,21 @@ object Updater {
                     if (r.code != 200) throw IOException("HTTP ${r.code}")
                     val body = r.body!!
                     val size = body.contentLength()
-                    var got = 0L; var pct = -2
+                    var got = 0L; var pct = -2; var noted = 0L
                     body.byteStream().use { inp -> part.outputStream().use { out ->
                         val buf = ByteArray(64 * 1024)
                         while (true) {
                             val n = inp.read(buf); if (n < 0) break
                             out.write(buf, 0, n); got += n
                             val p = if (size > 0) (got * 100 / size).toInt() else -1
-                            if (p != pct) { pct = p; withContext(Dispatchers.Main) { onPct(p); note(p) } }
+                            if (p != pct) {
+                                pct = p
+                                // a percent can pass many times a second on a fast line: the sheet keeps up, the notification can't (see READY)
+                                val now = android.os.SystemClock.elapsedRealtime()
+                                val post = now - noted >= 500
+                                if (post) noted = now
+                                withContext(Dispatchers.Main) { onPct(p); if (post) note(p) }
+                            }
                         }
                     } }
                     if (size > 0 && got != size) throw IOException("cut off")

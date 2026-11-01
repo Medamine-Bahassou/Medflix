@@ -87,7 +87,7 @@ object Net {
     private val ED_RE = Regex("^https://([a-z0-9-]+\\.)*(egydead|myseed|arabseed)\\.[a-z]+/")
     // olympus staff's pages sit behind Cloudflare too
     private const val OLY = "https://olympustaff.com"
-    private fun site(url: String) = if (url.startsWith(SITE)) "witanime" else if (url.startsWith("$OLY/")) "olympustaff" else ED_RE.find(url)?.groupValues?.get(2)
+    private fun site(url: String) = if (url.startsWith(SITE)) "witanime" else if (url.startsWith("$OLY/")) "olympustaff" else if (Slayer.sources.values.any { url.startsWith("$it/") }) java.net.URI(url).host else ED_RE.find(url)?.groupValues?.get(2)
     // site -> the origin its requests go through a real page on, once Cloudflare refused our native client there
     private val via = java.util.concurrent.ConcurrentHashMap<String, String>()
     private val pages = java.util.concurrent.ConcurrentHashMap<String, SitePage>()
@@ -97,17 +97,17 @@ object Net {
      * GET or POST (an empty one), with witanime's 429 retry; through the site's page once Cloudflare refuses us (mobile.js http).
      * asPlayer: asked as the player's WebView asks, for links that only play in the browser that got them (myseed's)
      */
-    suspend fun fetch(url: String, headers0: Map<String, String> = emptyMap(), post: Boolean = false, stopAt: String = "", redirects: Boolean = true, asPlayer: Boolean = false, form: Map<String, String>? = null, json: String? = null): Resp {
+    suspend fun fetch(url: String, headers0: Map<String, String> = emptyMap(), post: Boolean = false, stopAt: String = "", redirects: Boolean = true, asPlayer: Boolean = false, form: Map<String, String>? = null, json: String? = null, interactive: Boolean = true): Resp {
         // the latest-episodes pager 404s unless it looks like the home page's own call (mobile.js): Origin, or X-Requested-With
         val headers = if (url.startsWith("$SITE/new-episodes")) mapOf("Accept" to "application/json", "Referer" to "$SITE/", "Origin" to SITE, "X-Requested-With" to "XMLHttpRequest") + headers0 else headers0
         var i = 0
         while (true) {
-            val key = site(url)
+            val key = if (interactive) site(url) else null
             val origin = key?.let { via[it] }
             // the sites at one fixed host: any refusal of our native client sends them through their page, not just Cloudflare's check
             // (a phone's connection may get a plain block, or be dropped, where a browser gets through)
             val home = if (key == "witanime") SITE else if (key == "olympustaff") OLY else null
-            val r = if (origin != null && redirects) pages.getOrPut(origin) { SitePage(origin) }.fetch(origin + url.replace(Regex("^https://[^/]+"), ""), if (post) "POST" else "GET", headers, stopAt)
+            val r = if (origin != null && redirects) pages.getOrPut(origin) { SitePage(origin) }.fetch(origin + url.replace(Regex("^https://[^/]+"), ""), if (post || form != null) "POST" else "GET", headers, stopAt, form)
             else try { native(url, headers, post, redirects, stopAt, asPlayer, form, json) } catch (e: IOException) {
                 if (home == null || origin != null) throw e
                 via[key!!] = home; continue // a connection that stalls or drops for our native client: through the page
@@ -228,13 +228,15 @@ class SitePage(private val origin: String) {
         view = null; ready = false; Net.checking.value = false
     }
 
-    suspend fun fetch(url: String, method: String, headers: Map<String, String>, stopAt: String): Resp = withContext(Dispatchers.Main) {
+    suspend fun fetch(url: String, method: String, headers: Map<String, String>, stopAt: String, form: Map<String, String>? = null): Resp = withContext(Dispatchers.Main) {
         ensure()
         val id = (++ids).toString()
         val h = JSONObject(headers.filterKeys { !Regex("^(user-agent|referer|cookie|sec-|accept-language)", RegexOption.IGNORE_CASE).containsMatchIn(it) }) // the browser sets these
         val q = JSONObject.quote(id)
+        val body = form?.entries?.joinToString("&") { java.net.URLEncoder.encode(it.key, "UTF-8") + "=" + java.net.URLEncoder.encode(it.value, "UTF-8") }
+        if (form != null) h.put("Content-Type", "application/x-www-form-urlencoded")
         eval("(async () => { const out = v => (window.__med = window.__med || {})[$q] = JSON.stringify(v); try {" +
-            "const r = await fetch(${JSONObject.quote(url)}, { method: ${JSONObject.quote(method)}, headers: $h, credentials: 'include' });" +
+            "const r = await fetch(${JSONObject.quote(url)}, { method: ${JSONObject.quote(method)}, headers: $h, body: ${body?.let(JSONObject::quote) ?: "undefined"}, credentials: 'include' });" +
             // stopAt: stop reading once it matches (an episode page is ~3MB; its csrf token is in <head>)
             "const re = ${JSONObject.quote(stopAt)} && new RegExp(${JSONObject.quote(stopAt)}), rd = r.body.getReader(), dec = new TextDecoder(); let t = '';" +
             "for (;;) { const { done, value } = await rd.read(); if (done) break; t += dec.decode(value, { stream: true }); if (re && re.test(t)) { rd.cancel(); break; } }" +
@@ -274,9 +276,9 @@ object Pages {
     private fun due(key: String, every: Long = RECHECK) = System.currentTimeMillis() - maxOf(checked[key] ?: 0, file(key).lastModified()) >= every
 
     // body: a POST (AniList's and IMDb's GraphQL), cached under its query as well as its address
-    private suspend fun fresh(url: String, key: String = url, body: String? = null, headers: Map<String, String> = emptyMap()): String {
+    private suspend fun fresh(url: String, key: String = url, body: String? = null, headers: Map<String, String> = emptyMap(), form: Map<String, String>? = null, interactive: Boolean = true): String {
         checked[key] = System.currentTimeMillis()
-        val r = if (body != null) Net.fetch(url, headers, json = body) else Net.fetch(url, headers)
+        val r = if (body != null) Net.fetch(url, headers, json = body, interactive = interactive) else Net.fetch(url, headers, form = form, interactive = interactive)
         if (r.status >= 400) throw IOException("HTTP ${r.status} ${java.net.URI(url).path}")
         dir.mkdirs()
         file(key).writeText(r.body) // rewritten even when unchanged: its time is when the site last confirmed it
@@ -293,16 +295,17 @@ object Pages {
 
     /** one answer for pages built from several: the saved copy at once (asked again behind it, for next time), else the site's */
     // every: how often it's asked again (ratings and cast lists hardly change: a day)
-    suspend fun load(url: String, force: Boolean = false, body: String? = null, headers: Map<String, String> = emptyMap(), every: Long = RECHECK): String = withContext(Dispatchers.IO) {
-        val key = if (body == null) url else "$url\n$body"
+    suspend fun load(url: String, force: Boolean = false, body: String? = null, headers: Map<String, String> = emptyMap(), every: Long = RECHECK, form: Map<String, String>? = null, interactive: Boolean = true): String = withContext(Dispatchers.IO) {
+        val key = if (form != null) "$url\nform:${JSONObject(form.toSortedMap())}" else if (body == null) url else "$url\n$body"
         val hit = if (force) null else saved(key)
-        if (hit != null) { if (due(key, every)) bg.launch { runCatching { fresh(url, key, body, headers) } }; return@withContext hit }
-        try { fresh(url, key, body, headers) } catch (e: Exception) { saved(key) ?: throw e }
+        if (hit != null) { if (due(key, every)) bg.launch { runCatching { fresh(url, key, body, headers, form, interactive) } }; return@withContext hit }
+        try { fresh(url, key, body, headers, form, interactive) } catch (e: Exception) { saved(key) ?: throw e }
     }
 
     // expired copies (saved() already passes over them), deleted once at launch, else the folder only grows
     fun prune() = bg.launch { dir.listFiles()?.forEach { if (System.currentTimeMillis() - it.lastModified() >= KEEP) it.delete() } }
     fun size() = dir.listFiles()?.sumOf { it.length() } ?: 0L
+    fun forget(url: String) { file(url).delete(); checked.remove(url) } // discard one invalid source response, preserving other offline pages
     fun clear() { dir.listFiles()?.forEach { it.delete() }; checked.clear() }
 
 }

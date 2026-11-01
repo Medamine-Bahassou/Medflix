@@ -12,7 +12,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CancellationException
@@ -62,7 +61,7 @@ internal fun FlowRowScope.SourceRating(names: List<String>, kind: String, year: 
         Column(Modifier.weight(1f).padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Box(Modifier.height(24.dp), contentAlignment = Alignment.Center) { // the same height as the other items' icons
                 if (source == "IMDb") Text("IMDb", Modifier.background(gold, RoundedCornerShape(4.dp)).padding(horizontal = 5.dp), color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Black)
-                else AsyncImage("https://anilist.co/img/icons/android-chrome-192x192.png", source, Modifier.size(24.dp).clip(RoundedCornerShape(5.dp)))
+                else NetImage("https://anilist.co/img/icons/android-chrome-192x192.png", Modifier.size(24.dp).clip(RoundedCornerShape(5.dp)), desc = source, icon = Ic.star)
             }
             Text("★ $value", Modifier.padding(top = 4.dp), color = gold, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
         }

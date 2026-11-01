@@ -292,17 +292,18 @@ let gen = 0;
 const never = new Promise(() => {});
 const save = () => { clearTimeout(saveT); saveT = setTimeout(() => api.set('pages', cache), 1000); };
 
-function fetchPage(kind, url) {
-  let p = inflight.get(url);
+function fetchPage(kind, url, background = false) {
+  const requestKey = url + (background ? "\nbackground" : "");
+  let p = inflight.get(requestKey);
   if (!p) {
-    p = api.fetch(url).then(text => {
+    p = api.fetch(url, kind === 'slayerPages' ? { action: 'chapter_navigate_page' } : kind === 'slayerChapters' ? { action: 'manga_get_chapters', manga: new URL(url).searchParams.get('manga') } : undefined, false, background).then(text => {
       const isJson = /^(manga|kitsu)/.test(kind);
-      const data = parsers[kind](isJson ? JSON.parse(text) : kind === 'newEpisodes' ? text : parse(text), url);
-      cache[url] = { at: Date.now(), data };
+      const data = parsers[kind](isJson ? JSON.parse(text) : ['newEpisodes', 'slayerPages'].includes(kind) ? text : parse(text), url);
+      cache[url] = { at: Date.now(), data, ...(kind === 'slayerSeries' && { parser: 2 }) };
       save();
       return data;
-    }).finally(() => inflight.delete(url));
-    inflight.set(url, p);
+    }).finally(() => inflight.delete(requestKey));
+    inflight.set(requestKey, p);
   }
   return p;
 }
@@ -315,15 +316,17 @@ async function load(kind, url, force = false, keep = false) {
   }
   used.add(url);
   if (!keep) viewed.set(url, kind);
+  if (kind === 'slayerSeries' && cache[url] && cache[url].parser !== 2 &&
+      (!cache[url].data?.title || !cache[url].data?.postId || Slayer.blockedTitle(cache[url].data.title))) delete cache[url];
   const hit = cache[url];
   if (!hit || force) {
-    try { return fresh(await fetchPage(kind, url)); }
+    try { return fresh(await fetchPage(kind, url, keep && /^(oly|slayer)/.test(kind))); }
     catch (e) { if (!keep && g !== gen) return never; if (hit) return hit.data; throw e; } // offline / site down: serve the saved copy
   }
   if (!checking.has(url) && Date.now() - (hit.checked || hit.at) > RECHECK) {
     checking.add(url);
     hit.checked = Date.now();
-    fetchPage(kind, url)
+    fetchPage(kind, url, keep && /^(oly|slayer)/.test(kind))
       .then(data => JSON.stringify(data) !== JSON.stringify(hit.data) && used.has(url) && onChange?.())
       .catch(() => {}) // offline: keep the saved copy
       .finally(() => checking.delete(url));
@@ -352,6 +355,7 @@ async function remember(key, task) {
 
 window.scraper = {
   remember,
+  changed: () => onChange?.(),
   home: force => load('home', '/', force),
   airTimes: force => load('airTimes', AS + '/', force).then(a => (Array.isArray(a) ? a : [])), // [] : an older cached format
   airScore,

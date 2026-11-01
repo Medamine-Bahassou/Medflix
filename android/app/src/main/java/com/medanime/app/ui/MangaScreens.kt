@@ -48,12 +48,13 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
 import androidx.compose.ui.graphics.asImageBitmap
 import coil3.request.allowHardware
 import coil3.request.maxBitmapSize
 import coil3.toBitmap
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.filter
@@ -62,18 +63,33 @@ import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.flow
 import org.json.JSONObject
 
-private class MangaHome(val hot: List<Card>, val latest: List<Card>, val popular: List<Card>, val fresh: List<Card>, val slides: List<Slide>)
+private data class MangaHome(val hot: List<Card>? = null, val latest: List<Card>? = null, val popular: List<Card>? = null, val fresh: List<Card>? = null, val slides: List<Slide> = emptyList())
 
 /** Manga: MeshManga's catalogue with Olympus Staff's merged in (manga.js mangaHome) */
 @Composable
 fun MangaHomeScreen(nav: Nav) {
-    val (l, refresh) = loadedOnce("manga", quiet = true) { f ->
-        coroutineScope {
-            val hot = async { Manga.hot(f) }
-            val latest = async { Manga.latest(f) }
-            val popular = async { Manga.popular(f) }
-            val fresh = async { Manga.fresh(f) }
-            MangaHome(hot.await(), latest.await(), popular.await(), fresh.await(), mangaSlides(mangaTop(hot.await().take(5))))
+    val (l, refresh) = loaded("manga", quiet = true) { f ->
+        kotlinx.coroutines.flow.channelFlow {
+            var data = MangaHome()
+            val lock = kotlinx.coroutines.sync.Mutex()
+            suspend fun update(edit: (MangaHome) -> MangaHome) {
+                lock.lock()
+                try { data = edit(data); send(data) } finally { lock.unlock() }
+            }
+            suspend fun attempt(block: suspend () -> Unit) {
+                try { block() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
+            }
+            val jobs = listOf(launch { attempt {
+                val hot = Manga.hot(f)
+                update { it.copy(hot = hot, slides = hot.filter { it.poster.isNotEmpty() }.take(5).map { c -> Slide(c.poster, c.title, "", screenFor(c), null) }) }
+                val slides = mangaSlides(mangaTop(hot.take(5)))
+                if (slides.isNotEmpty()) update { it.copy(slides = slides) }
+            } },
+            launch { attempt { Manga.latestFlow(f).collect { latest -> update { it.copy(latest = latest) } } } },
+            launch { attempt { val rows = Manga.popular(f); update { it.copy(popular = rows) } } },
+            launch { attempt { val rows = Manga.fresh(f); update { it.copy(fresh = rows) } } })
+            jobs.forEach { it.join() }
+            if (data.hot == null && data.latest == null && data.popular == null && data.fresh == null) throw java.io.IOException(t("unreachable"))
         }
     }
     SectionPage(l, refresh, nav, { it.slides }) { d ->
@@ -91,7 +107,7 @@ fun MangaHomeScreen(nav: Nav) {
 fun MangaBrowseScreen(query: Map<String, String>, nav: Nav) {
     val seen = remember(query) { HashSet<String>() } // one series once across pages
     val go = { edit: MutableMap<String, String>.() -> Unit -> nav.replace(Screen.MangaBrowse(query.toMutableMap().apply(edit).filterValues { it.isNotEmpty() })) }
-    PagedGrid(query, { f -> flow { seen.clear(); emit(Manga.browse(query, 1, seen, f)) } }, { Manga.browse(query, it, seen) }, nav) {
+    PagedGrid(query, { f -> seen.clear(); Manga.browseFlow(query, 1, seen, f) }, { Manga.browse(query, it, seen) }, nav) {
         PageTitle(t("manga"), nav)
         var q by rememberSaveable(query) { mutableStateOf(query["search"] ?: "") }
         TextField(q, { q = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp), placeholder = { Text(t("mSearchPh")) }, singleLine = true,
@@ -127,10 +143,21 @@ fun Pick(name: String, cur: String?, opts: List<Pair<String, String>>, pick: (St
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MangaSeriesScreen(id: String, nav: Nav) {
-    val (l, refresh) = loadedOnce(id, quiet = true) { f -> Manga.full(id, f) }
+    val (l, refresh) = loaded(id, quiet = true) { f -> Manga.fullFlow(id, f) }
     androidx.compose.material3.pulltorefresh.PullToRefreshBox(l.busy && l.data != null, refresh) {
         Body(l, refresh) { full ->
             val s = full.s
+            LaunchedEffect(s.id, s.title) {
+                // repair titles saved before the parser stopped including blocked embed headings.
+                for ((kind, key) in listOf("manga" to s.id, "list" to "/manga/series/${s.id}", "notify" to "/manga/series/${s.id}", "autoDl" to "/manga/series/${s.id}")) {
+                    val saved = Store[kind].optJSONObject(key) ?: continue
+                    if (Slayer.blockedTitle(saved.optString("title"))) {
+                        saved.put("title", s.title)
+                        if (s.poster.isNotEmpty()) saved.put("poster", s.poster)
+                        Store.persist(kind)
+                    }
+                }
+            }
             if (s.id != id) return@Body LaunchedEffect(s.id) { nav.replace(Screen.MangaSeries(s.id)) } // an Olympus copy of a MangaSwat series
             Store.version.intValue
             val r = Store["manga"].optJSONObject(id)
@@ -140,7 +167,7 @@ fun MangaSeriesScreen(id: String, nav: Nav) {
                 val cid = it.optString("chapterId").takeIf { c -> full.chs.any { x -> x.id == c } } ?: full.chs.find { x -> x.n == rn }?.id
                 cid?.let { c -> c to t("resumeCh", rn) }
             } ?: full.chs.lastOrNull()?.let { it.id to t("read") }
-            DetailPage(s.cover, s.poster, s.title, s.alt,
+            DetailPage(s.cover, s.poster, s.title, s.alt, Ic.manga,
                 // type and status under the title; the rating and views lead the actions row
                 listOfNotNull(s.type.takeIf { it.isNotEmpty() }?.let { Manga.typeName(it) to true }, s.status.takeIf { it.isNotEmpty() }?.let { Manga.label(Manga.STATUS, it) to true }) + s.genres.map { it to false },
                 s.story, {
@@ -199,7 +226,7 @@ fun MangaReaderScreen(cid: String, nav: Nav, title: String = "", chapter: String
     }
     var loadingTitle by remember(cid, known) { mutableStateOf(known.first) }
     var loadingChapter by remember(cid, known) { mutableStateOf(known.second) }
-    val (l, retry) = loadedOnce(cid) { _ ->
+    val (l, retry) = loaded(cid) { _ -> flow {
         // a chapter id from a removed source (t<digits>, in Continue Reading or a queued download): its series and number find its current id
         if (cid.matches(Regex("t\\d+")) && com.medanime.app.Downloads.of("manga:$cid")?.optString("state") != "done") {
             val saved = Store["manga"].let { o -> o.keys().asSequence().mapNotNull { o.optJSONObject(it) }.find { it.optString("chapterId") == cid } }
@@ -211,16 +238,20 @@ fun MangaReaderScreen(cid: String, nav: Nav, title: String = "", chapter: String
                 val c = chapterOf(ch.id)
                 loadingTitle = full.s.title
                 loadingChapter = c.n
-                return@loadedOnce Reading(c, full.chs, full.s.id, full.s.title, full.s.poster, full.alts)
+                emit(Reading(c, full.chs, full.s.id, full.s.title, full.s.poster, full.alts)); return@flow
             }
         }
         val c = chapterOf(cid)
         if (c.serieTitle.isNotBlank()) loadingTitle = c.serieTitle
         loadingChapter = c.n
         // the series as listed (an Olympus chapter may belong to a MangaSwat series); prev / next walk its merged chapter list
-        val full = runCatching { Manga.full(c.serieId) }.getOrNull()
-        Reading(c, full?.chs ?: emptyList(), full?.s?.id ?: c.serieId, full?.s?.title ?: c.serieTitle, full?.s?.poster ?: c.seriePoster, full?.alts ?: emptyMap())
-    }
+        emit(Reading(c, emptyList(), c.serieId, c.serieTitle, c.seriePoster, emptyMap()))
+        try {
+            Manga.fullFlow(c.serieId).collect { full ->
+                emit(Reading(c, full.chs, full.s.id, full.s.title, full.s.poster, full.alts))
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { /* pages are already readable */ }
+    } }
     var lockBackAt by remember { mutableLongStateOf(0L) }
     // locked: the first back only warns, a second one within 2s leaves
     BackHandler(rdLocked) { if (System.currentTimeMillis() - lockBackAt < 2000) nav.back() else { lockBackAt = System.currentTimeMillis(); toast(t("backAgain")) } }
@@ -243,7 +274,9 @@ fun MangaReaderScreen(cid: String, nav: Nav, title: String = "", chapter: String
             val cont = Store["prefs"].optBoolean("mangaCont", true)
             // every chapter resumes its own spot: page index + how far down that page (tall manhwa strips need the fraction)
             val spots = remember(cid) {
-                val r = Store["manga"].optJSONObject(d.sid)
+                val history = Store["manga"]
+                val r = history.optJSONObject(d.sid) ?: history.keys().asSequence().mapNotNull { history.optJSONObject(it) }
+                    .firstOrNull { it.optString("chapterId") == d.c.id || it.optJSONObject("spots")?.has(d.c.id) == true }
                 r?.optJSONObject("spots") ?: JSONObject().apply { if (r != null) put(r.optString("chapterId"), r.optDouble("page", 0.0)) } // older saves kept one spot
             }
             val spot = remember(cid) { spots.optDouble(d.c.id, 0.0) }
@@ -256,7 +289,7 @@ fun MangaReaderScreen(cid: String, nav: Nav, title: String = "", chapter: String
             val c = chain[k]
             val follow = { i: Int -> top = of(i).let { (ci, p) -> chain[ci].id to p } }
             val next = nextOf(c); val prev = prevOf(c)
-            LaunchedEffect(c.id) {
+            LaunchedEffect(c.id, d.sid, d.title, d.poster) {
                 val was = Store["manga"].optJSONObject(d.sid) // the series page unreachable (offline, an olympus-only chapter): keep the saved cover and title
                 Store["manga"].put(d.sid, JSONObject().put("id", d.sid).put("title", d.title.ifEmpty { was?.optString("title").orEmpty() })
                     .put("poster", d.poster.ifEmpty { was?.optString("poster").orEmpty() }).put("chapterId", c.id).put("n", c.n).put("spots", spots).put("at", System.currentTimeMillis()))

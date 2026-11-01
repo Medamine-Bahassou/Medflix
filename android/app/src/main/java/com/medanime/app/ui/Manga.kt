@@ -1,5 +1,17 @@
 package com.medanime.app.ui
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.last
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -17,6 +29,21 @@ data class MChapter(val id: String, val n: String, val prev: String?, val next: 
 // chapters newest first, one per number; ids: the series' ids on both sites; alts: a number's copies when there are several (the reader's source picker)
 class MFull(val s: MSeries, val chs: List<Ch>, val ids: List<String>, val alts: Map<String, List<Ch>> = emptyMap())
 
+// Publish each completed source immediately; a slow/challenged source cannot hold back usable results.
+internal fun <T> mangaProgressive(tasks: List<suspend () -> T>): Flow<List<T?>> = channelFlow {
+    val values = MutableList<T?>(tasks.size) { null }
+    val lock = Mutex()
+    var failure: Exception? = null
+    tasks.mapIndexed { i, task -> launch {
+        try {
+            val result = task()
+            lock.withLock { values[i] = result; send(values.toList()) }
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) { lock.withLock { failure = e } }
+    } }.joinAll()
+    if (values.all { it == null }) throw failure ?: java.io.IOException("No manga sources available")
+}
+
 object Manga {
     private const val API = "https://appswat.com/v2/api/v2/"
     // Olympus Staff: plain pages (no API), read with Jsoup. Its ids carry "o:": series o:<slug>, chapter o:<slug>:<number>
@@ -24,7 +51,7 @@ object Manga {
     private fun q(params: Map<String, Any>) = if (params.isEmpty()) "" else "?" + params.entries.joinToString("&") { "${it.key}=${URLEncoder.encode(it.value.toString(), "UTF-8")}" }
     fun mUrl(path: String, params: Map<String, Any> = emptyMap()) = API + path + q(params)
     private suspend fun json(url: String, force: Boolean = false) = JSONObject(Pages.load(url, force))
-    private suspend fun doc(url: String, force: Boolean = false) = Jsoup.parse(Pages.load(url, force), url)
+    private suspend fun doc(url: String, force: Boolean = false, interactive: Boolean = true) = Jsoup.parse(Pages.load(url, force, interactive = interactive), url)
 
     // the API's fixed ids, with labels
     val TYPES = listOf(Triple("131", "مانهوا", "Manhwa"), Triple("132", "مانها", "Manhua"), Triple("133", "مانجا", "Manga"), Triple("134", "كوميك", "Comic"))
@@ -62,33 +89,33 @@ object Manga {
     class Page(val items: List<Card>, val count: Int)
     suspend fun list(params: Map<String, Any>, force: Boolean = false) = json(mUrl("series/", params), force).let { j -> Page(j.getJSONArray("results").objs().map(::mCard), j.optInt("count")) }
     // its listing (type) or its search (keyword): a page of cards, and how many pages there are
-    private suspend fun oList(p: Map<String, Any>, page: Int, force: Boolean = false): Pair<List<Card>, Int> {
+    private suspend fun oList(p: Map<String, Any>, page: Int, force: Boolean = false, interactive: Boolean = true): Pair<List<Card>, Int> {
         val base = OLY + if (p["keyword"] != null) "search" else "series"
-        val d = doc(base + q(p + mapOf("page" to page)), force)
+        val d = doc(base + q(p + mapOf("page" to page)), force, interactive)
         return oCards(d) to lastPage(d, base)
     }
 
     // latest chapters feeds: one card per series, opening that chapter
-    suspend fun latest(force: Boolean = false): List<Card> = coroutineScope {
-        val swat = async {
+    private suspend fun primaryLatest(force: Boolean): List<Card> {
             val seen = HashSet<String>()
-            json(mUrl("chapters/", mapOf("page_size" to 60, "order_by" to "-created_at")), force).getJSONArray("results").objs()
+            return json(mUrl("chapters/", mapOf("page_size" to 60, "order_by" to "-created_at")), force).getJSONArray("results").objs()
                 .filter { it.optJSONObject("serie") != null && seen.add(it.getJSONObject("serie").get("id").toString()) }
                 .map { mCard(it.getJSONObject("serie")).copy(badge = "${t("chShort")} ${chNum(it.opt("chapter"))}", open = Screen.MangaRead(it.get("id").toString())) }
-        }
-        val oly = async {
-            runCatching { // Olympus down: just MangaSwat's. Its home page's updates: a series each, its newest free chapter first
-                doc(OLY, force).select(".uta").mapNotNull { b ->
+    }
+    private suspend fun olympusLatest(force: Boolean): List<Card> =
+                doc(OLY, force, interactive = false).select(".uta").mapNotNull { b ->
                     val slug = b.selectFirst(".imgu a[href]")?.attr("href")?.substringAfter("/series/", "")?.takeIf { it.isNotEmpty() && '/' !in it } ?: return@mapNotNull null
                     // a paid chapter has no link (a "buy" box instead): the first that has one
                     val n = b.select("li a[href^=${OLY}series/$slug/]").firstOrNull()?.attr("href")?.substringAfterLast('/') ?: return@mapNotNull null
                     oCard(slug, b.selectFirst(".info h3")?.text() ?: "", b.selectFirst(".imgu img")?.attr("src") ?: "", "")
                         .copy(badge = "${t("chShort")} ${chNum(n)}", open = Screen.MangaRead("o:$slug:$n"))
                 }
-            }.getOrDefault(emptyList())
-        }
-        merge(listOf(swat.await(), oly.await()))
+    fun latestFlow(force: Boolean = false): Flow<List<Card>> {
+        val tasks = listOf<suspend () -> List<Card>>({ primaryLatest(force) }, { olympusLatest(force) }) +
+            Slayer.sources.keys.map { key -> suspend { Slayer.list(key, emptyMap(), 1, force).items } }
+        return mangaProgressive(tasks).map { merge(it) }
     }
+    suspend fun latest(force: Boolean = false) = latestFlow(force).last()
     // Olympus's list can't sort by views or by date: these are MangaSwat's
     suspend fun popular(force: Boolean = false) = list(mapOf("order_by" to "-views_count", "page_size" to 30), force).items
     suspend fun fresh(force: Boolean = false) = list(mapOf("order_by" to "-created_at", "page_size" to 30), force).items
@@ -109,10 +136,10 @@ object Manga {
         rating(j.optDouble("rating", 0.0)), j.optLong("views_count"))
     suspend fun seriesOf(id: String, force: Boolean = false) = series(json(mUrl("series/$id/"), force))
     // a series' page: its details, and its chapters (about 40 a page, ?page=N), every page. A paid chapter has no link: left out
-    private suspend fun oSeries(slug: String, force: Boolean = false): MSeries = coroutineScope {
+    private suspend fun oSeries(slug: String, force: Boolean = false, interactive: Boolean = true): MSeries = coroutineScope {
         val url = OLY + "series/" + slug
-        val d = doc(url, force)
-        val rest = (2..lastPage(d, url)).map { n -> async { runCatching { doc("$url?page=$n", force) }.getOrNull() } }.awaitAll()
+        val d = doc(url, force, interactive)
+        val rest = (2..lastPage(d, url)).map { n -> async { runCatching { doc("$url?page=$n", force, interactive) }.getOrNull() } }.awaitAll()
         val chs = (listOf(d) + rest.filterNotNull()).flatMap { p -> p.select(".chapter-card a.chapter-link[href^=$url/]").map { it.attr("href").substringAfterLast('/') } }
             .distinct().map { Ch("o:$slug:$it", chNum(it)) }
         val info = { label: String -> d.select(".full-list-info").find { label in it.text() }?.select("a")?.text() ?: "" }
@@ -142,8 +169,8 @@ object Manga {
     private suspend fun oTwin(s: MSeries, force: Boolean): MSeries? {
         val k = keys(listOf(s.title) + s.alt.split(Regex("[|,،]")))
         if (k.isEmpty()) return null
-        val hit = runCatching { oList(mapOf("keyword" to s.title), 1).first }.getOrNull()?.find { c -> keys(c.names).any { it in k } } ?: return null
-        return runCatching { oSeries(hit.path.substringAfterLast("/o:"), force) }.getOrNull()
+        val hit = runCatching { oList(mapOf("keyword" to s.title), 1, force, interactive = false).first }.getOrNull()?.find { c -> keys(c.names).any { it in k } } ?: return null
+        return runCatching { oSeries(hit.path.substringAfterLast("/o:"), force, interactive = false) }.getOrNull()
     }
     // MangaSwat's search only finds its own title, which may be one of the other site's names: each Latin name in turn
     private suspend fun swatTwin(m: MSeries): String? {
@@ -155,7 +182,36 @@ object Manga {
         return null
     }
     /** a series as shown: MangaSwat's (plus its Olympus twin's extra chapters), or Olympus's alone */
+    fun fullFlow(id: String, force: Boolean = false): Flow<MFull> = flow {
+        val base = when {
+            id.startsWith("s:") -> Slayer.series(id, force).let { merged(it, it.chapters, listOf(it.id)) }
+            id.startsWith("o:") -> oSeries(id.drop(2), force).let { merged(it, it.chapters, listOf(it.id)) }
+            id.all(Char::isDigit) -> coroutineScope {
+                val s = async { seriesOf(id, force) }; val chs = async { chapters(id, force) }
+                merged(s.await(), chs.await(), listOf(id))
+            }
+            else -> full(id, force) // migration of saved IDs
+        }
+        emit(base)
+        if (id.all(Char::isDigit)) {
+            mangaProgressive(listOf<suspend () -> List<MSeries>>(
+                { listOfNotNull(oTwin(base.s, force)) }, { Slayer.twins(base.s, force) }
+            )).catch { /* optional sources failed: the selected source is already visible */ }.collect { sources ->
+                val extra = sources.filterNotNull().flatten()
+                emit(merged(base.s, base.chs + extra.flatMap { it.chapters }, base.ids + extra.map { it.id }))
+            }
+        } else if (id.startsWith("s:") || id.startsWith("o:")) {
+            try { swatTwin(base.s)?.let { sw -> fullFlow(sw, force).collect { emit(it) } } }
+            catch (e: CancellationException) { throw e } catch (_: Exception) { /* keep the selected source */ }
+        }
+    }
+
     suspend fun full(id: String, force: Boolean = false): MFull {
+        if (id.startsWith("s:")) {
+            val s = Slayer.series(id, force)
+            val f = swatTwin(s)?.let { runCatching { full(it, force) }.getOrNull() }
+            return if (f != null) MFull(f.s, f.chs, (f.ids + s.id).distinct(), f.alts) else merged(s, s.chapters, listOf(s.id))
+        }
         if (id.matches(Regex("t\\d+"))) { // a series saved under a removed source's id: found again by its title
             val title = listOf("manga" to id, "list" to "/manga/series/$id", "notify" to "/manga/series/$id", "autoDl" to "/manga/series/$id")
                 .firstNotNullOfOrNull { (k, key) -> Store[k].optJSONObject(key)?.optString("title")?.takeIf { it.isNotEmpty() } }
@@ -170,12 +226,16 @@ object Manga {
             return if (f != null) MFull(f.s, f.chs, f.ids + m.id, f.alts) else merged(m, m.chapters, listOf(m.id))
         }
         val (s, chs) = coroutineScope { val a = async { seriesOf(id, force) }; val b = async { chapters(id, force) }; a.await() to b.await() }
-        val tw = oTwin(s, force) ?: return merged(s, chs, listOf(s.id))
-        return merged(s, chs + tw.chapters, listOf(s.id, tw.id)) // Olympus fills the numbers MangaSwat lacks, and is an alternative for the rest
+        val extra = Slayer.twins(s, force)
+        val all = chs + extra.flatMap { it.chapters }
+        val ids = listOf(s.id) + extra.map { it.id }
+        val tw = oTwin(s, force) ?: return merged(s, all, ids)
+        return merged(s, all + tw.chapters, ids + tw.id) // Olympus fills the numbers MangaSwat lacks, and is an alternative for the rest
     }
 
     /** one chapter from either site */
     suspend fun chapter(cid: String): MChapter {
+        if (cid.startsWith("s:")) return Slayer.chapter(cid)
         if (cid.startsWith("o:")) { // its page lists the page images; prev / next come from the series' merged list (the reader's)
             val slug = cid.drop(2).substringBefore(':'); val n = cid.substringAfterLast(':')
             val d = doc(OLY + "series/$slug/$n")
@@ -203,13 +263,29 @@ object Manga {
         val name = TYPES.find { it.first == type }?.third ?: return null
         return O_TYPES.entries.find { it.value == name }?.let { mapOf("type" to it.key) }
     }
+    fun browseFlow(p: Map<String, String>, page: Int, seen: MutableSet<String>, force: Boolean = false): Flow<Listing> {
+        val prior = seen.toSet()
+        val tasks = mutableListOf<suspend () -> Listing>({
+            val a = list(p + mapOf("page" to page, "page_size" to 30), force)
+            Listing(a.items, maxOf(1, (a.count + 29) / 30))
+        })
+        oQuery(p)?.let { oq -> tasks += { val a = oList(oq, page, force, interactive = false); Listing(a.first, a.second) } }
+        if (Slayer.supports(p)) Slayer.sources.keys.forEach { key -> tasks += { Slayer.list(key, p, page, force) } }
+        return mangaProgressive(tasks).map { results ->
+            val local = prior.toMutableSet()
+            val items = merge(results.map { it?.items }, local)
+            seen.addAll(local)
+            Listing(items, results.filterNotNull().maxOfOrNull { it.pages } ?: 1)
+        }
+    }
     suspend fun browse(p: Map<String, String>, page: Int, seen: MutableSet<String>, force: Boolean = false): Listing = coroutineScope {
         val per = 30
         val oq = oQuery(p)
         val d = async { runCatching { list(p + mapOf("page" to page, "page_size" to per), force) }.getOrElse { if (page == 1 && oq == null) throw it else null } }
         val o = async { oq?.let { runCatching { oList(it, page, force) }.getOrNull() } }
-        val a = d.await(); val b = o.await()
-        if (a == null && b == null) throw java.io.IOException(t("unreachable"))
-        Listing(merge(listOf(a?.items, b?.first), seen), maxOf(1, ((a?.count ?: 0) + per - 1) / per, b?.second ?: 0))
+        val extra = async { Slayer.lists(p, page, force) }
+        val a = d.await(); val b = o.await(); val c = extra.await()
+        if (a == null && b == null && c.isEmpty()) throw java.io.IOException(t("unreachable"))
+        Listing(merge(listOf(a?.items, b?.first) + c.map { it.items }, seen), maxOf(1, ((a?.count ?: 0) + per - 1) / per, b?.second ?: 0, c.maxOfOrNull { it.pages } ?: 0))
     }
 }

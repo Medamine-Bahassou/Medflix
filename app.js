@@ -350,7 +350,7 @@ function card(c, i = 0) {
   cardData.set(id, { ...c, path: show, type: c.type === 'episode' ? (show.startsWith('/movie') ? 'movie' : 'anime') : c.type, href: c.href || (c.type === 'episode' ? playHash(c.path) : /^\/(manga|cinema|airing)\//.test(c.path) ? '#' + c.path : '#/title' + c.path) });
   const h = store.history[show];
   return `<div class="card" data-id="${id}" style="--i:${i % 12}">
-    <div class="img"><img src="${esc(img(c.poster))}" loading="lazy" alt="" draggable="false"></div>
+    <div class="img" data-ph="${esc(c.title)}"><img src="${esc(img(c.poster))}" loading="lazy" alt="" draggable="false"></div>
     ${c.badge ? `<span class="badge">${esc(c.badge.replace(/\bEP\b|الحلقة/, t('ep')))}</span>` : ''}
     ${c.rm ? `<button class="fav rm" title="${t('remove')}" aria-label="${t('remove')}">${ICON.x}</button>`
       : show.startsWith('/airing/') ? '' // a schedule card: not a show page yet (found on witanime when opened), so nothing to list
@@ -714,6 +714,8 @@ async function airing(route) {
 
 // loading placeholders: n cards (their image box already shimmers, see .card .img), and rows of them
 const skel = n => Array.from({ length: n }, (_, i) => `<div class="card skel" style="--i:${i}"><div class="img"></div><div class="meta"><span class="bar"></span></div></div>`).join('');
+// after a server menu's rows while more are still being looked up (play, cinema.js)
+const ddSkel = () => `<div class="dd-skel" role="status" aria-label="${t('searchingServers')}"><span></span><span></span></div>`;
 const skelRows = n => Array.from({ length: n }, () => `<section class="row"><h3><span class="bar"></span></h3><div class="track">${skel(8)}</div></section>`).join('');
 
 // ---------- search: what the user meant ----------
@@ -1419,7 +1421,7 @@ async function play(epPath) {
   else try { servers = await fresh; } catch (e) { console.error(e); limited = /rate-limited/.test(e.message); why = noNames(e.message); }
   if (!here()) return; // navigated away meanwhile
   const srv = $('#srv');
-  let cur = null, busy = false, dead = !servers.length;
+  let cur = null, busy = false, dead = !servers.length, more = true; // more: witanime's or the backups' answer still coming
   // animerco puts the quality in the label ("dood FHD"); split it out so both sites look the same
   const parts = s => { const [host, ...q] = (s.label || t('server')).split(' '); return { host, q: s.quality || q.join(' ') }; };
   const item = (s, i) => { const { host, q } = parts(s); return `<button class="dd-item ${s === cur ? 'on' : ''}" data-i="${i}"><span class="host">${esc(host)}</span>${q ? `<span class="q" data-q="${esc(q)}">${esc(q)}</span>` : ''}${CHECK}</button>`; };
@@ -1432,9 +1434,10 @@ async function play(epPath) {
     srv.className = 'dd ' + (busy ? 'busy' : cur ? 'live' : 'idle') + (srv.classList.contains('open') ? ' open' : '');
     showPlayBar(!busy && !!cur);
     srv.querySelector('.lbl').innerHTML = cur ? `${esc(host)}${q ? `<small>${esc(q)}</small>` : ''}` : servers.length ? t('chooseServer') : t('searchingServers');
-    srv.querySelector('.dd-menu').innerHTML = group(t('mainServers'), false) + group(t('backupServers'), true) || `<div class="dd-group">${t('searching')}</div>`;
+    srv.querySelector('.dd-menu').innerHTML = group(t('mainServers'), false) + group(t('backupServers'), true) + (more ? ddSkel() : '') || `<div class="dd-group">${t('noServers')}</div>`;
   };
   draw();
+  Promise.allSettled([fresh, backup]).then(() => { more = false; if (here()) draw(); });
   // try the chosen server, falling through to the next ones (animerco's included) until one resolves
   let seq = 0;
   const tryFrom = async (i, n = 0, my = ++seq) => {

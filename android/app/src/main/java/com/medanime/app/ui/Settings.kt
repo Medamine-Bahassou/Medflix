@@ -43,6 +43,22 @@ fun requestStorage() {
     }.onFailure { act.startActivity(Intent(AndroidSettings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) } // some phones only have the list of all apps
 }
 
+/** one kind of thing kept only to be quicker: safe to clear, it comes back when needed */
+private class CachePart(val title: String, val size: Long, val color: Color, val clear: suspend () -> Unit)
+private suspend fun <T> io(what: () -> T) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { what() }
+// counts folders' files: off the main thread
+private fun cacheParts() = listOf(
+    CachePart(t("cachePages"), Pages.size(), SLICES[0]) { io { Pages.clear() } },
+    CachePart(t("cacheImages"), coil3.SingletonImageLoader.get(Net.app).diskCache?.size ?: 0L, SLICES[1]) { io { coil3.SingletonImageLoader.get(Net.app).run { diskCache?.clear(); memoryCache?.clear() } } },
+    // the hosts' pages and scripts, in the app's cache folder; the update APKs are next to them, on their own row
+    CachePart(t("cachePlayer"), Net.app.cacheDir.walkTopDown().filter { it.isFile && !it.name.startsWith("update") }.sumOf { it.length() }, SLICES[2]) {
+        // only the WebView can empty its own files, on the main thread; cookies stay, so Cloudflare's checks aren't asked again
+        runCatching { android.webkit.WebView(Net.activity).run { clearCache(true); destroy() } }
+        kotlinx.coroutines.delay(500) // it clears behind the call: the size read next would still count them
+    },
+    CachePart(t("cacheUpdates"), Updater.savedSize(), SLICES[3]) { io { Updater.clearSaved() } },
+)
+
 /** a group of settings: its heading, a line on it, then its rows on one rounded card (Material 3's settings lists) */
 @Composable
 private fun Group(title: String?, hint: String? = null, content: @Composable ColumnScope.() -> Unit) =
@@ -86,7 +102,7 @@ fun SettingsScreen(part: String, nav: Nav) {
     Store.version.intValue
     val scope = rememberCoroutineScope()
     Column(Modifier.fillMaxSize()) {
-        PageTitle(t(when (part) { "dock" -> "dockTitle"; "storage" -> "storage"; "notify" -> "notifyTitle"; else -> "settings" }), nav, back = part.isNotEmpty()) // the menu page is a section's own: ☰; its pages go back to it
+        PageTitle(t(when (part) { "dock" -> "dockTitle"; "storage" -> "storage"; "cache" -> "cacheTitle"; "notify" -> "notifyTitle"; else -> "settings" }), nav, back = part.isNotEmpty()) // the menu page is a section's own: ☰; its pages go back to it
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
         val dock = Store.dock()
         val n = Store["notify"]
@@ -95,6 +111,8 @@ fun SettingsScreen(part: String, nav: Nav) {
                 Group(null) {
                     Part(Ic.home, t("dockTitle"), "\u2066${dock.size}/4\u2069") { nav.go(Screen.Settings("dock")) }
                     Part(Ic.folder, t("storage"), "", if (Store.granted()) Red else Muted) { nav.go(Screen.Settings("storage")) }
+                    val cache by produceState<Long?>(null) { value = io { cacheParts().sumOf { it.size } } }
+                    Part(Ic.pie, t("cacheTitle"), cache?.let(::mb).orEmpty()) { nav.go(Screen.Settings("cache")) }
                     Part(Ic.eyeSlash, t("hiddenTitle"), "\u2066${Store["hidden"].length()}\u2069") { nav.go(Screen.Hidden) }
                     Part(Ic.bell, t("notifyTitle"), "\u2066${n.keys().asSequence().count { it != "movies" }}\u2069") { nav.go(Screen.Settings("notify")) }
                 }
@@ -155,16 +173,37 @@ fun SettingsScreen(part: String, nav: Nav) {
                         if (!on) Button(::requestStorage, colors = ButtonDefaults.buttonColors(Red)) { Text(t("storageAllow")) }
                     }
                 }
-                // what's kept to open pages and posters instantly and offline: its size, and a way to free it
-                var sizes by remember { mutableStateOf<Pair<Long, Long>?>(null) }
-                LaunchedEffect(sizes == null) { if (sizes == null) sizes = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { Pages.size() to (coil3.SingletonImageLoader.get(Net.app).diskCache?.size ?: 0L) } }
-                val clear = { what: () -> Unit -> scope.launch { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { what() }; sizes = null; toast(t("cacheCleared")) } }
+            }
+            "cache" -> {
+                // what's kept to open pages and posters instantly and offline: how much of each, and a way to free any of it
+                var parts by remember { mutableStateOf<List<CachePart>?>(null) }
+                LaunchedEffect(parts == null) { if (parts == null) parts = io { cacheParts() } }
+                val clear = { what: List<CachePart> -> scope.launch { what.forEach { it.clear() }; parts = null; toast(t("cacheCleared")) } }
+                var askAll by remember { mutableStateOf(false) }
+                val total = parts?.sumOf { it.size } ?: 0L
                 Group(t("cacheTitle"), t("cacheHint")) {
-                    Item(Ic.pie, t("cachePages"), sizes?.let { mb(it.first) }) { TextButton({ clear(Pages::clear) }) { Text(t("clear"), color = Red) } }
-                    Item(Ic.pie, t("cacheImages"), sizes?.let { mb(it.second) }) {
-                        TextButton({ clear { coil3.SingletonImageLoader.get(Net.app).run { diskCache?.clear(); memoryCache?.clear() } } }) { Text(t("clear"), color = Red) }
+                    Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                        Text(if (parts != null) mb(total) else "…", fontWeight = FontWeight.Bold, fontSize = 22.sp)
+                        Text(t("cacheTotal"), color = Muted, fontSize = 12.sp)
+                        // the same colours as the rows' icons: the chart alone never carries a figure
+                        if (total > 0) Row(Modifier.padding(top = 10.dp).fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)).background(Color(0xFF242424))) {
+                            parts.orEmpty().filter { it.size > 0 }.forEach { Box(Modifier.weight(it.size.toFloat()).fillMaxHeight().background(it.color)) }
+                        }
+                    }
+                    parts.orEmpty().forEach { p ->
+                        Item(Ic.pie, p.title, "${mb(p.size)} · ⁦${if (total > 0) p.size * 100 / total else 0}%⁩", p.color) {
+                            TextButton({ clear(listOf(p)) }, enabled = p.size > 0) { Text(t("clear"), color = if (p.size > 0) Red else Muted) }
+                        }
                     }
                 }
+                if (total > 0) Button({ askAll = true }, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), colors = ButtonDefaults.buttonColors(Red)) {
+                    Icon(Ic.trash, null, Modifier.size(16.dp)); Spacer(Modifier.width(6.dp)); Text(t("cacheAll"))
+                }
+                if (askAll) AlertDialog({ askAll = false }, { TextButton({ askAll = false; clear(parts.orEmpty()) }) { Text(t("clear"), color = Red) } }, dismissButton = { TextButton({ askAll = false }) { Text(t("cancel"), color = Color.White) } },
+                    title = { Text(t("cacheAllAsk"), fontSize = 17.sp) }, text = { Text(t("cacheAllHint")) }, containerColor = CardC)
+                // not cache (clearing would lose them for good): how much, and where to choose which go
+                val downloads = com.medanime.app.Downloads.all().let { o -> o.keys().asSequence().mapNotNull { o.optJSONObject(it) }.filter { it.optString("state") == "done" }.sumOf(com.medanime.app.Downloads::size) }
+                Group(null, t("cacheDlHint")) { Part(Ic.downloads, t("downloads"), mb(downloads)) { nav.go(Screen.Downloads()) } }
             }
             "notify" -> {
                 Group(null, t("notifyHint")) { // the new films switch, then each followed title (✕ stops it)

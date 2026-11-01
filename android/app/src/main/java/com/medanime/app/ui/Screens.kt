@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -35,7 +36,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -59,7 +59,7 @@ fun HomeScreen(nav: Nav) {
         coroutineScope {
             val a = async { runCatching { Witanime.home(f).first() }.getOrNull() }
             val hot = async { runCatching { Manga.hot(f) }.getOrNull() }
-            val latest = async { runCatching { Manga.latest(f) }.getOrNull() }
+            val latest = async { runCatching { Manga.latestFlow(f).first() }.getOrNull() }
             val films = async { runCatching { Cinema.list("all", 1, f).items }.getOrNull() }
             val m = async { mangaSlides(mangaTop(hot.await()?.take(3) ?: emptyList())) }
             if (a.await() == null && hot.await() == null && films.await() == null) throw java.io.IOException(t("unreachable"))
@@ -132,7 +132,7 @@ fun ScheduleScreen(nav: Nav) = Column {
                     if (hits.isEmpty()) item { Empty(t("schedNone"), t("schedNoneHint")) }
                     items(hits, { it.route }) { s ->
                         Row(Modifier.fillMaxWidth().clickable { nav.go(Screen.Search(s.title, "anime")) }.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            AsyncImage(s.poster, null, Modifier.width(48.dp).aspectRatio(2 / 3f).clip(RoundedCornerShape(4.dp)), contentScale = ContentScale.Crop)
+                            NetImage(s.poster, Modifier.width(48.dp).aspectRatio(2 / 3f).clip(RoundedCornerShape(4.dp)))
                             Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                                 Text(s.title, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 Text("${dayName(s.at)} · ${time(s)}", color = Muted, fontSize = 12.sp)
@@ -302,23 +302,143 @@ fun MyListScreen(nav: Nav) {
     val all = listed()
     val nh = Store["hidden"].length()
     var q by rememberSaveable { mutableStateOf("") }
-    var kind by rememberSaveable { mutableStateOf("") }
+    var kind by rememberSaveable { mutableStateOf("") } // the chip picked: a kind, or a category's id
     // a kind by the saved type: "movie" is an anime film, so it stays with anime
     val kindOf = { c: Card -> when (c.type) { "manga" -> "manga"; "cinema" -> "cinema"; else -> "anime" } }
-    val items = all.filter { (kind.isEmpty() || kindOf(it) == kind) && it.title.contains(q.trim(), ignoreCase = true) }
+    // only the kinds the list holds, and none when it holds one
+    val kinds = listOf("anime", "cinema", "manga").filter { k -> all.any { kindOf(it) == k } }.takeIf { it.size > 1 }.orEmpty()
+    val cats = Store.cats.all()
+    val cat = cats.find { it.id == kind }
+    val on = if (cat != null || kind in kinds) kind else "" // its category deleted, or the last title of its kind gone: back to all
+    val items = all.filter { (on.isEmpty() || (if (cat != null) it.showPath in cat.items else kindOf(it) == on)) && it.title.contains(q.trim(), ignoreCase = true) }
+    var naming by remember { mutableStateOf(false) }
+    var menu by remember { mutableStateOf<String?>(null) } // a category's id: its sheet
+    var titles by remember { mutableStateOf<String?>(null) } // ...the titles picked for it
+    var renaming by remember { mutableStateOf<String?>(null) }
+    var deleting by remember { mutableStateOf<String?>(null) }
     Column {
         if (all.isEmpty()) { PageTitle(t("myList"), nav, back = false); return@Column Empty(t("listEmpty"), t("listHint")) }
         SearchTitle(t("myList"), nav, q, { q = it }, t("listSearchPh"), back = false)
-        // only the kinds the list holds, and none when it holds one
-        val kinds = listOf("anime", "cinema", "manga").filter { k -> all.any { kindOf(it) == k } }
-        if (kinds.size > 1) Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            (listOf("") + kinds).forEach { k -> FilterChip(kind == k, { kind = k }, { Text(t(k.ifEmpty { "all" })) }) }
+        Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            (listOf("") + kinds).forEach { k -> FilterChip(on == k, { kind = k }, { Text(t(k.ifEmpty { "all" })) }) }
+            cats.forEach { c -> CatChip(c, on == c.id, { if (on == c.id) menu = c.id else kind = c.id }, { menu = c.id }) }
+            AssistChip({ naming = true }, { Text(t("catNew")) }, leadingIcon = { Icon(Ic.plus, null, Modifier.size(16.dp)) })
         }
-        if (items.isEmpty()) return@Column Empty(t("nothing"), "")
+        // made: it opens, its titles to pick at once, rather than an empty page to work out
+        if (naming) CatNameDialog(t("catNew"), "", null, { naming = false }) { name -> Store.cats.add(name)?.let { kind = it; titles = it; Store.persist("listCats") } }
+        cats.find { it.id == menu }?.let { c -> CatMenu(c, { menu = null }, { titles = c.id }, { renaming = c.id }, { deleting = c.id }) }
+        cats.find { it.id == titles }?.let { c -> CatTitles(c, all) { titles = null } }
+        cats.find { it.id == renaming }?.let { c -> CatNameDialog(t("catRename"), c.name, c.id, { renaming = null }) { name -> if (Store.cats.rename(c.id, name)) Store.persist("listCats") } }
+        cats.find { it.id == deleting }?.let { c ->
+            AlertDialog({ deleting = null }, { TextButton({ Store.cats.delete(c.id); Store.persist("listCats"); deleting = null }) { Text(t("del"), color = Red) } }, dismissButton = { TextButton({ deleting = null }) { Text(t("cancel"), color = Color.White) } },
+                title = { Text(t("catDelAsk", c.name), fontSize = 17.sp) }, text = { Text(t("catDelHint")) }, containerColor = CardC)
+        }
+        if (items.isEmpty()) return@Column if (cat != null && q.isBlank()) Empty(t("catEmpty"), t("catEmptyHint")) { Button({ titles = cat.id }, colors = ButtonDefaults.buttonColors(Red)) { Text(t("catAddTitles")) } } else Empty(t("nothing"), "")
         CardsGrid(items, nav) {
             if (nh > 0) TextButton({ nav.go(Screen.Hidden) }) { Icon(Ic.eyeSlash, null, Modifier.size(16.dp), tint = Muted); Spacer(Modifier.width(6.dp)); Text(t("openHidden", nh), color = Muted, fontSize = 13.sp) }
         }
     }
+}
+
+/** a category's chip: tap to filter by it; tapped again (its caret says so) or long-pressed, its sheet */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun CatChip(c: ListCats.Cat, on: Boolean, click: () -> Unit, long: () -> Unit) = Box {
+    FilterChip(on, click, { Text("${c.name}  \u2066${c.items.size}\u2069", Modifier.widthIn(max = 160.dp), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        trailingIcon = if (on) { { Icon(Ic.caretDown, null, Modifier.size(14.dp)) } } else null)
+    // a chip can't be long-pressed: this takes the touches, the chip below keeps its look and what a screen reader finds
+    Box(Modifier.matchParentSize().combinedClickable(interactionSource = null, indication = null, onLongClick = long, onClick = click))
+}
+
+@Composable
+private fun SheetRow(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, color: Color = Color.White, go: () -> Unit) =
+    Row(Modifier.fillMaxWidth().clickable(onClick = go).padding(horizontal = 24.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, Modifier.size(22.dp), tint = color); Text(label, Modifier.padding(start = 16.dp), color = color, fontSize = 16.sp)
+    }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CatMenu(c: ListCats.Cat, done: () -> Unit, titles: () -> Unit, rename: () -> Unit, delete: () -> Unit) = ModalBottomSheet(done, containerColor = CardC) {
+    Text(c.name, Modifier.padding(horizontal = 24.dp, vertical = 8.dp), fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    SheetRow(Ic.check, t("catTitles")) { done(); titles() }
+    SheetRow(Ic.pencil, t("catRename")) { done(); rename() }
+    SheetRow(Ic.trash, t("catDelete"), Red) { done(); delete() }
+    Spacer(Modifier.navigationBarsPadding().height(16.dp))
+}
+
+/** a category's titles, picked from the whole list: each tap is saved at once, so there's nothing to confirm */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CatTitles(c: ListCats.Cat, all: List<Card>, done: () -> Unit) = ModalBottomSheet(done, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = CardC) {
+    Text(c.name, Modifier.padding(horizontal = 24.dp, vertical = 8.dp), fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    var q by remember { mutableStateOf("") }
+    val focus = androidx.compose.ui.platform.LocalFocusManager.current
+    TextField(q, { q = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), placeholder = { Text(t("listSearchPh"), maxLines = 1) }, singleLine = true,
+        leadingIcon = { Icon(Ic.search, null, Modifier.size(20.dp)) }, trailingIcon = { if (q.isNotEmpty()) IconButton({ q = "" }) { Icon(Ic.x, t("clear"), Modifier.size(18.dp)) } },
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { focus.clearFocus() }), shape = RoundedCornerShape(6.dp),
+        colors = TextFieldDefaults.colors(focusedContainerColor = Color(0xFF242424), unfocusedContainerColor = Color(0xFF242424), focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, cursorColor = Red))
+    // as the schedule's search: its words in any order, accents aside
+    val words = fold(q).split(' ').filter { it.isNotBlank() }
+    val found = all.filter { card -> fold(card.title).let { f -> words.all { it in f } } }
+    if (found.isEmpty()) Text(t("nothing"), Modifier.fillMaxWidth().padding(32.dp), color = Muted, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+    // the sheet's full height: it doesn't jump with each letter as the matches shrink. imePadding: the last rows can still scroll above the keyboard
+    LazyColumn(Modifier.fillMaxHeight().imePadding(), contentPadding = PaddingValues(bottom = 24.dp)) {
+        items(found, { it.showPath }) { card ->
+            val on = card.showPath in c.items
+            Row(Modifier.fillMaxWidth().clickable { Store.cats.set(c.id, card.showPath, !on); Store.persist("listCats") }.padding(horizontal = 24.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                NetImage(card.poster, Modifier.width(40.dp).aspectRatio(2 / 3f).clip(RoundedCornerShape(4.dp)), icon = iconOf(card.showPath))
+                Text(card.title, Modifier.weight(1f).padding(horizontal = 14.dp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Checkbox(on, null, colors = CheckboxDefaults.colors(checkedColor = Red))
+            }
+        }
+    }
+}
+
+/** a card's categories, from its long-press or for several picked: adding one lists it too, a category holds what's in My List */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CatSheet(cards: List<Card>, done: () -> Unit) {
+    Store.version.intValue
+    var naming by remember { mutableStateOf(false) }
+    val put = { id: String, on: Boolean ->
+        if (on) cards.filter { !Store.inList(it.showPath) }.forEach { Store.toggleList(it.showPath, it.title, it.poster, listType(it)); if (cards.size == 1) toast(t("added", it.title)) }
+        cards.forEach { Store.cats.set(id, it.showPath, on) }
+        Store.persist("listCats")
+    }
+    if (naming) CatNameDialog(t("catNew"), "", null, { naming = false }) { name -> Store.cats.add(name)?.let { put(it, true) } }
+    ModalBottomSheet(done, containerColor = CardC) {
+        Text(cards.singleOrNull()?.title ?: t("selectedN", cards.size), Modifier.padding(horizontal = 24.dp, vertical = 8.dp), fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+            Store.cats.all().forEach { c ->
+                val n = cards.count { it.showPath in c.items } // of several, some in it: the dash, and a tap puts them all in
+                Row(Modifier.fillMaxWidth().clickable { put(c.id, n < cards.size) }.padding(horizontal = 24.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(c.name, Modifier.weight(1f), fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    TriStateCheckbox(if (n == 0) androidx.compose.ui.state.ToggleableState.Off else if (n == cards.size) androidx.compose.ui.state.ToggleableState.On else androidx.compose.ui.state.ToggleableState.Indeterminate, null, colors = CheckboxDefaults.colors(checkedColor = Red))
+                }
+            }
+            SheetRow(Ic.plus, t("catNew")) { naming = true }
+        }
+        Spacer(Modifier.navigationBarsPadding().height(16.dp))
+    }
+}
+
+/** a category's name: the keyboard already up, and a name taken said as it's typed rather than after */
+@Composable
+private fun CatNameDialog(title: String, start: String, id: String?, done: () -> Unit, save: (String) -> Unit) {
+    var v by remember { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(start, androidx.compose.ui.text.TextRange(start.length))) }
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focus.requestFocus() }
+    val taken = Store.cats.taken(v.text, id)
+    val ok = v.text.isNotBlank() && !taken
+    val go = { save(v.text); done() }
+    AlertDialog(done, { TextButton(go, enabled = ok) { Text(t("save"), color = if (ok) Red else Muted) } }, dismissButton = { TextButton(done) { Text(t("cancel"), color = Color.White) } },
+        title = { Text(title, fontSize = 17.sp) }, containerColor = CardC, text = {
+            OutlinedTextField(v, { if (it.text.length <= 30) v = it }, Modifier.fillMaxWidth().focusRequester(focus), label = { Text(t("catName")) }, singleLine = true, isError = taken,
+                supportingText = { if (taken) Text(t("catTaken")) },
+                keyboardOptions = KeyboardOptions(capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences, imeAction = ImeAction.Done),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { if (ok) go() }),
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color.White, focusedLabelColor = Color.White, cursorColor = Red))
+        })
 }
 
 // ---------- the details page shared by anime, manga and films (app.js det-hero) ----------
@@ -333,7 +453,7 @@ class Numbered(val label: String, val seen: Boolean, val last: Boolean, val open
  */
 @OptIn(ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun DetailPage(banner: String, poster: String, title: String, alt: String, chips: List<Pair<String, Boolean>>, desc: String,
+fun DetailPage(banner: String, poster: String, title: String, alt: String, icon: androidx.compose.ui.graphics.vector.ImageVector, chips: List<Pair<String, Boolean>>, desc: String,
                buttons: @Composable FlowRowScope.() -> Unit, info: List<Pair<String, String>>, nav: Nav,
                listTitle: String? = null, list: List<Numbered> = emptyList(), jump: String = t("jump"), before: LazyListScope.() -> Unit = {}, after: LazyListScope.() -> Unit = {},
                acts: ((List<String>) -> List<Pair<String, String>>)? = null, run: (String, List<String>) -> Unit = { _, _ -> },
@@ -344,7 +464,7 @@ fun DetailPage(banner: String, poster: String, title: String, alt: String, chips
     var more by rememberSaveable { mutableStateOf(false) }
     var big by remember { mutableStateOf(false) } // the poster, full screen
     if (big) androidx.compose.ui.window.Dialog({ big = false }, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(Modifier.fillMaxSize().background(Color.Black).clickable { big = false }) { AsyncImage(poster, title, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
+        Box(Modifier.fillMaxSize().background(Color.Black).clickable { big = false }) { NetImage(poster, Modifier.fillMaxSize(), ContentScale.Fit, title, icon, title) }
     }
     val shown = remember(list, rev, filter) { (if (rev) list.reversed() else list).filter { filter.isEmpty() || it.label.startsWith(filter) } }
     val pager = androidx.compose.foundation.pager.rememberPagerState { if (listTitle != null) 2 else 1 }
@@ -399,10 +519,10 @@ fun DetailPage(banner: String, poster: String, title: String, alt: String, chips
                 if (p == 0) LazyColumn(Modifier.fillMaxSize(), details, PaddingValues(bottom = 96.dp)) {
                     item {
                         Box { // the faded banner behind the poster and titles
-                            AsyncImage(banner.ifEmpty { poster }, null, Modifier.matchParentSize().graphicsLayer { alpha = .4f }, contentScale = ContentScale.Crop)
+                            NetImage(banner.ifEmpty { poster }, Modifier.matchParentSize().graphicsLayer { alpha = .4f }, icon = null) // behind the titles: nothing to say over them
                             Box(Modifier.matchParentSize().background(Brush.verticalGradient(0f to Color(0x66000000), 1f to Bg)))
                             Row(Modifier.padding(16.dp)) {
-                                if (poster.isNotEmpty()) AsyncImage(poster, null, Modifier.padding(end = 14.dp).width(120.dp).aspectRatio(2 / 3f).clip(RoundedCornerShape(6.dp)).background(CardC).clickable { big = true }, contentScale = ContentScale.Crop)
+                                if (poster.isNotEmpty()) NetImage(poster, Modifier.padding(end = 14.dp).width(120.dp).aspectRatio(2 / 3f).clip(RoundedCornerShape(6.dp)).background(CardC).clickable { big = true }, icon = icon)
                                 Column(Modifier.weight(1f).padding(top = 8.dp)) {
                                     Text(title, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, lineHeight = 24.sp)
                                     if (alt.isNotEmpty()) Text(alt, Modifier.padding(top = 4.dp), color = Muted, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -441,8 +561,8 @@ fun DetailPage(banner: String, poster: String, title: String, alt: String, chips
                             Row(Modifier.fillMaxWidth().background(if (on) Color(0x55E50914) else if (e.last) Color(0x0FFFFFFF) else Color.Transparent)
                                 .combinedClickable(onLongClick = { if (acts != null) { if (picks.on) picks.toggle(e.id) else picks.start(e.id) } }) { if (picks.on) picks.toggle(e.id) else nav.go(e.open) }
                                 .padding(start = 16.dp, end = 4.dp).heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
-                                if (e.thumb.isNotEmpty()) AsyncImage(e.thumb, null, Modifier.padding(end = 12.dp, top = 6.dp, bottom = 6.dp).width(104.dp).aspectRatio(16 / 9f).clip(RoundedCornerShape(4.dp))
-                                    .background(CardC).graphicsLayer { alpha = if (e.seen) .45f else 1f }, contentScale = ContentScale.Crop)
+                                if (e.thumb.isNotEmpty()) NetImage(e.thumb, Modifier.padding(end = 12.dp, top = 6.dp, bottom = 6.dp).width(104.dp).aspectRatio(16 / 9f).clip(RoundedCornerShape(4.dp))
+                                    .background(CardC).graphicsLayer { alpha = if (e.seen) .45f else 1f }, icon = Ic.play)
                                 Column(Modifier.weight(1f)) {
                                     Text(label(e), color = if (e.last) Red else if (e.seen) Muted else Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                                     if (e.name.isNotEmpty()) Text(e.name, color = Muted, fontSize = 12.sp, lineHeight = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -528,7 +648,7 @@ fun TitleScreen(path: String, nav: Nav) {
                 "${t("nextEp")} · ${if (a.ep.isNotEmpty()) "${t("epShort")} ${a.ep} · " else ""}$day · ${java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT, loc).format(at)}" to true
             }
             val score = d.tags.find { it.matches(Regex("\\d+\\.\\d+")) } ?: "" // the site's score, among the tags: shown with the actions instead
-            DetailPage(d.banner, d.poster, d.title, d.alt, listOfNotNull(airChip) + d.tags.filter { it != score }.map { it to false } + d.genres.map { it to false }, d.desc, {
+            DetailPage(d.banner, d.poster, d.title, d.alt, Ic.series, listOfNotNull(airChip) + d.tags.filter { it != score }.map { it to false } + d.genres.map { it to false }, d.desc, {
                 SiteRating(score)
                 SourceRating(listOf(d.title) + d.alt.split(Regex("[,،]")), "anime")
                 ListButton(path, d.title, d.poster, type)

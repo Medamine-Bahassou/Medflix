@@ -1,3 +1,19 @@
+// Optional provider lookups enrich the visible page after its own source is ready.
+const mOptionalCache = new Map();
+function mOptional(key, work, fallback) {
+  let entry = mOptionalCache.get(key);
+  if (!entry) { entry = { value: fallback, at: 0, pending: false, complete: false }; mOptionalCache.set(key, entry); }
+  if (!entry.pending && Date.now() - entry.at > 60e3) {
+    entry.at = Date.now();
+    const hash = location.hash;
+    entry.pending = Promise.resolve().then(work).then(value => {
+      const changed = JSON.stringify(value) !== JSON.stringify(entry.value);
+      entry.value = value; entry.complete = true;
+      if (changed && location.hash === hash) scraper.changed();
+    }).catch(() => {}).finally(() => { entry.pending = false; });
+  }
+  return entry.value;
+}
 // Manga section: MeshManga's catalogue, read from the JSON API its site runs on (appswat.com).
 // Routes: #/manga, #/manga/browse/<page>?<api query>, #/manga/series/<id>, #/manga/read/<chapter id>
 const MANGA_API = 'https://appswat.com/v2/api/v2/';
@@ -95,20 +111,20 @@ Object.assign(parsers, {
   },
 });
 const olyLatest = force => load('olyLatest', OLY, force);
-const olyList = (p, page = 1, force = false) => load('olyList', oUrl(p.keyword != null ? 'search' : 'series', { ...p, page }), force);
+const olyList = (p, page = 1, force = false, keep = false) => load('olyList', oUrl(p.keyword != null ? 'search' : 'series', { ...p, page }), force, keep);
 // a series' page: its details, and its chapters (about 40 a page, ?page=N), every page. A paid chapter has no link: left out
-async function olySeries(slug, force) {
-  const url = OLY + 'series/' + slug, s = await load('olySeries', url, force);
-  const rest = await Promise.all(Array.from({ length: s.pages - 1 }, (_, i) => load('olySeriesChs', `${url}?page=${i + 2}`, force).catch(() => [])));
+async function olySeries(slug, force, keep = false) {
+  const url = OLY + 'series/' + slug, s = await load('olySeries', url, force, keep);
+  const rest = await Promise.all(Array.from({ length: s.pages - 1 }, (_, i) => load('olySeriesChs', `${url}?page=${i + 2}`, force, keep).catch(() => [])));
   const chapters = [...new Set([...s.chs, ...rest.flat()])].map(n => ({ id: `o:${slug}:${n}`, n: chNum(n) }));
   return { ...s, chapters };
 }
 
 // the other site's copy of a series, found by searching its title
-async function olyTwin(s, force) {
+async function olyTwin(s, force, keep = false) {
   const k = mKeys([s.title, ...String(s.alt || '').split(/[|,،]/)]);
-  const hit = k.length && (await olyList({ keyword: s.title }).catch(() => null))?.items.find(c => mKeys(c.names).some(x => k.includes(x)));
-  return hit ? olySeries(hit.path.split('/o:').pop(), force).catch(() => null) : null;
+  const hit = k.length && (await olyList({ keyword: s.title }, 1, force, keep).catch(() => null))?.items.find(c => mKeys(c.names).some(x => k.includes(x)));
+  return hit ? olySeries(hit.path.split('/o:').pop(), force, keep).catch(() => null) : null;
 }
 // MangaSwat's search only finds its own title, which may be one of the other site's names: each Latin name is tried in turn
 async function swatTwin(m) {
@@ -132,6 +148,10 @@ const savedChs = ids => {
 // a series as shown, chapters newest first: MangaSwat's (plus its Olympus twin's extra chapters), or Olympus's alone.
 // ids: the series' ids on both sites (downloads may be filed under either)
 async function mSeriesFull(id, force) {
+  if (String(id).startsWith('s:')) {
+    const s = await slayerSeries(id, force);
+    return { s, chs: byNum(s.chapters), ids: [s.id] };
+  }
   if (/^t\d+$/.test(id)) { // a series saved under a removed source's id: found again by its title
     const p = '/manga/series/' + id, title = store.manga[id]?.title || store.list[p]?.title || Object.values(store.downloads).find(d => d.show === p)?.title;
     const hit = title && (await load('mangaList', mUrl('series/', { search: title, page_size: 10 }), force).catch(() => null))?.items[0]
@@ -141,18 +161,21 @@ async function mSeriesFull(id, force) {
   }
   if (String(id).startsWith('o:')) {
     const m = await olySeries(String(id).slice(2), force);
-    const sw = await swatTwin(m), f = sw && await mSeriesFull(sw, force);
-    return f ? { ...f, ids: [...f.ids, m.id] } : { s: m, chs: byNum(m.chapters), ids: [m.id] };
+    return { s: m, chs: byNum(m.chapters), ids: [m.id] };
   }
   const [s, chs] = await Promise.all([load('mangaSeries', mUrl(`series/${id}/`), force), mChapters(id, force)]);
-  const tw = await olyTwin(s, force);
-  if (!tw) return { s, chs: byNum(chs), ids: [s.id] };
+  const extras = mOptional('twins:' + id, () => slayerTwins(s, force, true), []);
+  const haveExtra = new Set(chs.map(c => c.n));
+  chs.push(...extras.flatMap(x => x.chapters).filter(c => !haveExtra.has(c.n) && haveExtra.add(c.n)));
+  const tw = mOptional('olyTwin:' + id, () => olyTwin(s, force, true), null);
+  if (!tw) return { s, chs: byNum(chs), ids: [s.id, ...extras.map(x => x.id)] };
   const have = new Set(chs.map(c => c.n));
-  return { s, chs: byNum([...chs, ...tw.chapters.filter(c => !have.has(c.n))]), ids: [s.id, tw.id] };
+  return { s, chs: byNum([...chs, ...tw.chapters.filter(c => !have.has(c.n))]), ids: [s.id, tw.id, ...extras.map(x => x.id)] };
 }
 // one chapter from either site: { id, n, prev, next, serie: { id, title, poster }, images }
 async function mChapter(cid, keep) {
   cid = String(cid);
+  if (cid.startsWith('s:')) return slayerChapter(cid, keep);
   if (/^t\d+$/.test(cid)) { // a chapter saved under a removed source's id: resolved by its series and number
     const r = Object.values(store.manga).find(m => String(m.chapterId) === cid), d = store.downloads['manga:' + cid];
     const sid = r?.id || d?.show?.split('/').pop(), n = chNum(r?.n ?? d?.ep);
@@ -181,26 +204,41 @@ async function mangaRoute([what, arg], force) {
 }
 
 // slider slides for series cards: their covers and stories (one cached request each)
-async function mangaHero(items) {
-  const top = await Promise.all(items.map(c => load('mangaSeries', mUrl(`series/${c.path.split('/').pop()}/`)).catch(() => null)));
+async function mangaHero(items, keep = false) {
+  const top = await Promise.all(items.map(c => load('mangaSeries', mUrl(`series/${c.path.split('/').pop()}/`), false, keep).catch(() => null)));
   return top.filter(s => s?.cover).map(s => ({ banner: s.cover, title: s.title, desc: s.story, info: '#/manga/series/' + s.id,
     play: store.manga[s.id] && '#/manga/read/' + store.manga[s.id].chapterId }));
 }
 
 async function mangaHome(force) {
-  const none = () => ({ items: [] }); // Olympus down: just MangaSwat's
-  const [hot, latest, popular, fresh, oLatest] = await Promise.all([
-    load('mangaList', mUrl('series/', { is_hot: true, page_size: 30 }), force),
-    load('mangaLatest', mUrl('chapters/', { page_size: 60, order_by: '-created_at' }), force),
-    load('mangaList', mUrl('series/', { order_by: '-views_count', page_size: 30 }), force),
-    load('mangaList', mUrl('series/', { order_by: '-created_at', page_size: 30 }), force),
-    olyLatest(force).catch(none),
-  ]);
-  heroPage(await mangaHero(hot.items.slice(0, 5)), `
+  const hash = location.hash;
+  const none = () => ({ items: [] });
+  const requests = [
+    ['hot', 'mangaList', mUrl('series/', { is_hot: true, page_size: 30 })],
+    ['latest', 'mangaLatest', mUrl('chapters/', { page_size: 60, order_by: '-created_at' })],
+    ['popular', 'mangaList', mUrl('series/', { order_by: '-views_count', page_size: 30 })],
+    ['fresh', 'mangaList', mUrl('series/', { order_by: '-created_at', page_size: 30 })],
+  ];
+  requests.forEach(([key, kind, url]) => mOptional('home:' + key, () => load(kind, url, force, true), none()));
+  const ready = () => requests.some(([key]) => mOptionalCache.get('home:' + key).complete);
+  if (!ready()) {
+    await Promise.any(requests.map(([key]) => {
+      const e = mOptionalCache.get('home:' + key);
+      return Promise.resolve(e.pending).then(() => { if (!e.complete) throw Error(t('unreachable')); });
+    }));
+  }
+  if (location.hash !== hash) return;
+  const [hot, latest, popular, fresh] = requests.map(([key]) => mOptionalCache.get('home:' + key).value);
+  const oLatest = mOptional('latest:oly', () => load('olyLatest', OLY, force, true), none());
+  const extra = slayerCachedLists({}, 1, force);
+  const fallbackSlides = (hot.items.length ? hot.items : latest.items).slice(0, 5)
+    .map(c => ({ banner: c.poster, title: c.title, desc: '', info: '#' + c.path }));
+  const slides = hot.items.length ? mOptional('hero:manga', () => mangaHero(hot.items.slice(0, 5), true), fallbackSlides) : fallbackSlides;
+  heroPage(slides, `
       ${chips([[t('browseAll'), '#/manga/browse/1'], ...MTYPES.map(o => [mLabel(MTYPES, o[0]), '#/manga/browse/1?type=' + o[0]])])}
       ${row(t('continueReading'), continued(['manga']))}
       ${row(t('mHot'), hot.items, '#/manga/browse/1?is_hot=true')}
-      ${row(t('mLatest'), mMerge([latest.items, oLatest.items]))}
+      ${row(t('mLatest'), mMerge([latest.items, oLatest.items, ...extra.map(x => x.items)]))}
       ${row(t('mPopular'), popular.items, '#/manga/browse/1?order_by=-views_count')}
       ${row(t('mNew'), fresh.items, '#/manga/browse/1')}`, () => mangaHome(true));
 }
@@ -209,7 +247,7 @@ async function mangaBrowse(force) {
   const qs = location.hash.split('?')[1] || '';
   const p = new URLSearchParams(qs);
   const go = edit => { const q = new URLSearchParams(qs); edit(q); location.hash = '#/manga/browse/1' + (q.size ? '?' + q : ''); };
-  const genres = await load('mangaGenres', mUrl('genres/', { page_size: 300 })).catch(() => []);
+  const genres = mOptional('genres:manga', () => load('mangaGenres', mUrl('genres/', { page_size: 300 }), false, true), []);
   const chips = [
     ['type', t('f_type'), MTYPES.map(o => [o[0], mLabel(MTYPES, o[0])])],
     ['status', t('f_status'), MSTATUS.map(o => [o[0], mLabel(MSTATUS, o[0])])],
@@ -239,10 +277,10 @@ async function mangaBrowse(force) {
   const PER = 30, oq = olyQuery(p), seen = new Set();
   // a page of each site, merged; past the end of one site's pages, just the other's
   const at = async (page, force) => {
-    const [d, o] = await Promise.all([load('mangaList', mUrl('series/', { ...Object.fromEntries(p), page, page_size: PER }), force).catch(e => page === 1 && !oq ? Promise.reject(e) : null),
-      oq && olyList(oq, page, force).catch(() => null)]);
-    if (!d && !o) throw new Error(t('unreachable'));
-    return { items: mMerge([d?.items, o?.items], seen), pages: Math.max(1, Math.ceil((d?.count || 0) / PER), o?.pages || 0) };
+    const [d, o, extra] = await Promise.all([load('mangaList', mUrl('series/', { ...Object.fromEntries(p), page, page_size: PER }), force).catch(e => page === 1 && !oq ? Promise.reject(e) : null),
+      Promise.resolve(oq && mOptional('olyList:' + JSON.stringify([oq, page]), () => olyList(oq, page, force, true), null)), Promise.resolve(slayerCachedLists(Object.fromEntries(p), page, force))]);
+    if (!d && !o && !extra.length) throw new Error(t('unreachable'));
+    return { items: mMerge([d?.items, o?.items, ...extra.map(x => x.items)], seen), pages: Math.max(1, Math.ceil((d?.count || 0) / PER), o?.pages || 0, ...extra.map(x => x.pages)) };
   };
   const d = await at(1, force);
   if (!location.hash.startsWith('#/manga/browse')) return;
@@ -602,3 +640,44 @@ addEventListener('scroll', () => {
   clearTimeout(readerSave);
   readerSave = setTimeout(() => persist('manga'), 300);
 }, { passive: true });
+
+// the APK's Madara extractors, with independent website catalogues (the app catalogue needs authentication).
+Object.assign(parsers, {
+  slayerList: (doc, url) => Slayer.listing(doc, Slayer.sources.find(s => url.startsWith(s.origin)).key),
+  slayerSeries: (doc, url) => Slayer.series(doc, Slayer.id(Slayer.sources.find(s => url.startsWith(s.origin)).key, url)),
+  slayerChapters: (doc, url) => Slayer.chapters(doc, Slayer.sources.find(s => url.startsWith(s.origin)).key),
+  slayerPages: (text, url) => { const content = JSON.parse(text)?.data?.data?.content; if (typeof content !== 'string') throw Error(t('unreachable')); return Slayer.pages(parse(content)).map(u => Slayer.transformImage(u, Slayer.sources.find(s => url.startsWith(s.origin)).key)); },
+  slayerChapterPage: doc => Slayer.pages(doc),
+});
+async function slayerLists(p, page, force, keep = false) {
+  if (!Slayer.supports(p)) return [];
+  return (await Promise.all(Slayer.sources.map(s => load('slayerList', Slayer.listUrl(s, p, page), force, keep).catch(() => null)))).filter(Boolean);
+}
+async function slayerSeries(id, force, keep = false) {
+  const s = await load('slayerSeries', Slayer.url(id), force, keep), src = Slayer.decode(id);
+  if (!s.chapters.length) s.chapters = await load('slayerChapters', `${src.origin}/wp-admin/admin-ajax.php?action=manga_get_chapters&manga=${s.postId}`, force, keep);
+  return s;
+}
+async function slayerChapter(id, keep) {
+  const src = Slayer.decode(id), parts = src.path.split('/').filter(Boolean), chapter = parts.pop();
+  const sid = Slayer.id(src.key, '/' + parts.join('/') + '/');
+  const s = await load('slayerSeries', Slayer.url(sid), false, keep);
+  let images = await load('slayerPages', `${src.origin}/wp-admin/admin-ajax.php?action=chapter_navigate_page&postID=${s.postId}&manga-paged=1&chapter=${encodeURIComponent(chapter)}&style=list`, false, keep).catch(() => []);
+  if (!images.length) images = await load('slayerChapterPage', Slayer.url(id), false, keep);
+  if (!images.length) throw Error(t('unreachable'));
+  return { id, n: Slayer.number(chapter), prev: null, next: null, serie: { id: sid, title: s.title, poster: s.poster }, images };
+}
+
+async function slayerTwins(s, force, keep = false) {
+  const keys = mKeys([s.title, ...String(s.alt || '').split(/[,;|،]/)]);
+  if (!keys.length) return [];
+  const lists = await slayerLists({ search: s.title }, 1, force, keep);
+  const hits = lists.flatMap(l => l.items.filter(c => mKeys([c.title]).some(k => keys.includes(k))));
+  return (await Promise.all(hits.map(c => slayerSeries(c.path.split('/').pop(), force, keep).catch(() => null)))).filter(Boolean);
+}
+
+function slayerCachedLists(p, page, force) {
+  if (!Slayer.supports(p)) return [];
+  return Slayer.sources.map(s => mOptional('list:' + Slayer.listUrl(s, p, page),
+    () => load('slayerList', Slayer.listUrl(s, p, page), force, true), null)).filter(Boolean);
+}

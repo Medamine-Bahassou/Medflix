@@ -466,7 +466,7 @@ async function cinemaPlay(slug) {
       const g = w.servers.map((s, i) => [s, i]).filter(([s]) => grp(s) === q);
       return `<div class="dd-group">${esc(q)}<small>${g.length}</small></div>`
         + g.map(([s, i]) => `<button class="dd-item ${s === cur ? 'on' : ''}" data-i="${i}"><span class="host">${esc(s.label)}</span>${s.quality ? `<span class="q" data-q="${esc(s.quality)}">${esc(s.quality)}</span>` : ''}${CHECK}</button>`).join('');
-    }).join('') + (more ? `<div class="dd-group">${t('searchingServers')}</div>` : '');
+    }).join('') + (more ? ddSkel() : '');
   };
   const pick = async i => {
     const s = cur = w.servers[i]; draw();

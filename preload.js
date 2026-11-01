@@ -1,7 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
-  fetch: (url, form) => ipcRenderer.invoke('fetch', url, form),
+  fetch: (url, form, asPlayer, background = false) => ipcRenderer.invoke('fetch', url, form, background),
   get: key => ipcRenderer.invoke('db:get', key),
   awSources: (title, alt, ep) => ipcRenderer.invoke('aw-sources', title, alt, ep),
   sources: epPath => ipcRenderer.invoke('sources', epPath),

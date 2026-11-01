@@ -1,0 +1,71 @@
+{
+  "version": "1.0",
+  "source": {
+    "domain": "manga-starz.net",
+    "scheme": "https"
+  },
+  "source_image": {
+    "image_domain": "io.lek-manga.net",
+    "image_path": "/wp-content/uploads/"
+  },
+  "ajax_endpoint": "/wp-admin/admin-ajax.php",
+  "extractors": [
+    {
+      "name": "chapters",
+      "type": "CHAPTERS",
+      "root_selector": "ul.main.version-chap li.wp-manga-chapter",
+      "fields": {
+        "action": "manga_get_chapters",
+        "manga": "{manga}"
+      },
+      "selectors": {
+        "chapterName": {
+          "css": "a"
+        },
+        "url": {
+          "css": "a",
+          "attr": "href"
+        }
+      }
+    },
+    {
+      "name": "chapter_pages",
+      "type": "PAGES",
+      "root_selector": "img.wp-manga-chapter-img",
+      "fields": {
+        "action": "chapter_navigate_page"
+      },
+      "parameters": [
+        "postID={postId}",
+        "manga-paged=1",
+        "chapter={chapter}",
+        "style=list"
+      ],
+      "response_format": "JSON_WITH_HTML",
+      "url_transformations": [
+        {
+          "type": "REGEX_REPLACE",
+          "pattern": "^(https?://)(s\\d+|lek|temp|s)\\.",
+          "replacement": "$1$2likey."
+        },
+        {
+          "type": "REGEX_REPLACE",
+          "pattern": "lekmanga.site",
+          "replacement": "like-manga.net"
+        }
+      ]
+    }
+  ],
+  "ip_mapping": {
+    "subdomain": "likey",
+    "default": "5.187.35.217",
+    "overrides": {
+      "s3": "5.187.35.218",
+      "s4": "5.187.35.218",
+      "s8": "185.177.74.13",
+      "temp": "5.187.35.218"
+    }
+  },
+  "quality_controller": true,
+  "direct_ip_mode": false
+}

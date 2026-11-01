@@ -27,7 +27,10 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -48,7 +51,8 @@ private fun showOf(epPath: String) = epPath.split('/').let { if (it[2] == "movie
 fun PlayerScreen(epPath: String, nav: Nav) {
     if (com.medanime.app.Downloads.done(epPath)) return LaunchedEffect(epPath) { nav.replace(Screen.Offline(epPath)) } // downloaded: no need to stream
     val show = showOf(epPath)
-    val d by produceState<Details?>(null, show) { Witanime.details(show).catch {}.collect { value = it } }
+    var detailsDone by remember(show) { mutableStateOf(false) }
+    val d by produceState<Details?>(null, show) { Witanime.details(show).catch {}.collect { value = it }; detailsDone = true }
     val idx = d?.episodes?.indexOfFirst { it.path == epPath } ?: -1
     val ep = d?.episodes?.getOrNull(idx)?.ep ?: epPath.substringAfterLast('/')
     val prev = d?.episodes?.getOrNull(idx - 1)
@@ -61,6 +65,8 @@ fun PlayerScreen(epPath: String, nav: Nav) {
     var url by remember(epPath) { mutableStateOf<String?>(null) }
     var dead by remember(epPath) { mutableStateOf(false) }
     var extra by remember(epPath) { mutableStateOf<List<Server>>(emptyList()) } // ristoanime's, after witanime's
+    var mainDone by remember(epPath) { mutableStateOf(false) } // witanime's list answered
+    var extraDone by remember(epPath) { mutableStateOf(false) } // the backups answered; with no title found (d stays null) they're never asked
     fun all() = (servers ?: emptyList()) + extra
     val scope = rememberCoroutineScope()
     var job by remember { mutableStateOf<Job?>(null) }
@@ -112,23 +118,26 @@ fun PlayerScreen(epPath: String, nav: Nav) {
             android.util.Log.w("medflix", "sources", e)
             if (known.isEmpty()) { why = e.message ?: e.toString(); servers = emptyList(); if (extra.isNotEmpty()) tryFrom(0) }
         }
+        mainDone = true
     }
     // the same episode on ristoanime, once its title is known: backups, tried when witanime's are done and none played
     LaunchedEffect(epPath, d != null) {
         val dd = d ?: return@LaunchedEffect
-        if (epPath.startsWith("/watch/movie/")) return@LaunchedEffect
+        if (epPath.startsWith("/watch/movie/")) { extraDone = true; return@LaunchedEffect }
         try {
             val aw = try { AnimeWitcher.sources(dd.title, dd.alt, ep) } catch (e: CancellationException) { throw e } catch (_: Exception) { emptyList() }
             val ra = try { Witanime.ristoanime(dd.title, dd.alt, ep) } catch (e: CancellationException) { throw e } catch (_: Exception) { emptyList() }
             extra = aw.sortedBy { Witanime.QUALITY.indexOf(it.quality) }.distinctBy { it.label } + ra
         } catch (e: CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("medflix", "ristoanime", e) }
+        extraDone = true
         if (cur == null && extra.isNotEmpty()) servers?.let { tryFrom(it.size) }
     }
 
     val open = openUrl()
     PlayerChrome(d?.title ?: "", if (ep.firstOrNull()?.isDigit() == true) "${t("episode")} $ep" else ep, nav,
         all().takeIf { servers != null || extra.isNotEmpty() }?.map { it.label to it.quality }, all().indexOf(cur), url == null && cur != null, { tryFrom(it) },
-        prev?.let { { nav.replace(Screen.Play(it.path)) } }, next?.let { { nav.replace(Screen.Play(it.path)) } }, { nav.go(Screen.Title(show)) }, { page, close -> DownloadItems(page, close, dlLinks, scope, epPath, show, ep, d, nav) }, { castTo("${d?.title ?: ""} · ${t("episode")} $ep", null, url) }, fullButton = cur?.token?.startsWith("aw:") != true) { full ->
+        prev?.let { { nav.replace(Screen.Play(it.path)) } }, next?.let { { nav.replace(Screen.Play(it.path)) } }, { nav.go(Screen.Title(show)) }, { page, close -> DownloadItems(page, close, dlLinks, scope, epPath, show, ep, d, nav) }, { castTo("${d?.title ?: ""} · ${t("episode")} $ep", null, url) }, fullButton = cur?.token?.startsWith("aw:") != true,
+        searching = !mainDone || (!extraDone && (d != null || !detailsDone))) { full ->
         val u = url
         when {
             u != null && cur?.token?.startsWith("aw:") == true -> NativeVideo(Uri.parse(u), epPath, full,
@@ -166,7 +175,7 @@ var carryFull = false // the next player page opens in fullscreen (a downloaded 
 @Composable
 fun PlayerChrome(title: String, sub: String, nav: Nav, servers: List<Pair<String, String>>?, cur: Int, busy: Boolean, pick: (Int) -> Unit,
                  prev: (() -> Unit)?, next: (() -> Unit)?, onTitle: (() -> Unit)? = null, actions: @Composable ColumnScope.(page: MutableState<String>, close: () -> Unit) -> Unit = { _, _ -> },
-                 cast: (() -> Unit)? = null, fullButton: Boolean = true, stage: @Composable BoxScope.(full: MutableState<Boolean>) -> Unit) {
+                 cast: (() -> Unit)? = null, fullButton: Boolean = true, searching: Boolean = false, stage: @Composable BoxScope.(full: MutableState<Boolean>) -> Unit) {
     val act = Net.activity
     val fullState = rememberSaveable { mutableStateOf(((act as? NativeActivity)?.takeRestoredFullscreen() ?: false) or carryFull.also { carryFull = false }) }
     var full by fullState
@@ -206,7 +215,7 @@ fun PlayerChrome(title: String, sub: String, nav: Nav, servers: List<Pair<String
             }
         }
         if (!bare) Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (servers != null) ServerMenu(servers, cur, busy, pick)
+            if (servers != null || searching) ServerMenu(servers.orEmpty(), cur, busy, searching, pick)
             Spacer(Modifier.weight(1f))
             if (fullButton) IconButton({ full = true }) { Icon(Ic.expand, t("fullscreen"), Modifier.size(20.dp)) } // false: the video's own controls have it
             if (prev != null || next != null) {
@@ -218,21 +227,26 @@ fun PlayerChrome(title: String, sub: String, nav: Nav, servers: List<Pair<String
     }
 }
 
-/** the servers: (host, quality), the one playing checked; busy: its player is being looked up */
+/** the servers: (host, quality), the one playing checked; busy: its player is being looked up; searching: more may still come, skeleton rows after these */
 @Composable
-fun ServerMenu(servers: List<Pair<String, String>>, cur: Int, busy: Boolean, pick: (Int) -> Unit) {
+fun ServerMenu(servers: List<Pair<String, String>>, cur: Int, busy: Boolean, searching: Boolean, pick: (Int) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
-        TextButton({ open = true }, enabled = servers.isNotEmpty()) {
+        TextButton({ open = true }, enabled = servers.isNotEmpty() || searching) {
             if (busy) CircularProgressIndicator(Modifier.size(12.dp), Red, strokeWidth = 2.dp)
             else Box(Modifier.size(8.dp).background(if (cur >= 0) Color(0xFF46D369) else Muted, androidx.compose.foundation.shape.CircleShape))
             Spacer(Modifier.width(6.dp))
-            Text(servers.getOrNull(cur)?.let { "${it.first} ${it.second}".trim() } ?: t("chooseServer"), color = Color.White, fontSize = 13.sp, maxLines = 1)
+            Text(servers.getOrNull(cur)?.let { "${it.first} ${it.second}".trim() } ?: t(if (servers.isEmpty() && searching) "searchingServers" else "chooseServer"), color = Color.White, fontSize = 13.sp, maxLines = 1)
             Icon(Ic.caretDown, null, Modifier.padding(start = 4.dp).size(14.dp), tint = Color.White)
         }
         DropdownMenu(open && !inPip.value, { open = false }, containerColor = CardC) {
             servers.forEachIndexed { i, (label, q) ->
                 DropdownMenuItem({ Text("$label  $q".trim()) }, { open = false; pick(i) }, trailingIcon = { if (i == cur) Icon(Ic.check, null, Modifier.size(18.dp), tint = Red) })
+            }
+            if (searching) Column(Modifier.semantics { contentDescription = t("searchingServers") }) {
+                listOf(130.dp, 90.dp).forEach { w -> // as tall as a row, so the menu hardly moves when a real one takes its place. lighter than a poster's: it's on the menu's card
+                    Box(Modifier.padding(horizontal = 12.dp, vertical = 17.dp).width(w).height(14.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(7.dp))) { Shimmer(Color(0xFF2A2A2A), Color(0xFF3D3D3D)) }
+                }
             }
         }
     }
@@ -311,7 +325,10 @@ fun HostPlayer(url: String, playbackKey: String = url) = key(url, playbackKey) {
 @Composable
 private fun HostPlayerView(url: String, playbackKey: String) {
     var full by remember { mutableStateOf<Pair<View, WebChromeClient.CustomViewCallback>?>(null) }
-    var loading by remember { mutableStateOf(true) } // the host's page still coming: black until then, so a spinner over it
+    var loading by remember { mutableStateOf(true) } // the host's video still coming: black until then, so a spinner over it
+    var pageDone by remember { mutableStateOf(false) }
+    // the video reporting ends it (PlaybackSession.attach). some hosts wait for a tap on their play button, and some pages never finish: not forever
+    LaunchedEffect(pageDone) { kotlinx.coroutines.delay(if (pageDone) 4000 else 20_000); loading = false }
     val act = Net.activity
     var detach by remember { mutableStateOf<(() -> Unit)?>(null) }
     val bars = remember { WindowCompat.getInsetsController(act.window, act.window.decorView) }
@@ -331,7 +348,7 @@ private fun HostPlayerView(url: String, playbackKey: String) {
     Box(Modifier.fillMaxSize(), Alignment.Center) {
     AndroidView({ ctx ->
         WebView(ctx).apply {
-            detach = PlaybackSession.attach(this, playbackKey)
+            detach = PlaybackSession.attach(this, playbackKey) { loading = false }
             keepScreenOn = !PlaybackSession.suspended // the host's player holds no wake lock: the screen stays on mid-episode
             setBackgroundColor(AColor.BLACK)
             settings.javaScriptEnabled = true
@@ -342,7 +359,7 @@ private fun HostPlayerView(url: String, playbackKey: String) {
             webViewClient = object : WebViewClient() {
                 // our page never navigates: the frame taking the whole page somewhere is an ad
                 override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest) = r.isForMainFrame
-                override fun onPageFinished(v: WebView, u: String?) { loading = false } // our page's load waits for the host's frame
+                override fun onPageFinished(v: WebView, u: String?) { pageDone = true } // our page's load waits for the host's frame, whose player then fetches its video
                 // the players' video, for casting to a TV
                 override fun shouldInterceptRequest(v: WebView, r: WebResourceRequest): android.webkit.WebResourceResponse? { com.medanime.app.Cast.sniff(r); return null }
             }

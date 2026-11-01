@@ -81,9 +81,9 @@ const passCheck = (origin, page) => checks[siteKey(origin)] ||= new Promise((ok,
 
 // Only ever fetch pages of the scraped site (renderer is not trusted to hit arbitrary URLs).
 // form: POSTs these fields instead of a GET (egydead's watch page, MyCima's search)
-ipcMain.handle('fetch', async (_, url, form) => {
+ipcMain.handle('fetch', async (_, url, form, background = false) => {
   const u = new URL(url, SITE);
-  if (![SITE, AR, RA, MANGA, AS, MC, WC, OLY, ...SUGGEST].includes(u.origin) && !EGYDEAD.test(u.origin)) throw new Error('blocked: ' + u.origin);
+  if (![SITE, AR, RA, MANGA, AS, MC, WC, OLY, 'https://sparkmanga.net', 'https://manga-starz.net', ...SUGGEST].includes(u.origin) && !EGYDEAD.test(u.origin)) throw new Error('blocked: ' + u.origin);
   const headers = { 'User-Agent': UA, 'Accept-Language': 'ar,en;q=0.8', ...(u.origin === WC && { Referer: WC + '/' }) };
   if (u.pathname === '/new-episodes') return pagerFetch(u.href, headers);
   if (/(^|\.)egydead\./.test(u.hostname)) return edFetch(u);
@@ -91,7 +91,7 @@ ipcMain.handle('fetch', async (_, url, form) => {
   // imdb's graphql (the cast lists): json only, and answered only to a client naming itself as imdb's site
   const opts = u.origin === 'https://caching.graphql.imdb.com' ? { method: 'POST', body: JSON.stringify(form), headers: { ...headers, 'Content-Type': 'application/json', 'x-imdb-client-name': 'imdb-web-next-localized' } }
     : form ? { method: 'POST', body: new URLSearchParams(form).toString(), headers: { ...headers, 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest', Origin: u.origin } } : { headers };
-  const res = await retry429(() => session.defaultSession.fetch(u.href, opts), u.origin, form ? u.origin + '/' : u.href); // a form's page can't be opened: its site's home
+  const res = background ? await session.defaultSession.fetch(u.href, opts) : await retry429(() => session.defaultSession.fetch(u.href, opts), u.origin, form ? u.origin + '/' : u.href); // a form's page can't be opened: its site's home
   if (!res.ok) throw new Error(`HTTP ${res.status} ${u.pathname}${res.headers.get('cf-mitigated') ? ' · Cloudflare check' : ''}`);
   return res.text();
 });
@@ -144,7 +144,7 @@ const pagerFetch = (url, headers) => new Promise((ok, fail) => {
 // A saved image shows at once and is re-downloaded from the site once per app run.
 const IMG_DIR = path.join(app.getPath('userData'), 'images');
 // manga: only appswat's (or its meshmanga.com mirror's) sized posters/covers and olympus's covers; chapter pages are read once and would just fill the disk
-const IMG_HOSTS = /^https:\/\/(s4\.anilist\.co|static\.tvmaze\.com|cdn\.myanimelist\.net|m\.media-amazon\.com\/images|upload\.wikimedia\.org|commons\.wikimedia\.org|images\.witanime\.site|eva\.animerco\.org\/wp-content\/uploads|(appswat|meshmanga)\.com\/v2\/media\/__sized__|cdn\.olympustaff\.com\/images\/manga|img\.animeschedule\.net\/production|media\.kitsu\.app\/episodes|([a-z0-9-]+\.)*(egydead|myseed|arabseed)\.[a-z]+\/wp-content\/uploads)\//;
+const IMG_HOSTS = /^https:\/\/(s4\.anilist\.co|static\.tvmaze\.com|cdn\.myanimelist\.net|m\.media-amazon\.com\/images|upload\.wikimedia\.org|commons\.wikimedia\.org|images\.witanime\.site|eva\.animerco\.org\/wp-content\/uploads|(appswat|meshmanga)\.com\/v2\/media\/__sized__|cdn\.olympustaff\.com\/images\/manga|([a-z0-9-]+\.)*(sparkmanga|manga-starz|lek-manga|like-manga|link-manga)\.net\/wp-content\/uploads|img\.animeschedule\.net\/production|media\.kitsu\.app\/episodes|([a-z0-9-]+\.)*(egydead|myseed|arabseed)\.[a-z]+\/wp-content\/uploads)\//;
 const imgChecked = new Set();
 protocol.registerSchemesAsPrivileged([{ scheme: 'medimg', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 
@@ -361,7 +361,7 @@ ipcMain.handle('download-open', async (_, token) => {
 ipcMain.on('download:cancel', (_, id) => downloads.get(id)?.ac.abort());
 // a manga chapter: its page images, one file each, in Videos/MedAnime/Manga/<series>/<chapter>/
 ipcMain.handle('download-pages', async (e, id, urls, folder, labels = {}) => {
-  if (!Array.isArray(urls) || !urls.length || !urls.every(u => /^https:\/\/((appswat|meshmanga)\.com\/v2\/media|cdn\.olympustaff\.com\/uploads)\//.test(u))) throw new Error('bad urls');
+  if (!Array.isArray(urls) || !urls.length || !urls.every(u => /^https:\/\/((appswat|meshmanga)\.com\/v2\/media|cdn\.olympustaff\.com\/uploads|([a-z0-9-]+\.)*(sparkmanga|manga-starz|lek-manga|like-manga|link-manga)\.net\/(wp-content\/uploads|manga))\//.test(u))) throw new Error('bad urls');
   const clean = s => String(s).replace(/[\\/:*?"<>|]+/g, ' ').trim() || '_';
   const dir = path.join(DL_DIR, 'Manga', ...folder.map(clean));
   await fs.promises.mkdir(dir, { recursive: true });

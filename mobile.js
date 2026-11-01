@@ -40,23 +40,23 @@ if (!window.api && window.Capacitor) (() => {
   // in-app page the same way. It hops domains (egydead.space redirects to the current one): the page sits on where it landed
   const ED_RE = /^https:\/\/([a-z0-9-]+\.)*(egydead|myseed|arabseed)\.[a-z]+\//;
   const edPage = {}; // site -> that origin, once (per site: myseed's requests must not go to where egydead landed)
-  const edSite = url => url.match(ED_RE)?.[2];
+  const edSite = url => url.match(ED_RE)?.[2] || (/^https:\/\/(sparkmanga|manga-starz)\.net\//.test(url) ? new URL(url).host : undefined);
   const visited = {}; // site -> when its page was last opened for Cloudflare's check (refused again soon after: just fail)
   const pageUrl = url => url.startsWith(SITE) ? viaPage && url : edPage[edSite(url)] && edPage[edSite(url)] + url.replace(/^https:\/\/[^/]+/, '');
-  const http = async (url, opt = {}, asPlayer = false) => {
+  const http = async (url, opt = {}, asPlayer = false, background = false) => {
     let res;
     const ua = url.startsWith(SITE) || asPlayer ? WV_UA : UA;
     for (let i = 0, checked = false; ; i++) { // witanime rate-limits bursts with 429: wait and retry (see main.js)
-      const page = pageUrl(url);
+      const page = !background && pageUrl(url);
       try {
         res = page ? await pageHttp(page, opt) : await Http.request({ url, method: 'GET', responseType: 'text',
           connectTimeout: 15e3, readTimeout: 30e3, ...opt, headers: { 'User-Agent': ua, 'Accept-Language': 'ar,en;q=0.8', ...opt.headers } });
       } catch (e) { // a connection that stalls or drops for our native client: witanime through the page instead
-        if (!url.startsWith(SITE) || viaPage) throw e;
+        if (background || !url.startsWith(SITE) || viaPage) throw e;
         viaPage = true; i--; continue;
       }
-      if (!page && url.startsWith(SITE) && challenged(res)) { viaPage = true; i--; continue; } // this run: always through the page
-      if (!page && ED_RE.test(url) && cfCheck(res)) { edPage[edSite(url)] = new URL(res.url || url).origin; i--; continue; }
+      if (!background && !page && url.startsWith(SITE) && challenged(res)) { viaPage = true; i--; continue; } // this run: always through the page
+      if (!background && !page && ED_RE.test(url) && cfCheck(res)) { edPage[edSite(url)] = new URL(res.url || url).origin; i--; continue; }
       // refused in the in-app browser too: open the page itself there, full screen, once. Cloudflare's check can only be
       // passed that way (a script request can't), and it can be ticked. API calls and forms open the home page instead
       const site = new URL(page || url).origin;
@@ -137,9 +137,9 @@ if (!window.api && window.Capacitor) (() => {
   window.api = {
     // form: POST these fields (egydead's watch page); asPlayer: asked as the player's iframe (this WebView) asks, for links
     // that only play in the browser that got them (myseed's)
-    async fetch(url, form, asPlayer) {
+    async fetch(url, form, asPlayer, background = false) {
       const u = new URL(url, SITE);
-      if (![SITE, AR, RA, MANGA, AS, MC, WC, OLY, ...SUGGEST].includes(u.origin) && !/^https:\/\/([a-z0-9-]+\.)*(egydead|myseed|arabseed)\.[a-z]+$/.test(u.origin)) throw new Error('blocked: ' + u.origin);
+      if (![SITE, AR, RA, MANGA, AS, MC, WC, OLY, 'https://sparkmanga.net', 'https://manga-starz.net', ...SUGGEST].includes(u.origin) && !/^https:\/\/([a-z0-9-]+\.)*(egydead|myseed|arabseed)\.[a-z]+$/.test(u.origin)) throw new Error('blocked: ' + u.origin);
       // form: egydead's watch page, which its server can take over 30s to build the first time it's asked
       const res = await http(u.href, u.origin === 'https://caching.graphql.imdb.com' ? { method: 'POST', data: form, headers: { 'Content-Type': 'application/json', 'x-imdb-client-name': 'imdb-web-next-localized' } } // see main.js
         : form ? { method: 'POST', data: form, readTimeout: 90e3,
@@ -147,7 +147,7 @@ if (!window.api && window.Capacitor) (() => {
         // the latest-episodes pager 404s unless it looks like the home page's own call (see main.js): Origin, or X-Requested-With
         : u.pathname === '/new-episodes' ? { headers: { Accept: 'application/json', Referer: SITE + '/', Origin: SITE, 'X-Requested-With': 'XMLHttpRequest' } }
         // WeCima: Cloudflare lets it through with the site as the referrer (see main.js); its pages are never opened
-        : u.origin === WC ? { headers: { Referer: WC + '/' } } : {}, asPlayer);
+        : u.origin === WC ? { headers: { Referer: WC + '/' } } : {}, asPlayer, background);
       if (res.status >= 400) throw new Error(`HTTP ${res.status} ${u.pathname}${refusal(res)}`);
       return res.data;
     },

@@ -69,7 +69,7 @@ fun CinemaTitleScreen(slug: String, show: Boolean, nav: Nav) {
             val play = if (!slug.contains('/')) Screen.CinemaPlay(slug) to t("play") // a film
                 else if (h != null) Screen.CinemaPlay(h.optString("slug")) to "${t("play")} · ${t("ep")} ${h.optString("ep")}"
                 else eps.firstOrNull()?.let { Screen.CinemaPlay(it.slug) to t("play") }
-            DetailPage(m.banner, m.poster, m.title, m.year, m.cat.map { it to true } + (m.tags + m.genres).map { it to false }, m.desc, {
+            DetailPage(m.banner, m.poster, m.title, m.year, Ic.cinema, m.cat.map { it to true } + (m.tags + m.genres).map { it to false }, m.desc, {
                 SourceRating(listOf(m.title), if (slug.contains('/')) "series" else "cinema", if (slug.contains('/')) "" else m.year, m.imdb)
                 ListButton(path, m.title, m.poster, "cinema")
                 if (slug.contains('/')) NotifyButton(path, m.title, m.poster, eps.lastOrNull()?.slug ?: "") // a series' season; new films have their own switch (settings)
@@ -134,6 +134,7 @@ fun CinemaPlayScreen(slug: String, nav: Nav) {
         var servers by remember(slug) { mutableStateOf<List<Link>?>(null) }
         var downloads by remember(slug) { mutableStateOf<List<Link>?>(null) }
         var why by remember(slug) { mutableStateOf("") }
+        var searching by remember(slug) { mutableStateOf(true) } // the sites still being asked, a saved list already showing or not
         var cur by remember(slug) { mutableIntStateOf(-1) }
         var url by remember(slug) { mutableStateOf<String?>(null) }
         val scope = rememberCoroutineScope()
@@ -148,6 +149,7 @@ fun CinemaPlayScreen(slug: String, nav: Nav) {
             job = scope.launch { url = if (s.label == "myseed") runCatching { Cinema.myseedNow(m, slug, s.quality) }.getOrElse { if (it is CancellationException) throw it; s.url } else s.url }
         }
         LaunchedEffect(slug, attempt) {
+            searching = true
             // the last server used, else the first one; uqload only when it's all there is
             val start = { l: List<Link> ->
                 l.indexOfFirst { "${it.label}|${it.quality}" == PlaybackSession.server("/cinema/$slug") }.takeIf { it >= 0 }
@@ -175,10 +177,11 @@ fun CinemaPlayScreen(slug: String, nav: Nav) {
                 android.util.Log.w("medflix", "servers", e)
                 if (servers.isNullOrEmpty()) { why = e.message ?: ""; servers = emptyList(); downloads = emptyList() }
             }
+            searching = false
         }
         PlayerChrome(title, if (p.ep != null) "${t("ep")} ${p.ep}" else m.year, nav, servers?.map { it.label to it.quality }, cur, cur >= 0 && url == null, { pick(it) },
             prev?.let { { nav.replace(Screen.CinemaPlay(it.slug)) } }, next?.let { { nav.replace(Screen.CinemaPlay(it.slug)) } },
-            { nav.go(Screen.CinemaTitle(if (p.ep != null) m.up.ifEmpty { slug } else slug)) }, { page, close -> LinksItems(page, close, downloads) }, { castTo(title, null, url) }) { // downloads: third-party hosts, in the browser
+            { nav.go(Screen.CinemaTitle(if (p.ep != null) m.up.ifEmpty { slug } else slug)) }, { page, close -> LinksItems(page, close, downloads) }, { castTo(title, null, url) }, searching = searching) { // downloads: third-party hosts, in the browser
             val u = url
             when {
                 u != null -> HostPlayer(u, "/cinema/$slug")

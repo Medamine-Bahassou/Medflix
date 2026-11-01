@@ -71,7 +71,7 @@ fun NativeVideo(mediaUri: android.net.Uri, epPath: String, full: MutableState<Bo
                 setShutterBackgroundColor(android.graphics.Color.BLACK)
                 setShowPreviousButton(false); setShowNextButton(false) // one file each: the bar above has the other episodes
                 setShowSubtitleButton(true)
-                setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+                setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS) // also a stream resumed paused, still loading
                 setFullscreenButtonClickListener { full.value = it }
                 // pinch out: the video fills the screen (cropped), pinch in: whole again
                 var zoom = 1f

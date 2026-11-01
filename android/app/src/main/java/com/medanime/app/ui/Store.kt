@@ -7,6 +7,32 @@ import androidx.compose.runtime.mutableIntStateOf
 import org.json.JSONObject
 import java.io.File
 
+/** my list's own categories, in a key of their own so the list's format stays the web app's: { id: { name, at, items: { path: 1 } } } */
+internal class ListCats(private val o: JSONObject) {
+    class Cat(val id: String, val name: String, val items: Set<String>)
+    fun all() = o.keys().asSequence().toList().mapNotNull { id -> o.optJSONObject(id)?.let { id to it } }.sortedBy { it.second.optLong("at") }
+        .map { (id, c) -> Cat(id, c.optString("name"), c.optJSONObject("items")?.keys()?.asSequence()?.toSet().orEmpty()) }
+    // two of the same name couldn't be told apart on their chips
+    fun taken(name: String, except: String? = null) = all().any { it.id != except && it.name.equals(name.trim(), ignoreCase = true) }
+    /** its id, or null: no name, or one already used */
+    fun add(name: String, now: Long = System.currentTimeMillis()): String? {
+        if (name.isBlank() || taken(name)) return null
+        return "c$now".also { o.put(it, JSONObject().put("name", name.trim()).put("at", now).put("items", JSONObject())) }
+    }
+    fun rename(id: String, name: String): Boolean {
+        if (name.isBlank() || taken(name, id)) return false
+        o.optJSONObject(id)?.put("name", name.trim())
+        return true
+    }
+    fun delete(id: String) { o.remove(id) }
+    fun set(id: String, path: String, on: Boolean) {
+        val items = o.optJSONObject(id)?.optJSONObject("items") ?: return
+        if (on) items.put(path, 1) else items.remove(path)
+    }
+    /** a title gone from the list leaves its categories too: listed again later, it shouldn't come back filed. true: something changed */
+    fun forget(path: String) = all().filter { path in it.items }.onEach { set(it.id, path, false) }.isNotEmpty()
+}
+
 /**
  * The user's state (app.js `store`), same keys and JSON as the web app. With all-files access it's the same
  * MEDFLIX/Data/<key>.json the WebView app keeps (DownloaderPlugin.writeData), so both see one history and list.
@@ -68,10 +94,11 @@ object Store {
         }
     }
 
+    internal val cats get() = ListCats(get("listCats"))
     fun inList(path: String) = get("list").has(path)
     fun toggleList(path: String, title: String, poster: String, type: String): Boolean {
         val l = get("list")
-        if (l.has(path)) l.remove(path)
+        if (l.has(path)) { l.remove(path); if (cats.forget(path)) persist("listCats") }
         else l.put(path, JSONObject().put("path", path).put("title", title).put("poster", poster).put("type", type).put("at", System.currentTimeMillis()))
         persist("list")
         if (l.has(path) && Alerts.can(path)) Alerts.follow(path, title, poster, quiet = true) // listed: its new episodes or chapters notify too
