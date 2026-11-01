@@ -31,14 +31,15 @@ object Updater {
     private fun note(pct: Int?, done: File? = null) {
         val c = Net.app
         val nm = androidx.core.app.NotificationManagerCompat.from(c)
-        if (pct == null) return nm.cancel(NOTE)
+        if (pct == null && done == null) return nm.cancel(NOTE)
         if (!nm.areNotificationsEnabled()) return
         if (Build.VERSION.SDK_INT >= 26) c.getSystemService(android.app.NotificationManager::class.java)
             .createNotificationChannel(android.app.NotificationChannel("update", t("updateTitle"), android.app.NotificationManager.IMPORTANCE_LOW)) // low: no sound
         // downloaded: it stays, its tap opens Android's installer (the installer itself can't open while the app is in the background)
         if (done != null) return nm.notify(NOTE, androidx.core.app.NotificationCompat.Builder(c, "update").setSmallIcon(com.medanime.app.R.drawable.ic_stat_download)
-            .setContentTitle(t("updateReady")).setContentText(t("updateTap")).setAutoCancel(true)
+            .setContentTitle(t("updateReady")).setContentText(t("updateTap")).setOngoing(false) // not auto-cancelled: an installer backed out of can be opened again from it, until the next launch finds it installed
             .setContentIntent(android.app.PendingIntent.getActivity(c, 1, installer(done), android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT)).build())
+        if (pct == null) return
         val open = android.app.PendingIntent.getActivity(c, 0, Intent(c, NativeActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), android.app.PendingIntent.FLAG_IMMUTABLE)
         nm.notify(NOTE, androidx.core.app.NotificationCompat.Builder(c, "update").setSmallIcon(com.medanime.app.R.drawable.ic_stat_download)
             .setContentTitle(t("updateDownloading")).setSubText(if (pct >= 0) "$pct%" else null).setProgress(100, pct.coerceAtLeast(0), pct < 0)

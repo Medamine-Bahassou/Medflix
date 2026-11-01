@@ -616,10 +616,14 @@ fun screenFor(c: Card): Screen = c.open?.let { open ->
 fun PosterCard(c: Card, nav: Nav, width: Dp? = 112.dp) {
     val p = LocalPicks.current
     val on = p?.has(c.showPath) == true
+    // a cover that failed (a burst rate-limited, the network flaky for a moment): asked again a few times, later each time
+    var tries by remember(c.poster) { mutableIntStateOf(0) }
+    var failed by remember(c.poster) { mutableStateOf(false) }
+    LaunchedEffect(failed) { if (failed && tries < 3) { delay(2000L shl tries); failed = false; tries++ } }
     Column((if (width != null) Modifier.width(width) else Modifier.fillMaxWidth())
         .combinedClickable(onLongClick = { if (p?.on == true) p.toggle(c.showPath) else { cardMenuPicks = p; cardMenu = c } }) { if (p?.on == true) p.toggle(c.showPath) else nav.go(screenFor(c)) }) {
         Box(Modifier.fillMaxWidth().aspectRatio(2 / 3f).picked(on).clip(RoundedCornerShape(4.dp)).background(CardC)) {
-            AsyncImage(c.poster, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            if (c.poster.isNotEmpty()) key(tries) { AsyncImage(c.poster, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop, onError = { failed = true }) }
             if (c.badge.isNotEmpty()) Text(c.badge.replace(Regex("\\bEP\\b|الحلقة"), t("ep")), Modifier.padding(4.dp).background(Red, RoundedCornerShape(3.dp)).padding(horizontal = 5.dp, vertical = 1.dp),
                 fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
             PickMark(on)
@@ -804,8 +808,12 @@ fun <T> SectionPage(l: Loaded<T>, refresh: () -> Unit, nav: Nav, hero: (T) -> Li
 private fun JSONObject.values() = keys().asSequence().mapNotNull { optJSONObject(it) }.toList()
 /** what was being watched or read, latest first (app.js continued) */
 fun continued(kinds: Set<String>): List<Card> {
-    // an entry saved without a cover (older saves, a page that failed): the one in My List
-    fun JSONObject.cover(show: String) = optString("poster").ifEmpty { Store["list"].optJSONObject(show)?.optString("poster").orEmpty() }
+    // an entry saved without a cover (older saves, a page that failed): the one in My List or another save of it, by path or
+    // by title (an olympus chapter read while its series page failed is saved under the olympus id, not the listed one)
+    fun JSONObject.cover(show: String) = optString("poster").ifEmpty {
+        (Store["list"].values() + Store["manga"].values()).find { it.optString("poster").isNotEmpty() && (it.optString("path") == show || it.optString("title") == optString("title")) }
+            ?.optString("poster").orEmpty()
+    }
     val watch = Store["history"].values().map { h ->
         if (h.has("slug")) "cinema" to Card(h.optString("show"), "cinema", h.optString("title"), h.cover(h.optString("show")), "", "",
             if (h.has("ep")) "${t("ep")} ${h.optString("ep")}" else "", null, h.optString("show"), open = Screen.CinemaPlay(h.optString("slug"))) to h.optLong("at")
