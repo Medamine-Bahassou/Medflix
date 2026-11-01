@@ -213,6 +213,13 @@ async function seedWatch(m, slug) {
   return { servers, downloads };
 }
 
+// an episode's (or film's) download links the app can fetch itself (its site's own file host), best quality first (app.js runEpisode)
+async function edDownloads(slug) {
+  const w = await seedWatch(await load('edMovie', edUrl(slug)), slug);
+  return w.downloads.filter(l => MediaHosts.host(l.url)).sort((a, b) => (parseInt(b.quality) || 0) - (parseInt(a.quality) || 0))
+    .map(l => ({ ...l, quality: l.quality.replace(/^(\d+)$/, '$1p'), token: l.url }));
+}
+
 // MyCima and WeCima: films only, never listed (so no card shows twice). The same film (title, year, dubbed or not) is
 // searched there and its servers and download links are offered after ArabSeed's, as backups.
 const MC = 'https://cima.my-cima.net';
@@ -361,11 +368,18 @@ async function cinemaTitle(slug, force) {
     </div>
     <section class="section" id="title-cast" hidden></section>
     ${m.seasons.length > 1 ? `<div class="section"><h2>${t('seasons')}</h2><div class="fchips">${m.seasons.map(s => `<a class="fchip ${s.path === path ? 'on' : ''}" href="#${s.path}" dir="auto">${esc(s.title.match(/(الموسم|الجزء)\s+\S+/)?.[0] || s.title)}</a>`).join('')}</div></div>` : ''}
-    ${eps.length ? `<div class="section"><h2>${t('episodes')} <small>${eps.length}</small></h2><div class="eps list">${eps.map(e => // the site gives no episode names or stills
-      epRow(e.n, null, m.banner || m.poster, edHref(e.slug), store.seen['/cinema/' + e.slug], h?.slug === e.slug)).join('')}</div></div>` : ''}
+    ${eps.length ? `<div class="section"><h2>${t('episodes')} <small>${eps.length}</small><div class="ep-tools">${selBtn('btn ghost small')}</div></h2>
+      ${selBar()}<div class="eps list" id="eps"></div></div>` : ''}
     ${row(t('moreLike'), dubbed(m.related))}`;
   CastInfo.mount($('#title-cast'), [m.title], slug.includes('/') ? 'series' : 'cinema', slug.includes('/') ? '' : m.year, slug);
   $('#fav').onclick = e => { const on = toggleList({ path, title: m.title, poster: m.poster, type: 'cinema' }); e.currentTarget.innerHTML = on ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList'); };
+  if (eps.length) {
+    const drawEps = () => $('#eps').innerHTML = eps.map(e => // the site gives no episode names or stills
+      epRow(e.n, null, m.banner || m.poster, edHref(e.slug), store.seen['/cinema/' + e.slug], h?.slug === e.slug, '/cinema/' + e.slug)).join('');
+    drawEps();
+    epActions($('#eps'), eps.map(e => ({ id: '/cinema/' + e.slug, ep: e.n, slug: e.slug })), () => eps.map(e => '/cinema/' + e.slug), drawEps,
+      e => ({ id: e.id, epPath: e.id, kind: 'cinema', slug: e.slug, show: path, title: m.title, ep: e.ep, poster: m.poster }), m.title);
+  }
   pageRefresh = () => cinemaTitle(slug, true);
   $('#rf').onclick = () => pageRefresh().then(() => toast(t('updated')));
   if (m.trailer) $('#trl').onclick = () => showTrailer(m.trailer);
@@ -378,6 +392,7 @@ async function animeInstead(title) {
 }
 
 async function cinemaPlay(slug) {
+  if (store.downloads['/cinema/' + slug]?.state === 'done') return location.replace(offlineHash('/cinema/' + slug)); // downloaded: no need to stream
   const m = await load('edMovie', edUrl(slug));
   const watch = edWatchSoon(m, slug); // asked now: the season page below may take a moment too
   // Continue Watching: one entry per film, or per season for episodes (the one watched last)

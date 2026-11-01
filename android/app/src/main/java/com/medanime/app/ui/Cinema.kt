@@ -203,6 +203,10 @@ object Cinema {
         Watch(own.servers + fresh(own.servers, more.flatMap { it.servers }), own.downloads + fresh(own.downloads, more.flatMap { it.downloads }))
     }
 
+    /** an episode's (or film's) download links the app can fetch itself (its site's own file host), best quality first (cinema.js edDownloads) */
+    suspend fun downloads(slug: String) = seed(movie(slug).origin, pathOf(slug)).downloads.filter { MediaHosts.host(it.url) != null }
+        .sortedByDescending { it.quality.toIntOrNull() ?: 0 }.map { it.copy(quality = it.quality.replace(Regex("^(\\d+)$"), "$1p")) }
+
     // ---------- the backups: the same film (title, year, dubbed or not) found on the other sites ----------
     private fun key(s: String) = s.lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
     /** the same name, or with the years matching, one name's words all in the other's (egydead's "Undisputed 4 Boyka" for "Boyka Undisputed") */

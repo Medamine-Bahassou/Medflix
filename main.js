@@ -1,3 +1,5 @@
+const MediaHosts = require('./hosts');
+const hostRequest = async (url, form, headers = {}) => { const r = await session.defaultSession.fetch(url, form ? {method: 'POST', body: new URLSearchParams(form), headers} : {headers}); if (!r.ok) throw new Error(`host HTTP ${r.status}`); return r.text(); };
 const { app, BrowserWindow, Notification, WebContentsView, ipcMain, net, protocol, session, shell } = require('electron');
 const crypto = require('crypto');
 const dns = require('dns');
@@ -210,7 +212,7 @@ async function loadManifest(epPath) {
 }
 const flat = (byQuality = {}) => Object.entries(byQuality).flatMap(([quality, list]) => list.map(s => ({ ...s, quality })));
 ipcMain.handle('sources', async (_, epPath) => flat((await manifest(epPath)).players));
-ipcMain.handle('download-links', async (_, epPath) => flat((await manifest(epPath)).downloads));
+ipcMain.handle('download-links', async (_, epPath) => { const m = await manifest(epPath); return MediaHosts.downloadLinks(flat(m.downloads), flat(m.players)); });
 
 // token -> the host's URL: the gate redirects there, but only for the kind of request the site's own page makes
 const gateOnce = (kind, token, dest) => new Promise((ok, fail) => {
@@ -232,7 +234,9 @@ ipcMain.handle('stream', async (_, token) => {
   const res = await post('/watch/stream-source/' + token);
   if (!res.ok) throw new Error(`server HTTP ${res.status}`);
   const { referrerPolicy } = await res.json();
-  return { url: await gate('stream', token, 'iframe'), referrer: referrerPolicy === 'origin' ? SITE + '/' : '' };
+  const page = await gate('stream', token, 'iframe');
+  const url = MediaHosts.host(page) ? await MediaHosts.resolve(page, hostRequest).catch(() => page) : page;
+  return { url, referrer: referrerPolicy === 'origin' ? SITE + '/' : '' };
 });
 
 // --- downloads ---
@@ -273,20 +277,42 @@ function notifyFinished(win, state, labelDone, labelFailed, body) {
   n.show();
 }
 
+// Sniff the bytes: hosts often serve ZIPs as application/octet-stream.
+async function* unpackMedia(source) {
+  const iterator = source[Symbol.asyncIterator]();
+  let head = Buffer.alloc(0);
+  while (head.length < 4) {
+    const next = await iterator.next();
+    if (next.done) break;
+    head = Buffer.concat([head, next.value]);
+  }
+  async function* chunks() {
+    yield head;
+    for (;;) { const next = await iterator.next(); if (next.done) break; yield next.value; }
+  }
+  if (head.length >= 4 && head.readUInt32LE(0) === 0x04034b50) {
+    const output = zlib.createInflateRaw();
+    pipeline(Readable.from(chunks()), zipEntryBody(), output, () => {});
+    yield* output;
+  } else { yield* chunks(); }
+}
+
 ipcMain.handle('download', async (e, id, token, name, labels = {}) => {
-  if (!/^[a-f0-9]{64}$/.test(token)) throw new Error('bad token');
-  const res = await post('/watch/download-source/' + token);
-  if (!res.ok) throw new Error(`server HTTP ${res.status}`);
-  const page = await gate('download', token, 'document');
-  if (!new URL(page).hostname.endsWith('mediafire.com')) throw new Error('unsupported host');
-  const html = await (await session.defaultSession.fetch(page)).text();
-  const direct = html.match(/href="(https:\/\/download\d*\.mediafire\.com\/[^"]+)"/)?.[1];
-  if (!direct) throw new Error('no download link');
+  let page = token; // the movie section's links are the host's page itself; witanime's are tokens its gate turns into one
+  if (!(/^https:\/\//.test(token) && MediaHosts.host(token))) {
+    const kind = token.startsWith('stream:') ? 'stream' : 'download';
+    token = token.replace(/^stream:/, '');
+    if (!/^[a-f0-9]{64}$/.test(token)) throw new Error('bad token');
+    const res = await post('/watch/' + kind + '-source/' + token);
+    if (!res.ok) throw new Error(`server HTTP ${res.status}`);
+    page = await gate(kind, token, kind === 'stream' ? 'iframe' : 'document');
+  }
+  const direct = await MediaHosts.resolve(page, hostRequest);
 
   fs.mkdirSync(DL_DIR, { recursive: true });
   const file = path.join(DL_DIR, name.replace(/[\\/:*?"<>|]+/g, ' ').trim() + '.mp4');
   const ac = new AbortController();
-  const body = await session.defaultSession.fetch(direct, { signal: ac.signal });
+  const body = await session.defaultSession.fetch(direct, { signal: ac.signal, headers: { Referer: new URL(page).origin + '/' } }); // as from the host's page (arabseed's files refuse anything else)
   if (!body.ok) throw new Error(`file HTTP ${body.status}`);
   const total = +body.headers.get('content-length') || 0;
   const dl = { ac, received: 0, total };
@@ -299,7 +325,7 @@ ipcMain.handle('download', async (e, id, token, name, labels = {}) => {
     if (Date.now() - sent > 500) { sent = Date.now(); send('active'); taskbar(win); }
     cb(null, chunk);
   } });
-  pipeline(Readable.fromWeb(body.body), progress, zipEntryBody(), zlib.createInflateRaw(), fs.createWriteStream(file), err => {
+  pipeline(Readable.fromWeb(body.body), progress, unpackMedia, fs.createWriteStream(file), err => {
     downloads.delete(id);
     taskbar(win);
     if (err) fs.rm(file, { force: true }, () => {});

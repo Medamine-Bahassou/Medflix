@@ -116,9 +116,9 @@ object Downloads {
         askNotifications()
         pump()
     }
-    /** an episode: MediaFire's zip, unpacked into its .mp4 as it downloads; quality: the one picked (else the best there is) */
-    fun episode(epPath: String, show: String, title: String, ep: String, poster: String, quality: String, quiet: Boolean = false) {
-        queue(epPath, JSONObject().put("show", show).put("epPath", epPath).put("title", title).put("ep", ep).put("poster", poster).put("quality", quality).put("at", System.currentTimeMillis()), quiet)
+    /** an episode: MediaFire's zip, unpacked into its .mp4 as it downloads; quality: the one picked (else the best there is); slug: a series' (the movie section's) */
+    fun episode(epPath: String, show: String, title: String, ep: String, poster: String, quality: String, quiet: Boolean = false, slug: String = "") {
+        queue(epPath, JSONObject().apply { if (slug.isNotEmpty()) put("kind", "cinema").put("slug", slug) }.put("show", show).put("epPath", epPath).put("title", title).put("ep", ep).put("poster", poster).put("quality", quality).put("host", Store["prefs"].optString("dlHost")).put("at", System.currentTimeMillis()), quiet)
         if (!quiet) toast(t(if (onData()) "dlWifiWait" else "dlPreparing"))
     }
     /** a series' chapters, oldest first: their page images */
@@ -334,8 +334,8 @@ object Downloads {
         override fun read(b: ByteArray, off: Int, len: Int): Int = super.read(b, off, len).also { if (it > 0) count += it }
     }
 
-    private suspend fun <T> get(url: String, block: suspend (okhttp3.Response) -> T): T {
-        val call = Net.client.newCall(Request.Builder().url(url).header("User-Agent", UA).build())
+    private suspend fun <T> get(url: String, referer: String? = null, block: suspend (okhttp3.Response) -> T): T {
+        val call = Net.client.newCall(Request.Builder().url(url).header("User-Agent", UA).apply { referer?.let { header("Referer", it) } }.build())
         val reg = coroutineContext[Job]?.invokeOnCompletion { if (it != null) call.cancel() } // abort socket on pause/cancel
         return try {
             call.execute().use { block(it) }
@@ -349,24 +349,34 @@ object Downloads {
 
     // the chosen quality first, then best to worst if one fails to start
     private suspend fun episode(id: String, run: Int, epPath: String, rawTitle: String, ep: String, quality: String, item: DownloadService.Item) {
-        val links = Witanime.downloadLinks(epPath).filter { it.label == "mediafire" }
-            .sortedBy { if (it.quality == quality) -1 else Witanime.QUALITY.indexOf(it.quality) }
-        if (links.isEmpty()) { withContext(Dispatchers.Main) { toast(t("dlNoHost")) }; throw IOException("no mediafire link") }
-        for (l in links) {
+        val slug = of(id)?.optString("slug").orEmpty()
+        // [quality, token]: witanime's tokens, or a series' host pages (best first)
+        val links = if (slug.isNotEmpty()) com.medanime.app.ui.Cinema.downloads(slug).map { it.quality to it.url }
+            else Witanime.downloadLinks(epPath).filter { com.medanime.app.ui.MediaHosts.supports(it.label) }
+                .sortedWith(compareBy<com.medanime.app.ui.Server> { if (it.quality == quality) -1 else Witanime.QUALITY.indexOf(it.quality) }.thenBy { if (it.label == of(id)?.optString("host")) 0 else 1 })
+                .map { it.quality to it.token }
+        if (links.isEmpty()) { withContext(Dispatchers.Main) { toast(t("dlNoHost")) }; throw IOException("no supported host link") }
+        for ((lq, token) in links) {
             coroutineContext.ensureActive()
-            val url = try { Witanime.downloadUrl(l.token) } catch (e: CancellationException) { throw e } catch (e: Exception) { continue }
-            val name = "$rawTitle EP $ep ${l.quality}".replace(Regex("[\\\\/:*?\"<>|]+"), " ").trim()
+            val url = try { if (slug.isNotEmpty()) com.medanime.app.ui.MediaHosts.resolve(token) else Witanime.downloadUrl(token) } catch (e: CancellationException) { throw e } catch (e: Exception) { continue }
+            val referer = if (slug.isNotEmpty()) java.net.URI(token).let { "${it.scheme}://${it.host}/" } else null // arabseed's files refuse a request not from its page
+            val name = "$rawTitle EP $ep $lq".replace(Regex("[\\\\/:*?\"<>|]+"), " ").trim()
             val file = File(dir().apply { mkdirs() }, "$name.mp4")
             try {
-                val started = get(url) { r ->
+                val started = get(url, referer) { r ->
                     if (r.code >= 400) return@get false // didn't start: the next quality
                     val total = r.body!!.contentLength()
                     item.total = total
-                    if (!ui(id, run) { it.put("quality", l.quality).put("file", file.absolutePath).put("total", total); DownloadService.active[id] = item })
+                    if (!ui(id, run) { it.put("quality", lq).put("file", file.absolutePath).put("total", total); DownloadService.active[id] = item })
                         throw CancellationException()
                     val inp = Counting(r.body!!.byteStream())
-                    ZipInputStream(inp).use { zip -> file.outputStream().use { out ->
-                        zip.nextEntry ?: throw IOException("empty zip")
+                    val buffered = java.io.BufferedInputStream(inp)
+                    buffered.mark(4)
+                    val signature = ByteArray(4)
+                    val count = buffered.read(signature)
+                    buffered.reset()
+                    val media = if (count == 4 && signature.contentEquals(byteArrayOf(80, 75, 3, 4))) ZipInputStream(buffered).also { it.nextEntry ?: throw IOException("empty zip") } else buffered
+                    media.use { zip -> file.outputStream().use { out ->
                         val buf = ByteArray(1 shl 16)
                         var sent = 0L
                         while (true) {

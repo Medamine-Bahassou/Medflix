@@ -257,11 +257,11 @@ private fun DownloadItems(page: MutableState<String>, close: () -> Unit, links: 
     if (l == null) DropdownMenuItem({ Text(t("searching"), color = Muted) }, {}, enabled = false)
     else if (l.isEmpty()) DropdownMenuItem({ Text(t("dlNone"), color = Muted) }, {}, enabled = false)
     else Witanime.QUALITY.forEach { q ->
-        val g = l.filter { it.quality == q }.sortedBy { if (it.label == "mediafire") 0 else 1 }
+        val g = l.filter { it.quality == q }.sortedBy { if (com.medanime.app.ui.MediaHosts.supports(it.label)) 0 else 1 }
         if (g.isEmpty()) return@forEach
         Text(q, Modifier.padding(horizontal = 16.dp, vertical = 6.dp), color = Muted, fontSize = 12.sp)
         g.forEach { s ->
-            val inApp = s.label == "mediafire" // the one host the app can download from itself
+            val inApp = MediaHosts.supports(s.label) // the one host the app can download from itself
             DropdownMenuItem({ Text(s.label) }, {
                 close()
                 Store["prefs"].put("dlQuality", s.quality).put("dlHost", s.label); Store.persist("prefs")

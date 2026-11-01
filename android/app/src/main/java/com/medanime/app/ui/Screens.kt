@@ -541,7 +541,8 @@ fun TitleScreen(path: String, nav: Nav) {
                     if (d.trailer.isNotEmpty()) MenuItem(t("trailer"), Ic.play) { nav.go(Screen.Trailer(d.trailer, d.title)) } else null),
                 play = first?.let { (if (h != null) t("resume", h.optString("ep")) else t("play")) to { nav.go(Screen.Play(it)) } },
                 after = { item { CreditsSection(listOf(d.title) + d.alt.split(Regex("[,،]")), true, nav = nav) }; item { CardRowView(t("moreLike"), d.related, nav) } },
-                acts = { ids -> listOfNotNull("seen" to t("markWatched"), "unseen" to t("markUnwatched"), if (ids.any { !com.medanime.app.Downloads.done(it) }) "dl" to t("downloadShort") else null) },
+                acts = { ids -> listOfNotNull("seen" to t("markWatched"), "unseen" to t("markUnwatched"), if (ids.any { !com.medanime.app.Downloads.done(it) }) "dl" to t("downloadShort") else null,
+                    if (ids.any { com.medanime.app.Downloads.done(it) }) "del" to t("delDownloads") else null) },
                 run = { v, ids ->
                     val seen = Store["seen"]
                     when (v) {
@@ -549,6 +550,7 @@ fun TitleScreen(path: String, nav: Nav) {
                         "unseen" -> ids.forEach { seen.remove(it) }
                         "dl" -> d.episodes.filter { it.path in ids }.forEach { // oldest first, in the quality last picked
                             com.medanime.app.Downloads.episode(it.path, path, d.title, it.ep, d.poster, Store["prefs"].optString("dlQuality"), quiet = true) }
+                        "del" -> ids.forEach { com.medanime.app.Downloads.delete(it) }
                     }
                     Store.persist("seen")
                     if (v == "dl") toast(t("dlQueuedN", ids.size))

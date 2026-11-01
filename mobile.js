@@ -7,6 +7,7 @@ if (!window.api && window.Capacitor) (() => {
   const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0 Safari/537.36';
   // witanime sits behind Cloudflare: talk to it as this WebView (same markup as desktop), the browser its cookies were earned in
   const WV_UA = navigator.userAgent, CH = { 'sec-ch-ua': `"Chromium";v="${WV_UA.match(/Chrome\/(\d+)/)?.[1] || 138}"` }; // witanime's API 404s without a client-hint header
+  const hostRequest = async (url, form) => { const r = await http(url, form ? {method: 'POST', data: form} : {}); if (r.status >= 400) throw new Error(`host HTTP ${r.status}`); return String(r.data); };
   const Http = Capacitor.Plugins.CapacitorHttp;
   // Where Cloudflare refuses our native client (403/503), witanime is asked from inside a real WebView on the site
   // instead (DownloaderPlugin.siteFetch), which shows Cloudflare's check over the app when it has one
@@ -176,24 +177,24 @@ if (!window.api && window.Capacitor) (() => {
       if (res.status >= 400) throw new Error(`HTTP ${res.status}`);
       return JSON.parse(res.data).props.streams;
     },
-    downloadLinks: async epPath => flat((await manifest(epPath)).downloads),
+    downloadLinks: async epPath => { const m = await manifest(epPath); return MediaHosts.downloadLinks(flat(m.downloads), flat(m.players)); },
     async stream(token) {
       if (!/^[a-f0-9]{64}$/.test(token)) throw new Error('bad token');
       const src = await post('/watch/stream-source/' + token);
       if (src.status >= 400) throw new Error(`server HTTP ${src.status}`);
-      return { url: await gate('stream', token, 'iframe'), referrer: '' };
+      const page = await gate('stream', token, 'iframe');
+      return { url: MediaHosts.host(page) ? await MediaHosts.resolve(page, hostRequest).catch(() => page) : page, referrer: '' };
     },
 
     // downloads: the file link, resolved as main.js does (MediaFire's direct link); the download service does the rest
     async downloadUrl(token) {
-      if (!/^[a-f0-9]{64}$/.test(token)) throw new Error('bad token');
-      const src = await post('/watch/download-source/' + token);
+      const kind = token.startsWith('stream:') ? 'stream' : 'download';
+  token = token.replace(/^stream:/, '');
+  if (!/^[a-f0-9]{64}$/.test(token)) throw new Error('bad token');
+      const src = await post('/watch/' + kind + '-source/' + token);
       if (src.status >= 400) throw new Error(`server HTTP ${src.status}`);
-      const page = await gate('download', token, 'document');
-      if (!new URL(page).hostname.endsWith('mediafire.com')) throw new Error('unsupported host');
-      const direct = (await http(page)).data.match(/href="(https:\/\/download\d*\.mediafire\.com\/[^"]+)"/)?.[1];
-      if (!direct) throw new Error('no download link');
-      return direct;
+      const page = await gate(kind, token, kind === 'stream' ? 'iframe' : 'document');
+      return MediaHosts.resolve(page, hostRequest);
     },
     downloadEnqueue: job => Downloader.enqueue(job).catch(e => console.error(e)), // see pumpDownloads (app.js)
     async openDownloadPage(token) { // hosts the app can't download from: their page in the system browser

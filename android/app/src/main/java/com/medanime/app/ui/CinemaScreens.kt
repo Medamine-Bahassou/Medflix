@@ -74,9 +74,22 @@ fun CinemaTitleScreen(slug: String, show: Boolean, nav: Nav) {
                 ListButton(path, m.title, m.poster, "cinema")
                 if (slug.contains('/')) NotifyButton(path, m.title, m.poster, eps.lastOrNull()?.slug ?: "") // a series' season; new films have their own switch (settings)
             }, emptyList(), nav, if (eps.isNotEmpty()) t("episodes") else null,
-                eps.map { Numbered(it.n, Store["seen"].has("/cinema/${it.slug}"), h?.optString("slug") == it.slug, Screen.CinemaPlay(it.slug), "/cinema/${it.slug}", thumb = m.banner.ifEmpty { m.poster }) }, // the site gives no episode names or stills
-                acts = { listOf("seen" to t("markWatched"), "unseen" to t("markUnwatched")) },
-                run = { v, ids -> ids.forEach { if (v == "seen") Store["seen"].put(it, 1) else Store["seen"].remove(it) }; Store.persist("seen") },
+                eps.map { Numbered(it.n, Store["seen"].has("/cinema/${it.slug}"), h?.optString("slug") == it.slug, Screen.CinemaPlay(it.slug), "/cinema/${it.slug}", com.medanime.app.Downloads.done("/cinema/${it.slug}"), thumb = m.banner.ifEmpty { m.poster }) }, // the site gives no episode names or stills
+                // several episodes: mark them watched or not, download them or delete their copies (Screens.kt TitleScreen's)
+                acts = { ids -> listOfNotNull("seen" to t("markWatched"), "unseen" to t("markUnwatched"),
+                    if (ids.any { !com.medanime.app.Downloads.done(it) }) "dl" to t("downloadShort") else null,
+                    if (ids.any { com.medanime.app.Downloads.done(it) }) "del" to t("delDownloads") else null) },
+                run = { v, ids ->
+                    when (v) {
+                        "seen" -> ids.forEach { Store["seen"].put(it, 1) }
+                        "unseen" -> ids.forEach { Store["seen"].remove(it) }
+                        "dl" -> eps.filter { "/cinema/${it.slug}" in ids }.forEach { // each in the best quality there is
+                            com.medanime.app.Downloads.episode("/cinema/${it.slug}", path, m.title, it.n, m.poster, "", quiet = true, slug = it.slug) }
+                        "del" -> ids.forEach { com.medanime.app.Downloads.delete(it) }
+                    }
+                    Store.persist("seen")
+                    if (v == "dl") toast(t("dlQueuedN", ids.size))
+                },
                 before = {
                     if (m.seasons.size > 1) item {
                         Text(t("seasons"), Modifier.padding(start = 16.dp, top = 8.dp), fontSize = 18.sp)
@@ -100,6 +113,7 @@ private class Playing(val m: Movie, val ep: String?, val eps: List<EpRef>)
 /** a film or an episode playing: the site's servers, unwrapped to the hosts' players (cinema.js cinemaPlay) */
 @Composable
 fun CinemaPlayScreen(slug: String, nav: Nav) {
+    if (com.medanime.app.Downloads.done("/cinema/$slug")) return LaunchedEffect(slug) { nav.replace(Screen.Offline("/cinema/$slug")) } // downloaded: no need to stream
     val (l, retry) = loadedOnce("play:$slug") { _ ->
         val m = Cinema.movie(slug)
         val ep = if (slug.startsWith("episode/")) Regex("الحلقة\\s+(\\d+(\\.\\d+)?)").find(m.title)?.groupValues?.get(1) ?: "?" else null

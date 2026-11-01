@@ -43,6 +43,12 @@ import kotlin.math.atan2
 import kotlin.math.roundToInt
 
 private fun JSONObject.manga() = optString("kind") == "manga"
+private fun JSONObject.kindName() = t(if (manga()) "manga" else if (optString("kind") == "cinema") "cinema" else "kindAnime")
+// a show's page: a manga's, a series' (the movie section's), an anime's
+private fun showScreen(d: JSONObject, show: String) = if (d.manga()) Screen.MangaSeries(show.substringAfterLast('/'))
+    else if (show.startsWith("/cinema/")) Screen.CinemaTitle(show.removePrefix("/cinema/")) else Screen.Title(show)
+// an episode from the site (not its download): a series' plays in the movie section's player
+private fun playScreen(epPath: String) = if (epPath.startsWith("/cinema/")) Screen.CinemaPlay(epPath.removePrefix("/cinema/")) else Screen.Play(epPath)
 internal fun mb(n: Long) = if (n >= 1L shl 30) "\u2066%.1f GB\u2069".format(n / 1073741824.0) else "\u2066%.0f MB\u2069".format(n / 1048576.0) // an LTR isolate: the number stays before MB in Arabic
 private val PENDING = setOf("active", "queued", "paused")
 private val RUNNING = setOf("active", "queued")
@@ -83,7 +89,7 @@ fun DownloadsScreen(show: String, nav: Nav) {
             }
         } else PageTitle(t("downloads"), nav) {
             val its = groups.find { it.key == show }?.value ?: emptyList()
-            if (its.isNotEmpty()) DlMenu(its, picks, { ask = it }) { nav.go(if (its[0].manga()) Screen.MangaSeries(show.substringAfterLast('/')) else Screen.Title(show)) }
+            if (its.isNotEmpty()) DlMenu(its, picks, { ask = it }) { nav.go(showScreen(its[0], show)) }
         }
         if (show.isEmpty()) {
             if (groups.isEmpty()) return@Column Empty(t("noDownloads"), t("noDownloadsHint"))
@@ -111,7 +117,7 @@ fun DownloadsScreen(show: String, nav: Nav) {
                         AsyncImage(d0.optString("poster"), null, Modifier.width(56.dp).aspectRatio(2 / 3f).clip(RoundedCornerShape(4.dp)), contentScale = ContentScale.Crop)
                         Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                             Text(d0.optString("title"), fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            Text("${if (d0.manga()) t("manga") else t("kindAnime")} · ${t(if (d0.manga()) "chCount" else "epCount", done)}" + (if (size > 0) " · ${mb(size)}" else "") + if (act.isNotEmpty()) " · ${t("dlActiveN", act.size)}" else "",
+                            Text("${d0.kindName()} · ${t(if (d0.manga()) "chCount" else "epCount", done)}" + (if (size > 0) " · ${mb(size)}" else "") + if (act.isNotEmpty()) " · ${t("dlActiveN", act.size)}" else "",
                                 color = Muted, fontSize = 12.sp)
                             if (act.isNotEmpty()) {
                                 val r = act.sumOf { it.optLong("received") }; val tot = act.sumOf { it.optLong("total") }
@@ -131,10 +137,10 @@ fun DownloadsScreen(show: String, nav: Nav) {
         val act = items.filter { it.optString("state") in PENDING }
         Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             AsyncImage(d0.optString("poster"), null, Modifier.width(64.dp).aspectRatio(2 / 3f).clip(RoundedCornerShape(4.dp)), contentScale = ContentScale.Crop)
-            Column(Modifier.weight(1f).padding(horizontal = 12.dp).clickable { nav.go(if (d0.manga()) Screen.MangaSeries(show.substringAfterLast('/')) else Screen.Title(show)) }) {
+            Column(Modifier.weight(1f).padding(horizontal = 12.dp).clickable { nav.go(showScreen(d0, show)) }) {
                 Text(d0.optString("title"), fontWeight = FontWeight.Bold, fontSize = 17.sp)
                 val size = items.filter { it.optString("state") == "done" }.sumOf(Downloads::size)
-                Text("${if (d0.manga()) t("manga") else t("kindAnime")} · ${t(if (d0.manga()) "chCount" else "epCount", items.size)}" + if (size > 0) " · ${mb(size)}" else "", color = Muted, fontSize = 12.sp)
+                Text("${d0.kindName()} · ${t(if (d0.manga()) "chCount" else "epCount", items.size)}" + if (size > 0) " · ${mb(size)}" else "", color = Muted, fontSize = 12.sp)
             }
             if (act.isNotEmpty()) ShowToggle(show, Downloads.held(show) || act.none { it.optString("state") in RUNNING })
         }
@@ -160,7 +166,7 @@ fun DownloadsScreen(show: String, nav: Nav) {
                 val id = d.optString("id")
                 Row(Modifier.fillMaxWidth().picked(picks.has(id)).clip(RoundedCornerShape(6.dp)).background(CardC)
                     .combinedClickable(onLongClick = { if (picks.on) picks.toggle(id) else picks.start(id) }) { // a tap reads or plays it: its download once done, else from the site
-                        if (picks.on) picks.toggle(id) else nav.go(if (d.manga()) Screen.MangaRead(d.optString("chapterId"), d.optString("title"), d.optString("ep")) else if (st == "done") Screen.Offline(d.optString("epPath")) else Screen.Play(d.optString("epPath")))
+                        if (picks.on) picks.toggle(id) else nav.go(if (d.manga()) Screen.MangaRead(d.optString("chapterId"), d.optString("title"), d.optString("ep")) else if (st == "done") Screen.Offline(d.optString("epPath")) else playScreen(d.optString("epPath")))
                     }
                     .padding(start = 14.dp, end = 4.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -326,11 +332,11 @@ private fun ShowToggle(show: String, paused: Boolean) {
 @Composable
 fun OfflineScreen(epPath: String, nav: Nav) {
     val d = Downloads.of(epPath)
-    if (d == null || d.optString("state") != "done") return LaunchedEffect(epPath) { nav.replace(Screen.Play(epPath)) }
+    if (d == null || d.optString("state") != "done") return LaunchedEffect(epPath) { nav.replace(playScreen(epPath)) }
     val file = d.optString("file")
     var ext by remember(epPath) { mutableStateOf(Store["prefs"].optBoolean("extPlayer")) }
     LaunchedEffect(epPath) {
-        Store.watched(d.optString("show"), epPath, d.optString("ep"), d.optString("title"), d.optString("poster"))
+        Store.watched(d.optString("show"), epPath, d.optString("ep"), d.optString("title"), d.optString("poster"), d.optString("slug"))
         if (ext) { if (openWith(file, false)) nav.back() else ext = false } // no player app: ours
     }
     if (ext) return
@@ -386,7 +392,7 @@ fun OfflineScreen(epPath: String, nav: Nav) {
         }
     }
     PlayerChrome(d.optString("title"), sub, nav, null, -1, false, {}, prev?.let { { nav.replace(Screen.Offline(it)) } }, next?.let { { nav.replace(Screen.Offline(it)) } },
-        { nav.go(Screen.Title(d.optString("show"))) }, { _, close -> DropdownMenuItem({ Text(t("openWith")) }, { close(); openWith(file, true) }, leadingIcon = { Icon(Ic.external, null, Modifier.size(18.dp)) }) },
+        { nav.go(showScreen(d, d.optString("show"))) }, { _, close -> DropdownMenuItem({ Text(t("openWith")) }, { close(); openWith(file, true) }, leadingIcon = { Icon(Ic.external, null, Modifier.size(18.dp)) }) },
         { castTo("${d.optString("title")} · $sub", file, null) }, fullButton = false) { full ->
         if (failed) Empty(t("playFailed"), t("playFailedHint")) { OutlinedButton({ openWith(file, true) }) { Text(t("openWith"), color = Color.White) } }
         else AndroidView({ c ->

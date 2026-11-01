@@ -917,8 +917,18 @@ public class DownloaderPlugin extends Plugin {
         Counting in = null;
         try {
             in = new Counting(conn.getInputStream());
-            try (ZipInputStream zip = new ZipInputStream(in); OutputStream out = new FileOutputStream(file)) {
-                if (zip.getNextEntry() == null) throw new IOException("empty zip");
+            java.io.PushbackInputStream probe = new java.io.PushbackInputStream(in, 4);
+            byte[] sig = new byte[4];
+            int size = 0;
+            while (size < 4) { int n = probe.read(sig, size, 4 - size); if (n < 0) break; size += n; }
+            probe.unread(sig, 0, size);
+            InputStream media = probe;
+            if (java.util.Arrays.equals(sig, new byte[]{80, 75, 3, 4})) {
+                ZipInputStream archive = new ZipInputStream(probe);
+                if (archive.getNextEntry() == null) throw new IOException("empty zip");
+                media = archive;
+            }
+            try (InputStream zip = media; OutputStream out = new FileOutputStream(file)) {
                 byte[] buf = new byte[1 << 16];
                 long sent = 0;
                 for (int n; (n = zip.read(buf)) > 0; ) {

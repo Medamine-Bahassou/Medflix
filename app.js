@@ -864,7 +864,7 @@ async function moreResults(mq, fq, anime = [], asGrid) {
 }
 
 // ---------- downloads ----------
-const offlineHash = epPath => '#/offline/' + epPath.replace(/^\/watch\//, '');
+const offlineHash = epPath => '#/offline/' + epPath.replace(/^\/(watch\/)?/, ''); // an anime's /watch/x, or a series' /cinema/episode/x
 const mb = n => '\u2066' + (n / 1048576).toFixed(n > 1048576 * 100 ? 0 : 1) + ' MB\u2069'; // isolated LTR, so Arabic lines don't flip it to "MB 393"
 // phones: the download service, which keeps the phone awake with its screen off, stays up while anything is downloading or
 // waiting its turn, not only during each file: between two files the page looks up the next one's link, and Android won't
@@ -877,7 +877,7 @@ const saveDownloads = () => {
 };
 const dlLabels = () => ({ labelActive: t('dlNotifActive'), labelMany: t('dlNotifMany'), labelPreparing: t('dlPreparing') });
 
-const IN_APP = 'mediafire'; // the one host the app can download from itself (see main.js)
+const inAppHost = MediaHosts.supports; // the one host the app can download from itself (see main.js)
 // Each show (an anime, a manga series) has its own queue: one episode/chapter at a time, oldest first, while
 // different shows download side by side. A show can be paused on its own; Pause all holds every show.
 const held = show => store.prefs.dlHeld?.[show] ?? !!store.prefs.dlPaused; // a show's own choice beats Pause all
@@ -885,7 +885,7 @@ function startDownload(item, quality = item.quality || store.prefs.dlQuality) {
   const cur = store.downloads[item.id];
   if (cur?.state === 'active' || cur?.state === 'done') return toast(t(cur.state === 'done' ? 'dlDone' : 'dlActive'));
   const wait = held(item.show), busy = Object.values(store.downloads).some(d => d.show === item.show && d.state === 'active');
-  store.downloads[item.id] = { ...item, quality, state: wait ? 'paused' : 'queued', received: 0, total: 0, at: Date.now() };
+  store.downloads[item.id] = { ...item, host: item.host || store.prefs.dlHost, quality, state: wait ? 'paused' : 'queued', received: 0, total: 0, at: Date.now() };
   saveDownloads(); drawDownloads();
   toast(t(wait ? 'dlPausedAll' : busy ? 'dlQueued' : 'dlPreparing'));
   pumpDownloads();
@@ -897,9 +897,9 @@ document.addEventListener('visibilitychange', () => { // back in the app: anythi
 });
 async function runEpisode(d) {
   let links = [];
-  try { links = (await api.downloadLinks(d.epPath)).filter(l => l.label === IN_APP); } catch (e) { console.error(e); }
+  try { links = d.kind === 'cinema' ? await edDownloads(d.slug) : (await api.downloadLinks(d.epPath)).filter(l => inAppHost(l.label)); } catch (e) { console.error(e); }
   const rank = l => l.quality === d.quality ? -1 : QUALITY.indexOf(l.quality);
-  links.sort((a, b) => rank(a) - rank(b));
+  links.sort((a, b) => rank(a) - rank(b) || Number(b.label === d.host) - Number(a.label === d.host));
   for (const l of links) { // chosen quality first, then best to worst if it fails to start
     if (d.state !== 'active') return; // paused or cancelled while the links were fetched
     try {
@@ -961,8 +961,8 @@ async function dlSources(d) {
     d.meta = { prev: c.prev, next: c.next }; // to keep reading offline
     return c.images.length ? { urls: c.images } : {};
   }
-  const links = (await api.downloadLinks(d.epPath)).filter(l => l.label === IN_APP);
-  links.sort((a, b) => (a.quality === d.quality ? -1 : QUALITY.indexOf(a.quality)) - (b.quality === d.quality ? -1 : QUALITY.indexOf(b.quality)));
+  const links = (await api.downloadLinks(d.epPath)).filter(l => inAppHost(l.label));
+  links.sort((a, b) => (a.quality === d.quality ? -1 : QUALITY.indexOf(a.quality)) - (b.quality === d.quality ? -1 : QUALITY.indexOf(b.quality)) || Number(b.label === d.host) - Number(a.label === d.host));
   for (const l of links) { try { return { url: await api.downloadUrl(l.token), quality: l.quality }; } catch (e) { console.error(e); } }
   return {};
 }
@@ -1050,6 +1050,8 @@ const dlStatus = d => {
   if (d.state === 'done') return t('offline') + (d.total ? ' · ' + (isManga(d) ? t('pagesN', d.total) : mb(d.total)) : '');
   return { queued: t('dlQueued'), paused: t('dlPaused'), error: t('dlFailed'), cancelled: t('dlCancelled') }[d.state] || '';
 };
+const dlKind = d => t(isManga(d) ? 'manga' : d.kind === 'cinema' ? 'cinema' : 'kindAnime');
+const showHref = show => /^\/(manga|cinema)\//.test(show) ? '#' + show : '#/title' + show;
 const dlGroups = () => {
   const g = {};
   for (const d of Object.values(store.downloads)) (g[d.show] ||= []).push(d);
@@ -1134,7 +1136,7 @@ function drawDownloads(only) {
       const r = act.reduce((s, d) => s + d.received, 0), tot = act.reduce((s, d) => s + d.total, 0);
       return `<a class="dlg" data-pick="${esc(show)}" href="#/downloads${esc(show)}"><img src="${esc(img(d0.poster))}" alt="">
         <div class="dl-info"><b dir="auto">${esc(d0.title)}</b>
-          <small>${isManga(d0) ? t('manga') : t('kindAnime')} · ${isManga(d0) ? t('chCount', done) : t('epCount', done)}${act.length ? ' · ' + t('dlActiveN', act.length) : ''}</small>
+          <small>${dlKind(d0)} · ${isManga(d0) ? t('chCount', done) : t('epCount', done)}${act.length ? ' · ' + t('dlActiveN', act.length) : ''}</small>
           ${act.length ? `<div class="dl-bar"><i style="width:${tot ? r / tot * 100 : 0}%"></i></div>` : ''}</div>
         ${showToggle(show, items)}<span class="chev">${ICON.next}</span></a>`;
     }).join('')}</div>` : `<div class="empty"><b>${t('noDownloads')}</b>${t('noDownloadsHint')}</div>`}</div>`;
@@ -1164,8 +1166,8 @@ function drawDownloads(only) {
   const d0 = items[0], size = items.filter(d => d.state === 'done' && !isManga(d)).reduce((s, d) => s + d.total, 0);
   view.innerHTML = `<div class="page"><h1><a class="h1-back" href="#/downloads" aria-label="${t('back')}">${ICON.back}</a>${t('downloads')}</h1>
     <div class="dl-hero"><img src="${esc(img(d0.poster))}" alt="">
-      <div><a class="dl-title" href="${key.startsWith('/manga/') ? '#' + key : '#/title' + key}" dir="auto">${esc(d0.title)}</a>
-        <small>${isManga(d0) ? t('manga') : t('kindAnime')} · ${isManga(d0) ? t('chCount', items.length) : t('epCount', items.length)}${size ? ' · ' + mb(size) : ''}</small></div>
+      <div><a class="dl-title" href="${esc(showHref(key))}" dir="auto">${esc(d0.title)}</a>
+        <small>${dlKind(d0)} · ${isManga(d0) ? t('chCount', items.length) : t('epCount', items.length)}${size ? ' · ' + mb(size) : ''}</small></div>
       ${showToggle(key, items)}<button class="icon-btn" id="delAll" title="${t('deleteAll')}" aria-label="${t('deleteAll')}">${ICON.trash}</button></div>
     ${selBar()}<div class="dls">${items.map(dlRow).join('')}</div></div>`;
   const byIds = ids => ids.map(id => store.downloads[id]).filter(Boolean);
@@ -1187,14 +1189,14 @@ function drawDownloads(only) {
 
 function offline(epPath) {
   const d = store.downloads[epPath];
-  if (d?.state !== 'done') return location.replace(playHash(epPath));
-  store.history[d.show] = { show: d.show, epPath, ep: d.ep, title: d.title, poster: d.poster, at: Date.now() };
+  if (d?.state !== 'done') return location.replace(epPath.startsWith('/cinema/') ? edHref(epPath.slice(8)) : playHash(epPath));
+  store.history[d.show] = { show: d.show, ...(d.slug ? { slug: d.slug } : { epPath }), ep: d.ep, title: d.title, poster: d.poster, at: Date.now() }; // a series' entry is by slug (cinema.js)
   store.seen[epPath] = 1;
   persist('history'); persist('seen');
   view.innerHTML = `<div class="player">
     <header>
       <button class="icon-btn" id="back" title="${t('back')}" aria-label="${t('back')}">${ICON.back}</button>
-      <div class="ttl"><a href="#/title${esc(d.show)}">${esc(d.title)}</a><small>${t('episode')} ${esc(d.ep)}</small></div>
+      <div class="ttl"><a href="${esc(showHref(d.show))}">${esc(d.title)}</a><small>${t('episode')} ${esc(d.ep)}</small></div>
       <div class="sp"></div>
       ${api.cast ? `<button class="icon-btn pcast" title="${t('cast')}" aria-label="${t('cast')}">${ICON.cast}</button>` : ''}
       <span class="chip">${ICON.download} ${t('offline')}</span>
@@ -1246,21 +1248,25 @@ async function title(path, force) {
     <section class="section" id="title-cast" hidden></section>
     ${d.info.length ? `<div class="infos">${d.info.map(([k, v]) => `<div><span>${esc(k)}</span>${esc(v)}</div>`).join('')}</div>` : ''}
     ${d.episodes.length > 1 || type === 'anime' ? `<div class="section"><h2>${t('episodes')} <small>${d.episodes.length}</small>
-      <div class="ep-tools"><input id="epf" placeholder="${t('jump')}" type="number"><button class="btn ghost small" id="rev" aria-label="${t('reverse')}" title="${t('reverse')}">${ICON.sort}</button></div></h2>
-      <div class="eps list" id="eps"></div></div>` : ''}
+      <div class="ep-tools"><input id="epf" placeholder="${t('jump')}" type="number"><button class="btn ghost small" id="rev" aria-label="${t('reverse')}" title="${t('reverse')}">${ICON.sort}</button>
+        ${selBtn('btn ghost small')}</div></h2>
+      ${selBar()}<div class="eps list" id="eps"></div></div>` : ''}
     ${d.related.length ? row(t('moreLike'), d.related) : ''}`;
 
   CastInfo.mount($('#title-cast'), [d.title, ...(d.alt || '').split(/[,،]/)], 'anime');
   const eps = $('#eps');
   let rev = false, info = {};
-  const drawEps = (f = '') => eps && (eps.innerHTML = (rev ? [...d.episodes].reverse() : d.episodes)
-    .filter(e => !f || parseFloat(e.ep) === +f) // the number itself: 1 is episode 1, not 10-19
-    .map(e => epRow(e.ep, info[+e.ep], d.banner || d.poster, playHash(e.path), store.seen[e.path], h?.epPath === e.path)).join(''));
+  const shown = (f = $('#epf')?.value) => (rev ? [...d.episodes].reverse() : d.episodes)
+    .filter(e => !f || parseFloat(e.ep) === +f); // the number itself: 1 is episode 1, not 10-19
+  const drawEps = () => eps && (eps.innerHTML = shown()
+    .map(e => epRow(e.ep, info[+e.ep], d.banner || d.poster, playHash(e.path), store.seen[e.path], h?.epPath === e.path, e.path)).join(''));
   drawEps();
   if (eps) {
-    scraper.episodeInfo([d.title, ...(d.alt || '').split(/\s*[,،]\s*/)]).then(i => { info = i; drawEps($('#epf').value); }).catch(() => {}); // names are extras: the numbers stand without them
-    $('#epf').oninput = e => drawEps(e.target.value);
-    $('#rev').onclick = () => { rev = !rev; drawEps($('#epf').value); };
+    scraper.episodeInfo([d.title, ...(d.alt || '').split(/\s*[,،]\s*/)]).then(i => { info = i; drawEps(); }).catch(() => {}); // names are extras: the numbers stand without them
+    $('#epf').oninput = drawEps;
+    $('#rev').onclick = () => { rev = !rev; drawEps(); };
+    epActions(eps, d.episodes.map(e => ({ id: e.path, ep: e.ep })), () => shown().map(e => e.path), drawEps,
+      e => ({ id: e.id, epPath: e.id, show: showOf(e.id), title: d.title, ep: e.ep, poster: d.poster }), d.title);
   }
   $('#fav').onclick = e => { const on = toggleList({ path, title: d.title, poster: d.poster, type }); e.currentTarget.innerHTML = on ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList'); };
   pageRefresh = () => title(path, true);
@@ -1281,8 +1287,43 @@ async function nextAir(names) {
   return `${t('nextEp')} · ${ep ? `${t('epShort')} ${ep} · ` : ''}${d.toDateString() === new Date().toDateString() ? t('today') : fmt({ weekday: 'long', day: 'numeric', month: 'short' })} · ${fmt({ hour: 'numeric', minute: '2-digit' })}`;
 }
 // an episode's row (anime, series): its still (else the show's picture), its number and, when known, its name
-const epRow = (n, i, pic, href, seen, last) => `<a class="ep ${seen ? 'seen' : ''} ${last ? 'last' : ''}" href="${href}">
+const epRow = (n, i, pic, href, seen, last, pick) => `<a class="ep ${seen ? 'seen' : ''} ${last ? 'last' : ''} ${store.downloads[pick]?.state === 'done' ? 'dld' : ''} ${picks?.has(pick) ? 'sel' : ''}"
+  href="${href}"${pick ? ` data-pick="${esc(pick)}"` : ''}>
   <img src="${esc(img(i?.thumb || pic))}" alt="" loading="lazy"><span><b>${/^\d/.test(n) ? t('ep') + ' ' : ''}${esc(n)}</b>${i?.name ? `<small dir="auto">${esc(i.name)}</small>` : ''}</span></a>`;
+// an episode list's actions (anime, series), on one (long-press) or several picked: mark them watched or not, download them or
+// delete their copies (manga.js's). eps [{id: its seen and download key, ep}], ids() those shown, job(e) its download record
+function epActions(list, eps, ids, redraw, job, title) {
+  const pick = ps => eps.filter(e => ps.includes(e.id));
+  const saved = e => store.downloads[e.id]?.state === 'done';
+  const free = e => !store.downloads[e.id] || failedDl(store.downloads[e.id]); // not saved nor on its way
+  const acts = (ps, one) => [
+    (!one || !store.seen[ps[0]]) && ['seen', t('markWatched')],
+    (!one || store.seen[ps[0]]) && ['unseen', t('markUnwatched')],
+    pick(ps).some(free) && ['dl', t('downloadShort')],
+    pick(ps).some(saved) && ['del', t(one ? 'delDownload' : 'delDownloads')],
+    one && ['select', t('select')],
+  ].filter(Boolean);
+  const run = async (v, ps) => {
+    const xs = pick(ps);
+    if (v === 'select') return selectFrom(ps[0]);
+    if (v === 'seen' || v === 'unseen') { for (const e of xs) v === 'seen' ? (store.seen[e.id] = 1) : delete store.seen[e.id]; persist('seen'); }
+    if (v === 'dl') {
+      const todo = xs.filter(free);
+      for (const e of todo) startDownload(job(e)); // in the quality last picked; each show's queue takes them oldest first
+      toast(t('dlQueuedN', todo.length)); // one toast for them all, over each one's own
+    }
+    if (v === 'del') {
+      const ds = xs.filter(saved).map(e => store.downloads[e.id]);
+      const what = ds.length > 1 ? t('confirmDelN', ds.length) : t('confirmDel', `${title} · ${t('episode')} ${ds[0]?.ep}`);
+      if (!ds.length || !await confirmSheet(what, t('confirmDelHint'), t('del'))) return;
+      for (const d of ds) await removeDownload(d);
+      saveDownloads();
+    }
+    redraw();
+  };
+  const selectFrom = selectable(list, ids, acts, run);
+  pagePress = ['.ep', a => pickSheet(`${t('episode')} ${pick([a.dataset.pick])[0]?.ep}`, acts([a.dataset.pick], true), '', v => run(v, [a.dataset.pick]))];
+}
 // a full-screen overlay (a tap, back or Esc closes it): trailers, and posters shown full size
 function overlay(html) {
   const m = document.createElement('div');
@@ -1412,10 +1453,10 @@ async function play(epPath) {
     const top = have?.state === 'done' ? `<button class="dd-item go" data-act="offline">${ICON.play}<span class="host">${t('playOffline')}</span></button>`
       : have?.state === 'active' ? `<button class="dd-item go" data-act="list">${ICON.download}<span class="host">${t('dlOpenList')}</span></button>` : '';
     const item = l => `<button class="dd-item ${l.quality === store.prefs.dlQuality && l.label === store.prefs.dlHost ? 'on' : ''}" data-i="${links.indexOf(l)}">
-      <span class="host">${esc(l.label)}</span><span class="tag ${l.label === IN_APP ? 'app' : ''}">${l.label === IN_APP ? t('inApp') : ICON.external + ' ' + t('browser')}</span>
+      <span class="host">${esc(l.label)}</span><span class="tag ${inAppHost(l.label) ? 'app' : ''}">${inAppHost(l.label) ? t('inApp') : ICON.external + ' ' + t('browser')}</span>
       ${CHECK}</button>`;
     const groups = !links ? `<div class="dd-group">${t('searching')}</div>` : !links.length ? `<div class="dd-group">${t('dlNone')}</div>`
-      : QUALITY.map(q => links.filter(l => l.quality === q).sort((a, b) => (b.label === IN_APP) - (a.label === IN_APP)))
+      : QUALITY.map(q => links.filter(l => l.quality === q).sort((a, b) => (inAppHost(b.label)) - (inAppHost(a.label))))
           .filter(g => g.length).map(g => `<div class="dd-group">${g[0].quality}<small>${g.length}</small></div>${g.map(item).join('')}`).join('');
     dlm.querySelector('.dd-menu').innerHTML = top + groups;
   };
@@ -1435,7 +1476,7 @@ async function play(epPath) {
     if (b.dataset.act === 'list') return location.hash = '#/downloads';
     const l = links[b.dataset.i];
     store.prefs.dlQuality = l.quality; store.prefs.dlHost = l.label; persist('prefs');
-    if (l.label === IN_APP) startDownload({ id: epPath, epPath, show, title: d.title, ep, poster: d.poster }, l.quality);
+    if (inAppHost(l.label)) startDownload({ id: epPath, epPath, show, title: d.title, ep, poster: d.poster }, l.quality);
     else api.openDownloadPage(l.token).then(() => toast(t('openedBrowser')), () => toast(t('dlFailed'), true));
   };
   srv.querySelector('.dd-menu').onclick = e => { const b = e.target.closest('.dd-item'); if (b) { closeMenu(); tryFrom(+b.dataset.i); } };
@@ -1608,7 +1649,7 @@ async function route(soft) {
     else if (a === 'list') myList();
     else if (a === 'hidden') hiddenView();
     else if (a === 'downloads') drawDownloads();
-    else if (a === 'offline') offline('/watch/' + rest.join('/'));
+    else if (a === 'offline') offline((rest[0] === 'cinema' ? '/' : '/watch/') + rest.join('/'));
     else if (a === 'schedule') await schedule();
     else if (a === 'airing') await airing(rest[0]);
     else if (a === 'manga') await mangaRoute(rest);

@@ -213,7 +213,14 @@ object Witanime {
         return flat(manifest(epPath).optJSONObject("players")).filter { seen.add(it.label.lowercase().substringBefore(' ')) }
     }
     /** its download links, every host and quality (MediaFire's the app downloads itself; the rest open in the browser) */
-    suspend fun downloadLinks(epPath: String) = flat(manifest(epPath).optJSONObject("downloads"))
+    suspend fun downloadLinks(epPath: String): List<Server> {
+        val m = manifest(epPath)
+        val downloads = flat(m.optJSONObject("downloads"))
+        val seen = downloads.map { it.label.lowercase() to it.quality }.toSet()
+        return downloads + flat(m.optJSONObject("players")).filter {
+            MediaHosts.supports(it.label) && (it.label.lowercase() to it.quality) !in seen
+        }.map { it.copy(token = "stream:" + it.token) }
+    }
 
     /** a download token -> the host's page for it (download gates answer only the site's own page loads) */
     suspend fun downloadPage(token: String): String {
@@ -225,9 +232,15 @@ object Witanime {
     }
     /** MediaFire's direct file link, for the app's own download (mobile.js downloadUrl) */
     suspend fun downloadUrl(token: String): String {
-        val page = downloadPage(token)
-        if (!java.net.URI(page).host.endsWith("mediafire.com")) throw IOException("unsupported host")
-        return Regex("href=\"(https://download\\d*\\.mediafire\\.com/[^\"]+)\"").find(Net.fetch(page).body)?.groupValues?.get(1) ?: throw IOException("no download link")
+        val page = if (token.startsWith("stream:")) {
+            val raw = token.removePrefix("stream:")
+            if (!Regex("^[a-f0-9]{64}$").matches(raw)) throw IOException("bad token")
+            val src = post("/watch/stream-source/$raw")
+            if (src.status >= 400) throw IOException("server HTTP ${src.status}")
+            val r = Net.fetch("$SITE/watch/stream-gate/$raw", mapOf("sec-ch-ua" to Net.ch, "Sec-Fetch-Dest" to "iframe", "Sec-Fetch-Mode" to "navigate", "Sec-Fetch-Site" to "same-origin"), redirects = false)
+            r.header("location") ?: r.url.takeIf { !it.startsWith(SITE) } ?: throw IOException("gate HTTP ${r.status}")
+        } else downloadPage(token)
+        return MediaHosts.resolve(page)
     }
 
     /** a server's token -> the host's player address */
@@ -237,7 +250,8 @@ object Witanime {
         if (src.status >= 400) throw IOException("server HTTP ${src.status}")
         // stream gates only answer iframe loads: always asked natively, as the WebView (its user agent and cookies), never through the page
         val r = Net.fetch("$SITE/watch/stream-gate/$token", mapOf("sec-ch-ua" to Net.ch, "Sec-Fetch-Dest" to "iframe", "Sec-Fetch-Mode" to "navigate", "Sec-Fetch-Site" to "same-origin"), redirects = false)
-        return r.header("location") ?: r.url.takeIf { !it.startsWith(SITE) } ?: throw IOException("gate HTTP ${r.status}")
+        val page = r.header("location") ?: r.url.takeIf { !it.startsWith(SITE) } ?: throw IOException("gate HTTP ${r.status}")
+        return if (MediaHosts.host(page) != null) try { MediaHosts.resolve(page) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { page } else page
     }
 
     // ---------- ristoanime: backup servers for series' episodes (scraper.js ristoanime) ----------
