@@ -243,24 +243,25 @@ fun FeedbackSheet(done: () -> Unit) {
 @Composable
 fun UpdateSheet(u: Updater.Release, done: () -> Unit) {
     var pct by remember { mutableStateOf<Int?>(null) }
+    val ready = remember(u.tag) { Updater.apk(u.tag).exists() } // downloaded before: installed straight away
     val open = openUrl()
     ModalBottomSheet(done, containerColor = CardC) { // closing mid-download: Android's installer still opens
         Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 32.dp)) {
             Text(t("updateTitle"), fontWeight = FontWeight.Bold, fontSize = 18.sp)
-            Text("${t("updateText")} (${u.tag})", Modifier.padding(vertical = 12.dp), color = Color(0xFFCCCCCC), fontSize = 14.sp, lineHeight = 22.sp)
+            Text("${t(if (ready) "updateReadyText" else "updateText")} (${u.tag})", Modifier.padding(vertical = 12.dp), color = Color(0xFFCCCCCC), fontSize = 14.sp, lineHeight = 22.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedButton(done) { Text(t("later"), color = Color.White) }
                 Button({
                     pct = -1
                     Updater.scope.launch {
-                        runCatching { Updater.install(u.url) { pct = it } }.onSuccess { done() }.onFailure {
+                        runCatching { Updater.install(u) { pct = it } }.onSuccess { done() }.onFailure {
                             pct = null
                             if (it.message == "allow installs") toast(t("updateAllow")) // Android's settings page opened for it
                             else { toast(t("updateFailed")); open(u.url) } // the browser downloads it instead
                         }
                     }
                 }, enabled = pct == null, colors = ButtonDefaults.buttonColors(Red)) {
-                    Text(pct?.let { t("updateGetting") + if (it >= 0) " $it%" else "…" } ?: t("updateGo"))
+                    Text(pct?.let { t("updateGetting") + if (it >= 0) " $it%" else "…" } ?: t(if (ready) "updateInstall" else "updateGo"))
                 }
             }
         }
