@@ -278,7 +278,8 @@ fun SearchScreen(q0: String, nav: Nav, kind0: String = "") {
                 fun ask(k: String, go: suspend () -> List<Card>) = async { if (kind.isEmpty() || kind == k) runCatching { go() }.getOrNull() else null }
                 val a = ask("anime") { fuzzySearch(typed, "anime") { Witanime.search(it).first().items } }
                 val c = ask("cinema") { fuzzySearch(typed, "film") { Cinema.search(it) } }
-                val m = ask("manga") { fuzzySearch(typed, "manga") { Manga.browse(mapOf("search" to it), 1, HashSet()).items } }
+                // each spelling merges only its own sites' answers ("demonicemperor" finds just Olympus's copy): each series once across them all
+                val m = ask("manga") { Manga.merge(listOf(fuzzySearch(typed, "manga") { Manga.browse(mapOf("search" to it), 1, HashSet()).items })) }
                 if (a.await() == null && c.await() == null && m.await() == null) throw java.io.IOException(t("unreachable"))
                 Triple(a.await() ?: emptyList(), c.await() ?: emptyList(), m.await() ?: emptyList())
             }
