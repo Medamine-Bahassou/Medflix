@@ -211,6 +211,8 @@ async function loadManifest(epPath) {
   return res.json();
 }
 const flat = (byQuality = {}) => Object.entries(byQuality).flatMap(([quality, list]) => list.map(s => ({ ...s, quality })));
+const aw = require('./animewitcher').create(async (url, options) => { const r = await session.defaultSession.fetch(url, options); if (!r.ok) throw new Error(`AW HTTP ${r.status}`); return r.text(); });
+ipcMain.handle('aw-sources', (_, title, alt, ep) => aw.sources(title, alt, ep));
 ipcMain.handle('sources', async (_, epPath) => flat((await manifest(epPath)).players));
 ipcMain.handle('download-links', async (_, epPath) => { const m = await manifest(epPath); return MediaHosts.downloadLinks(flat(m.downloads), flat(m.players)); });
 
@@ -229,7 +231,17 @@ const gate = async (kind, token, dest) => {
   return res.url;
 };
 
+async function probeVideo(url) {
+  const r = await session.defaultSession.fetch(url, { headers: { Range: 'bytes=0-3' }, signal: AbortSignal.timeout(20000) });
+  const reader = r.body?.getReader();
+  try {
+    const first = reader ? (await reader.read()).value || new Uint8Array() : new Uint8Array();
+    if (!MediaHosts.videoResponse(r.status, r.headers.get('content-type') || '', first)) throw new Error(`video host refused playback (HTTP ${r.status})`);
+    return url;
+  } finally { await reader?.cancel(); }
+}
 ipcMain.handle('stream', async (_, token) => {
+  if (token.startsWith('aw:')) { const page = token.slice(3); return {url: await probeVideo(MediaHosts.host(page) ? await MediaHosts.resolve(page, hostRequest) : page), referrer: '', native: true}; }
   if (!/^[a-f0-9]{64}$/.test(token)) throw new Error('bad token');
   const res = await post('/watch/stream-source/' + token);
   if (!res.ok) throw new Error(`server HTTP ${res.status}`);
@@ -298,6 +310,7 @@ async function* unpackMedia(source) {
 }
 
 ipcMain.handle('download', async (e, id, token, name, labels = {}) => {
+  token = token.replace(/^aw:/, '');
   let page = token; // the movie section's links are the host's page itself; witanime's are tokens its gate turns into one
   if (!(/^https:\/\//.test(token) && MediaHosts.host(token))) {
     const kind = token.startsWith('stream:') ? 'stream' : 'download';
@@ -337,6 +350,7 @@ ipcMain.handle('download', async (e, id, token, name, labels = {}) => {
   return file;
 });
 ipcMain.handle('download-open', async (_, token) => {
+  if (token.startsWith('aw:https://')) return shell.openExternal(token.slice(3));
   if (!/^[a-f0-9]{64}$/.test(token)) throw new Error('bad token');
   const res = await post('/watch/download-source/' + token);
   if (!res.ok) throw new Error(`server HTTP ${res.status}`);
@@ -396,11 +410,11 @@ ipcMain.handle('feedback', async (_, { email = '', message = '' }) => {
 });
 ipcMain.on('open-external', (_, url) => /^https:\/\//.test(url) && shell.openExternal(url)); // site pages, and egydead's download hosts
 
-let player = null, playerBounds, playerFull = false;
+let player = null, playerBounds, playerFull = false, playerMediaKey = null;
 const PLAYER_CDNS = /(^|\.)(jsdelivr\.net|cdnjs\.cloudflare\.com|jwpcdn\.com|jwplayer\.com|jquery\.com|googleapis\.com|gstatic\.com|unpkg\.com|bootstrapcdn\.com|fluidplayer\.com|videojs\.com|cloudflare\.com)$/;
-ipcMain.on('player', (e, url, b, referrer) => {
+ipcMain.on('player', (e, url, b, referrer, native = false) => {
   const win = BrowserWindow.fromWebContents(e.sender);
-  if (!url) { if (player) { playerFull = false; win.contentView.removeChildView(player); player.webContents.close(); player = null; } return; }
+  if (!url) { playerMediaKey = null; if (player) { playerFull = false; win.contentView.removeChildView(player); player.webContents.close(); player = null; } return; }
   if (!url.startsWith('https://')) return;
   if (!player) {
     player = new WebContentsView();
@@ -420,7 +434,12 @@ ipcMain.on('player', (e, url, b, referrer) => {
   }
   playerBounds = b;
   if (!playerFull) player.setBounds(b);
-  if (player.webContents.getURL() !== url) player.webContents.loadURL(url, { httpReferrer: referrer || undefined });
+  const key = `${native}:${url}`;
+  if (playerMediaKey !== key) {
+    playerMediaKey = key;
+    player.webContents.loadURL(native ? 'data:text/html;charset=utf-8,' + encodeURIComponent(MediaHosts.videoHtml(url)) : url,
+      { httpReferrer: referrer || undefined });
+  }
 });
 
 app.whenReady().then(() => {

@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('api', {
   fetch: (url, form) => ipcRenderer.invoke('fetch', url, form),
   get: key => ipcRenderer.invoke('db:get', key),
+  awSources: (title, alt, ep) => ipcRenderer.invoke('aw-sources', title, alt, ep),
   sources: epPath => ipcRenderer.invoke('sources', epPath),
   mirrors: url => ipcRenderer.invoke('mirrors', url),
   downloadLinks: epPath => ipcRenderer.invoke('download-links', epPath),
@@ -15,7 +16,7 @@ contextBridge.exposeInMainWorld('api', {
   imgSrc: url => 'medimg://i/?u=' + encodeURIComponent(url), // disk-cached copy (main.js)
   fileSrc: file => 'file://' + file.split('/').map(encodeURIComponent).join('/'),
   stream: token => ipcRenderer.invoke('stream', token),
-  player: (url, bounds, referrer) => ipcRenderer.send('player', url, bounds, referrer),
+  player: (url, bounds, referrer, native) => ipcRenderer.send('player', url, bounds, referrer, native),
   playerVisible: v => ipcRenderer.send('player:visible', v),
   playerSnapshot: () => ipcRenderer.invoke('player:snapshot'),
   onPlayerBack: fn => ipcRenderer.on('player:back', fn),

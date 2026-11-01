@@ -5,7 +5,7 @@
   <!-- images.witanime.site rejects hotlinks: the Android app's https://localhost referer gets a 403 -->
   <meta name="referrer" content="no-referrer">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https: data: medimg: file:; style-src 'self' 'unsafe-inline'; frame-src https:; media-src 'self' file: blob:">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https: data: medimg: file:; style-src 'self' 'unsafe-inline'; frame-src 'self' https: about:; media-src 'self' https: file: blob:">
   <title>Medflix</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -29,6 +29,7 @@
   <aside id="drawer"></aside>
   <div id="toast"></div>
   <script src="icons.js"></script>
+  <script src="animewitcher.js"></script>
   <script src="hosts.js"></script>
   <script src="mobile.js"></script>
   <script src="scraper.js"></script>

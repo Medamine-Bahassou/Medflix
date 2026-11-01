@@ -38,3 +38,21 @@ test('download menu includes supported playback hosts without duplicate quality 
   const players = [{label:'mediafire',quality:'HD',token:'b'},{label:'streamtape',quality:'HD',token:'c'},{label:'unknown',quality:'HD',token:'d'}];
   assert.deepEqual(hosts.downloadLinks(downloads, players), [...downloads,{label:'streamtape',quality:'HD',token:'stream:c'}]);
 });
+test('current Streamtape norobotlink with chained substring offsets', async () => {
+  const result = await hosts.resolve('https://streamtape.com/v/a', async () => `document.getElementById('norobotlink').innerHTML = '//streamtape.com/get_vid' + ('xcdeo?id=a&token=b').substring(1).substring(2);`);
+  assert.equal(result, 'https://streamtape.com/get_video?id=a&token=b');
+});
+test('Firestream escaped JSON download URL', async () => {
+  assert.equal(await hosts.resolve('https://firestream.to/d/a', async () => JSON.stringify({downloadUrl:'https://cdn.example/a.mp4',posterUrl:''})), 'https://cdn.example/a.mp4');
+});
+test('media validation rejects hotlink JSON, HTML and ZIP payloads', () => {
+  for (const [code,type,body] of [[403,'application/json','{"su'],[200,'application/octet-stream','{"su'],[200,'text/html','<htm'],[200,'application/zip','PK\x03\x04']])
+    assert.equal(hosts.videoResponse(code,type,Buffer.from(body)),false);
+  assert.equal(hosts.videoResponse(206,'video/mp4',Buffer.from([0,0,0,32])),true);
+});
+test('direct files have video controls and cannot inject player markup', () => {
+  const html=hosts.videoHtml('https://example.com/file?x=" onerror="bad');
+  assert.ok(html.includes('<video controls autoplay playsinline'));
+  assert.ok(html.includes('&quot; onerror=&quot;bad'));
+  assert.ok(!html.includes('x=" onerror="bad'));
+});

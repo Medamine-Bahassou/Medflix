@@ -214,16 +214,24 @@ object Witanime {
     }
     /** its download links, every host and quality (MediaFire's the app downloads itself; the rest open in the browser) */
     suspend fun downloadLinks(epPath: String): List<Server> {
-        val m = manifest(epPath)
+        val extra = try {
+            val parts = epPath.split('/')
+            val show = if (parts.getOrNull(2) == "movie") "/movie/${parts.getOrNull(3)}" else "/anime/${parts.getOrNull(2)}"
+            val d = details(show).first()
+            val ep = d.episodes.firstOrNull { it.path == epPath }?.ep ?: epPath.substringAfterLast('/')
+            AnimeWitcher.sources(d.title, d.alt, ep)
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { emptyList() }
+        val m = try { manifest(epPath) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { if (extra.isNotEmpty()) return extra else throw e }
         val downloads = flat(m.optJSONObject("downloads"))
         val seen = downloads.map { it.label.lowercase() to it.quality }.toSet()
-        return downloads + flat(m.optJSONObject("players")).filter {
+        return extra + downloads + flat(m.optJSONObject("players")).filter {
             MediaHosts.supports(it.label) && (it.label.lowercase() to it.quality) !in seen
         }.map { it.copy(token = "stream:" + it.token) }
     }
 
     /** a download token -> the host's page for it (download gates answer only the site's own page loads) */
     suspend fun downloadPage(token: String): String {
+        if (token.startsWith("aw:https://")) return token.removePrefix("aw:")
         if (!Regex("^[a-f0-9]{64}$").matches(token)) throw IOException("bad token")
         val src = post("/watch/download-source/$token")
         if (src.status >= 400) throw IOException("server HTTP ${src.status}")
@@ -245,6 +253,10 @@ object Witanime {
 
     /** a server's token -> the host's player address */
     suspend fun stream(token: String): String {
+        if (token.startsWith("aw:https://")) {
+            val page = token.removePrefix("aw:")
+            return if (MediaHosts.host(page) != null) MediaHosts.resolve(page) else page
+        }
         if (!Regex("^[a-f0-9]{64}$").matches(token)) throw IOException("bad token")
         val src = post("/watch/stream-source/$token")
         if (src.status >= 400) throw IOException("server HTTP ${src.status}")

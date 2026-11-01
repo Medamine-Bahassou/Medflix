@@ -531,9 +531,9 @@ $('#search').onsubmit = e => {
 function continued(kinds) {
   return [
     ...Object.values(store.history).map(h => h.slug
-      ? { kind: 'cinema', at: h.at, path: h.show, type: 'cinema', title: h.title, poster: h.poster, href: h.ep ? edHref(h.slug) : `#/cinema/${encodeURIComponent(h.slug)}/watch`, badge: h.ep && t('ep') + ' ' + h.ep, rm: 'history:' + h.show }
-      : { kind: 'anime', at: h.at, path: h.epPath, showPath: h.show, type: 'episode', title: h.title, poster: h.poster, badge: t('ep') + ' ' + h.ep, rm: 'history:' + h.show }),
-    ...Object.values(store.manga).map(r => ({ kind: 'manga', at: r.at, path: '/manga/series/' + r.id, type: 'manga', title: r.title, poster: r.poster,
+      ? { kind: 'cinema', at: h.at, path: h.show, type: 'cinema', title: h.title, poster: h.poster || store.list[h.show]?.poster, href: h.ep ? edHref(h.slug) : `#/cinema/${encodeURIComponent(h.slug)}/watch`, badge: h.ep && t('ep') + ' ' + h.ep, rm: 'history:' + h.show }
+      : { kind: 'anime', at: h.at, path: h.epPath, showPath: h.show, type: 'episode', title: h.title, poster: h.poster || store.list[h.show]?.poster, badge: t('ep') + ' ' + h.ep, rm: 'history:' + h.show }),
+    ...Object.values(store.manga).map(r => ({ kind: 'manga', at: r.at, path: '/manga/series/' + r.id, type: 'manga', title: r.title, poster: r.poster || store.list['/manga/series/' + r.id]?.poster, // saved without a cover: the one in My List
       badge: `${t('chShort')} ${chNum(r.n)}`, href: '#/manga/read/' + r.chapterId, rm: 'manga:' + r.id })),
   ].filter(c => kinds.includes(c.kind)).sort((a, b) => b.at - a.at);
 }
@@ -895,9 +895,13 @@ document.addEventListener('visibilitychange', () => { // back in the app: anythi
   api.downloadHold?.(dlBusy, dlLabels());
   pumpDownloads();
 });
+async function animeDownloadLinks(epPath, title, alt, ep) {
+  const results = await Promise.allSettled([api.downloadLinks(epPath), api.awSources(title, alt || '', ep)]);
+  return results.flatMap(r => r.status === 'fulfilled' ? r.value : []);
+}
 async function runEpisode(d) {
   let links = [];
-  try { links = d.kind === 'cinema' ? await edDownloads(d.slug) : (await api.downloadLinks(d.epPath)).filter(l => inAppHost(l.label)); } catch (e) { console.error(e); }
+  try { links = d.kind === 'cinema' ? await edDownloads(d.slug) : (await animeDownloadLinks(d.epPath, d.title, d.alt, d.ep)).filter(l => inAppHost(l.label)); } catch (e) { console.error(e); }
   const rank = l => l.quality === d.quality ? -1 : QUALITY.indexOf(l.quality);
   links.sort((a, b) => rank(a) - rank(b) || Number(b.label === d.host) - Number(a.label === d.host));
   for (const l of links) { // chosen quality first, then best to worst if it fails to start
@@ -961,7 +965,7 @@ async function dlSources(d) {
     d.meta = { prev: c.prev, next: c.next }; // to keep reading offline
     return c.images.length ? { urls: c.images } : {};
   }
-  const links = (await api.downloadLinks(d.epPath)).filter(l => inAppHost(l.label));
+  const links = (await animeDownloadLinks(d.epPath, d.title, d.alt, d.ep)).filter(l => inAppHost(l.label));
   links.sort((a, b) => (a.quality === d.quality ? -1 : QUALITY.indexOf(a.quality)) - (b.quality === d.quality ? -1 : QUALITY.indexOf(b.quality)) || Number(b.label === d.host) - Number(a.label === d.host));
   for (const l of links) { try { return { url: await api.downloadUrl(l.token), quality: l.quality }; } catch (e) { console.error(e); } }
   return {};
@@ -1384,7 +1388,7 @@ async function play(epPath) {
   const place = () => {
     if (!stream) return;
     const r = stage.getBoundingClientRect();
-    api.player(stream.url, { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) }, stream.referrer);
+    api.player(stream.url, { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) }, stream.referrer, stream.native);
   };
   playerObs = new ResizeObserver(place);
   playerObs.observe(stage);
@@ -1396,10 +1400,14 @@ async function play(epPath) {
 
   const here = () => decodeURIComponent(location.hash) === playHash(epPath);
   // animerco's, WeCima's and ristoanime's servers for the same episode are looked up alongside and appended as backups
-  const backup = Promise.all([scraper.animerco, scraper.wecima, scraper.ristoanime].map(f => f(d.title, d.alt, ep, epPath.startsWith('/watch/movie/')).catch(e => (console.error(e), [])))).then(l => l.flat());
+  const backup = Promise.all([
+    ...[scraper.animerco, scraper.wecima, scraper.ristoanime].map(f =>
+      f(d.title, d.alt, ep, epPath.startsWith('/watch/movie/')).catch(e => (console.error(e), []))),
+    api.awSources(d.title, d.alt, ep).then(l => l.map(s => ({ ...s, url: undefined }))).catch(e => (console.error(e), []))
+  ]).then(l => l.flat());
   // witanime servers played before: the host's link they led to stays put (witanime's tokens die with the session), so they
   // play straight away and witanime's fresh list is only merged in behind them. Forgotten after STREAMS_KEEP.
-  const known = store.streams[epPath]?.list || {}, key = s => s.label + '|' + s.quality;
+  const known = Object.fromEntries(Object.entries(store.streams[epPath]?.list || {}).filter(([k]) => !k.split('|')[0].endsWith(' · AW'))), key = s => s.label + '|' + s.quality;
   const fresh = api.sources(epPath).then(l => bestPerHost(l.sort((a, b) => QUALITY.indexOf(a.quality) - QUALITY.indexOf(b.quality))));
   let servers = Object.entries(known).map(([k, st]) => ({ label: k.split('|')[0], quality: k.split('|')[1], st }));
   let limited = false, why = ''; // witanime is rate-limiting this session: say so instead of "no servers"; why: what refused it
@@ -1465,7 +1473,7 @@ async function play(epPath) {
     drawDl();
     openMenu(dlm);
     if (links) return;
-    try { links = await api.downloadLinks(epPath); } catch (e) { console.error(e); links = []; }
+    try { links = await animeDownloadLinks(epPath, d.title, d.alt, ep); } catch (e) { console.error(e); links = []; }
     if (here()) drawDl();
   };
   dlm.querySelector('.dd-menu').onclick = e => {

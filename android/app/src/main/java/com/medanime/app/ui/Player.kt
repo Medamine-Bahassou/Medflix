@@ -65,17 +65,21 @@ fun PlayerScreen(epPath: String, nav: Nav) {
     val scope = rememberCoroutineScope()
     var job by remember { mutableStateOf<Job?>(null) }
     val dlLinks = remember(epPath) { mutableStateOf<List<Server>?>(null) } // out here: the menu forgets what's in it when it closes
+    val attempted = remember(epPath) { mutableSetOf<String>() }
     // the chosen server, falling through to the next ones until one gives its player (app.js tryFrom)
-    fun tryFrom(i: Int) {
+    fun tryFrom(i: Int, automatic: Boolean = false) {
+        if (!automatic) attempted.clear()
         job?.cancel()
         job = scope.launch {
             val l = all().ifEmpty { return@launch }
             dead = false
             for (n in l.indices) {
                 val s = l[(i + n) % l.size]
+                val key = "${s.label}|${s.quality}"
+                if (!attempted.add(key)) continue
                 cur = s; url = null
                 try {
-                    url = s.url ?: Witanime.stream(s.token).also { u -> // played: its host link stays put (witanime's tokens die with the session)
+                    url = (if (s.token.startsWith("aw:")) MediaProbe.video(Witanime.stream(s.token)) else s.url) ?: Witanime.stream(s.token).also { u -> // played: its host link stays put (witanime's tokens die with the session)
                         val st = Store["streams"]
                         val e = st.optJSONObject(epPath) ?: JSONObject().put("list", JSONObject())
                         e.getJSONObject("list").put("${s.label}|${s.quality}", JSONObject().put("url", u).put("referrer", ""))
@@ -92,7 +96,7 @@ fun PlayerScreen(epPath: String, nav: Nav) {
     LaunchedEffect(epPath) {
         // servers played before (kept 90 days): they play straight away, and witanime's fresh list is merged in behind them
         val known = Store["streams"].optJSONObject(epPath)?.optJSONObject("list")?.let { l ->
-            l.keys().asSequence().mapNotNull { k -> l.optJSONObject(k)?.optString("url")?.takeIf { it.isNotEmpty() }?.let { Server(k.substringBefore('|'), k.substringAfter('|', ""), "", it) } }.toList()
+            l.keys().asSequence().filter { !it.substringBefore('|').endsWith(" · AW") }.mapNotNull { k -> l.optJSONObject(k)?.optString("url")?.takeIf { it.isNotEmpty() }?.let { Server(k.substringBefore('|'), k.substringAfter('|', ""), "", it) } }.toList()
         } ?: emptyList()
         val first = { l: List<Server> ->
             l.indexOfFirst { "${it.label}|${it.quality}" == PlaybackSession.server(epPath) }.takeIf { it >= 0 }
@@ -113,16 +117,23 @@ fun PlayerScreen(epPath: String, nav: Nav) {
     LaunchedEffect(epPath, d != null) {
         val dd = d ?: return@LaunchedEffect
         if (epPath.startsWith("/watch/movie/")) return@LaunchedEffect
-        try { extra = Witanime.ristoanime(dd.title, dd.alt, ep) } catch (e: CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("medflix", "ristoanime", e) }
+        try {
+            val aw = try { AnimeWitcher.sources(dd.title, dd.alt, ep) } catch (e: CancellationException) { throw e } catch (_: Exception) { emptyList() }
+            val ra = try { Witanime.ristoanime(dd.title, dd.alt, ep) } catch (e: CancellationException) { throw e } catch (_: Exception) { emptyList() }
+            extra = aw.sortedBy { Witanime.QUALITY.indexOf(it.quality) }.distinctBy { it.label } + ra
+        } catch (e: CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("medflix", "ristoanime", e) }
         if (cur == null && extra.isNotEmpty()) servers?.let { tryFrom(it.size) }
     }
 
     val open = openUrl()
     PlayerChrome(d?.title ?: "", if (ep.firstOrNull()?.isDigit() == true) "${t("episode")} $ep" else ep, nav,
         all().takeIf { servers != null || extra.isNotEmpty() }?.map { it.label to it.quality }, all().indexOf(cur), url == null && cur != null, { tryFrom(it) },
-        prev?.let { { nav.replace(Screen.Play(it.path)) } }, next?.let { { nav.replace(Screen.Play(it.path)) } }, { nav.go(Screen.Title(show)) }, { page, close -> DownloadItems(page, close, dlLinks, scope, epPath, show, ep, d, nav) }, { castTo("${d?.title ?: ""} · ${t("episode")} $ep", null, url) }) {
+        prev?.let { { nav.replace(Screen.Play(it.path)) } }, next?.let { { nav.replace(Screen.Play(it.path)) } }, { nav.go(Screen.Title(show)) }, { page, close -> DownloadItems(page, close, dlLinks, scope, epPath, show, ep, d, nav) }, { castTo("${d?.title ?: ""} · ${t("episode")} $ep", null, url) }, fullButton = cur?.token?.startsWith("aw:") != true) { full ->
         val u = url
         when {
+            u != null && cur?.token?.startsWith("aw:") == true -> NativeVideo(Uri.parse(u), epPath, full,
+                onError = { url = null; tryFrom((all().indexOf(cur) + 1).coerceAtLeast(0), automatic = true) },
+                onEnded = { next?.let { carryFull = full.value; nav.replace(Screen.Play(it.path)) } })
             u != null -> HostPlayer(u, epPath)
             dead -> Empty(t("noneWorked"), t("noneWorkedHint")) { OutlinedButton({ open(SITE + epPath) }) { Text(t("openBrowser"), color = Color.White) } }
             servers?.isEmpty() == true && extra.isEmpty() -> if ("rate-limited" in why) Empty(t("rateLimited"), t("rateLimitedHint"))

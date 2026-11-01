@@ -365,6 +365,8 @@ object Downloads {
             try {
                 val started = get(url, referer) { r ->
                     if (r.code >= 400) return@get false // didn't start: the next quality
+                    val contentType = r.body?.contentType()?.toString().orEmpty()
+                    if (contentType.contains("json", true) || contentType.startsWith("text/", true)) return@get false
                     val total = r.body!!.contentLength()
                     item.total = total
                     if (!ui(id, run) { it.put("quality", lq).put("file", file.absolutePath).put("total", total); DownloadService.active[id] = item })

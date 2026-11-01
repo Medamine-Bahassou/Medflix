@@ -257,7 +257,9 @@ fun MangaReaderScreen(cid: String, nav: Nav, title: String = "", chapter: String
             val follow = { i: Int -> top = of(i).let { (ci, p) -> chain[ci].id to p } }
             val next = nextOf(c); val prev = prevOf(c)
             LaunchedEffect(c.id) {
-                Store["manga"].put(d.sid, JSONObject().put("id", d.sid).put("title", d.title).put("poster", d.poster).put("chapterId", c.id).put("n", c.n).put("spots", spots).put("at", System.currentTimeMillis()))
+                val was = Store["manga"].optJSONObject(d.sid) // the series page unreachable (offline, an olympus-only chapter): keep the saved cover and title
+                Store["manga"].put(d.sid, JSONObject().put("id", d.sid).put("title", d.title.ifEmpty { was?.optString("title").orEmpty() })
+                    .put("poster", d.poster.ifEmpty { was?.optString("poster").orEmpty() }).put("chapterId", c.id).put("n", c.n).put("spots", spots).put("at", System.currentTimeMillis()))
                 if (!Store["mangaSeen"].has(c.id)) Store["mangaSeen"].put(c.id, 1) // 1: opened, 2: read to the last page
                 Store.persist("manga", true); Store.persist("mangaSeen", true)
             }

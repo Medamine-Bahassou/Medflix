@@ -804,13 +804,15 @@ fun <T> SectionPage(l: Loaded<T>, refresh: () -> Unit, nav: Nav, hero: (T) -> Li
 private fun JSONObject.values() = keys().asSequence().mapNotNull { optJSONObject(it) }.toList()
 /** what was being watched or read, latest first (app.js continued) */
 fun continued(kinds: Set<String>): List<Card> {
+    // an entry saved without a cover (older saves, a page that failed): the one in My List
+    fun JSONObject.cover(show: String) = optString("poster").ifEmpty { Store["list"].optJSONObject(show)?.optString("poster").orEmpty() }
     val watch = Store["history"].values().map { h ->
-        if (h.has("slug")) "cinema" to Card(h.optString("show"), "cinema", h.optString("title"), h.optString("poster"), "", "",
+        if (h.has("slug")) "cinema" to Card(h.optString("show"), "cinema", h.optString("title"), h.cover(h.optString("show")), "", "",
             if (h.has("ep")) "${t("ep")} ${h.optString("ep")}" else "", null, h.optString("show"), open = Screen.CinemaPlay(h.optString("slug"))) to h.optLong("at")
-        else "anime" to Card(h.optString("epPath"), "episode", h.optString("title"), h.optString("poster"), "", "", "${t("ep")} ${h.optString("ep")}", h.optString("ep"), h.optString("show")) to h.optLong("at")
+        else "anime" to Card(h.optString("epPath"), "episode", h.optString("title"), h.cover(h.optString("show")), "", "", "${t("ep")} ${h.optString("ep")}", h.optString("ep"), h.optString("show")) to h.optLong("at")
     }
     val read = Store["manga"].values().map { r ->
-        "manga" to Card("/manga/series/${r.optString("id")}", "manga", r.optString("title"), r.optString("poster"), "", "", "${t("chShort")} ${Manga.chNum(r.opt("n"))}", null,
+        "manga" to Card("/manga/series/${r.optString("id")}", "manga", r.optString("title"), r.cover("/manga/series/${r.optString("id")}"), "", "", "${t("chShort")} ${Manga.chNum(r.opt("n"))}", null,
             "/manga/series/${r.optString("id")}", open = Screen.MangaRead(r.optString("chapterId"), r.optString("title"), Manga.chNum(r.opt("n")))) to r.optLong("at")
     }
     return (watch + read).filter { it.first.first in kinds }.sortedByDescending { it.second }.map { it.first.second }

@@ -79,7 +79,8 @@ object Store {
     }
 
     fun watched(show: String, epPath: String, ep: String, title: String, poster: String, slug: String = "") { // slug: a series' episode (its history is by slug)
-        get("history").put(show, JSONObject().put("show", show).put("epPath", epPath).put("ep", ep).put("title", title).put("poster", poster).put("at", System.currentTimeMillis())
+        get("history").put(show, JSONObject().put("show", show).put("epPath", epPath).put("ep", ep).put("title", title)
+            .put("poster", poster.ifEmpty { get("history").optJSONObject(show)?.optString("poster").orEmpty() }).put("at", System.currentTimeMillis()) // no cover scraped: keep the last one
             .apply { if (slug.isNotEmpty()) put("slug", slug) })
         get("seen").put(epPath, 1)
         persist("history"); persist("seen")

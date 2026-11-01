@@ -8,6 +8,7 @@ if (!window.api && window.Capacitor) (() => {
   // witanime sits behind Cloudflare: talk to it as this WebView (same markup as desktop), the browser its cookies were earned in
   const WV_UA = navigator.userAgent, CH = { 'sec-ch-ua': `"Chromium";v="${WV_UA.match(/Chrome\/(\d+)/)?.[1] || 138}"` }; // witanime's API 404s without a client-hint header
   const hostRequest = async (url, form) => { const r = await http(url, form ? {method: 'POST', data: form} : {}); if (r.status >= 400) throw new Error(`host HTTP ${r.status}`); return String(r.data); };
+  const aw = AnimeWitcher.create(async (url, options = {}) => { const r = await http(url, {...options, data: options.body}); if (r.status >= 400) throw new Error(`AW HTTP ${r.status}`); return String(r.data); });
   const Http = Capacitor.Plugins.CapacitorHttp;
   // Where Cloudflare refuses our native client (403/503), witanime is asked from inside a real WebView on the site
   // instead (DownloaderPlugin.siteFetch), which shows Cloudflare's check over the app when it has one
@@ -169,6 +170,7 @@ if (!window.api && window.Capacitor) (() => {
     // the phone's status bar, hidden with the manga reader's bars (Capacitor's SystemBars); asked only when it changes
     statusBar: on => on !== statusShown && (statusShown = on, Capacitor.Plugins.SystemBars[on ? 'show' : 'hide']({ bar: 'StatusBar' }).catch(() => {})),
 
+    awSources: (title, alt, ep) => aw.sources(title, alt, ep),
     sources: async epPath => flat((await manifest(epPath)).players),
     async mirrors(url) { // egydead's MegaMax player: the hosts it wraps (see main.js)
       if (!/^https:\/\/[^/]+\/iframe\/[A-Za-z0-9]+$/.test(url)) throw new Error('bad url');
@@ -179,6 +181,7 @@ if (!window.api && window.Capacitor) (() => {
     },
     downloadLinks: async epPath => { const m = await manifest(epPath); return MediaHosts.downloadLinks(flat(m.downloads), flat(m.players)); },
     async stream(token) {
+      if (token.startsWith('aw:')) { const page = token.slice(3); return {url: MediaHosts.host(page) ? await MediaHosts.resolve(page, hostRequest) : page, referrer: '', native: true}; }
       if (!/^[a-f0-9]{64}$/.test(token)) throw new Error('bad token');
       const src = await post('/watch/stream-source/' + token);
       if (src.status >= 400) throw new Error(`server HTTP ${src.status}`);
@@ -188,6 +191,7 @@ if (!window.api && window.Capacitor) (() => {
 
     // downloads: the file link, resolved as main.js does (MediaFire's direct link); the download service does the rest
     async downloadUrl(token) {
+      if (token.startsWith('aw:')) return MediaHosts.resolve(token.slice(3), hostRequest);
       const kind = token.startsWith('stream:') ? 'stream' : 'download';
   token = token.replace(/^stream:/, '');
   if (!/^[a-f0-9]{64}$/.test(token)) throw new Error('bad token');
@@ -197,7 +201,8 @@ if (!window.api && window.Capacitor) (() => {
       return MediaHosts.resolve(page, hostRequest);
     },
     downloadEnqueue: job => Downloader.enqueue(job).catch(e => console.error(e)), // see pumpDownloads (app.js)
-    async openDownloadPage(token) { // hosts the app can't download from: their page in the system browser
+    async openDownloadPage(token) {
+      if (token.startsWith('aw:https://')) return window.open(token.slice(3), '_system'); // hosts the app can't download from: their page in the system browser
       if (!/^[a-f0-9]{64}$/.test(token)) throw new Error('bad token');
       const src = await post('/watch/download-source/' + token);
       if (src.status >= 400) throw new Error(`server HTTP ${src.status}`);
@@ -217,7 +222,7 @@ if (!window.api && window.Capacitor) (() => {
       return new URL(inner, url).href;
     },
 
-    player(url, b) {
+    player(url, b, referrer, native = false) {
       let f = frame();
       if (!url || f?.dataset.src !== url) Downloader.castReset(); // casting takes the video of what's in it now
       if (!url) return f?.remove();
@@ -234,7 +239,13 @@ if (!window.api && window.Capacitor) (() => {
         host.append(f);
       }
       Object.assign(f.style, { left: b.x + 'px', top: b.y + 'px', width: b.width + 'px', height: b.height + 'px' });
-      if (f.dataset.src !== url) f.src = f.dataset.src = url;
+      const key = `${native}:${url}`;
+      if (f.dataset.playerKey !== key) {
+        f.removeAttribute('srcdoc');
+        if (native) f.srcdoc = MediaHosts.videoHtml(url); else f.src = url;
+        f.dataset.playerKey = key;
+        f.dataset.src = url;
+      }
     },
     // the app's own fullscreen for the player (some hosts, StreamHG's, only fill their box with theirs): MainActivity
     // shows it over everything, in landscape; back leaves it
