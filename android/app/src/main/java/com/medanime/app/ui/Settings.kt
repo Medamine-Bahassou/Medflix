@@ -116,8 +116,9 @@ fun SettingsScreen(part: String, nav: Nav) {
                     Part(Ic.eyeSlash, t("hiddenTitle"), "\u2066${Store["hidden"].length()}\u2069") { nav.go(Screen.Hidden) }
                     Part(Ic.bell, t("notifyTitle"), "\u2066${n.keys().asSequence().count { it != "movies" }}\u2069") { nav.go(Screen.Settings("notify")) }
                 }
-                if (Build.VERSION.SDK_INT >= 26 && Net.activity.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)) Group(t("playback")) {
-                    Toggle(Ic.play, t("autoPip"), t("autoPipHint"), autoPipEnabled(Store["prefs"])) { on ->
+                Group(t("playback")) {
+                    Toggle(Ic.next, t("skipIntroSet"), t("skipIntroHint"), Store["prefs"].optBoolean("skipIntro", true)) { Store["prefs"].put("skipIntro", it); Store.persist("prefs") }
+                    if (Build.VERSION.SDK_INT >= 26 && Net.activity.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)) Toggle(Ic.play, t("autoPip"), t("autoPipHint"), autoPipEnabled(Store["prefs"])) { on ->
                         Store["prefs"].put("autoPip", on); Store.persist("prefs")
                         (Net.activity as? NativeActivity)?.pip(playerUp)
                     }

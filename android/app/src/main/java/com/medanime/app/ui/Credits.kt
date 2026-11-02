@@ -28,7 +28,8 @@ import java.net.URLEncoder
 data class Credit(val name: String, val photo: String, val actor: String, val actorPhoto: String = "", val source: String = "")
 
 internal object Credits {
-    fun clean(s: String) = s.replace(Regex("(?:الموسم|الجزء)\\s+\\S+.*|\\bseason\\s+\\d+.*|مشاهدة|تحميل|مسلسل|فيلم|مترجم|مدبلج|كامل|اون لاين", RegexOption.IGNORE_CASE), " ").replace(Regex("\\b(?:19|20)\\d{2}\\b"), "").trim()
+    fun clean(s: String) = s.replace(Regex("(?:الموسم|الجزء)\\s+\\S+.*|\\bseason\\s+\\d+.*|مشاهدة|تحميل|مسلسل|فيلم|مترجم|مدبلج|كامل|اون لاين", RegexOption.IGNORE_CASE), " ").trim()
+        .let { t -> t.replace(Regex("\\b(?:19|20)\\d{2}\\b"), "").trim().ifEmpty { t } } // a film called "1917" keeps its name
     fun norm(s: String) = clean(s).lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8").replace("+", "%20")
     private fun objects(a: JSONArray?) = (0 until (a?.length() ?: 0)).mapNotNull { a?.optJSONObject(it) }

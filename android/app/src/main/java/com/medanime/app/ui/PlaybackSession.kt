@@ -14,6 +14,7 @@ internal class PlaybackControls {
     var paused = true
         private set
     private var command: ((Boolean) -> Unit)? = null
+    private var seeker: ((Double) -> Unit)? = null
     private val observers = mutableSetOf<() -> Unit>()
     val available get() = command != null
     fun observe(observer: () -> Unit): () -> Unit {
@@ -24,10 +25,11 @@ internal class PlaybackControls {
     fun report(paused: Boolean) {
         if (this.paused != paused) { this.paused = paused; changed() }
     }
-    fun bind(initiallyPaused: Boolean, command: (Boolean) -> Unit): () -> Unit {
-        this.command = command; paused = initiallyPaused; changed()
-        return { if (this.command === command) { this.command = null; changed() } }
+    fun bind(initiallyPaused: Boolean, seek: ((Double) -> Unit)? = null, command: (Boolean) -> Unit): () -> Unit {
+        this.command = command; seeker = seek; paused = initiallyPaused; changed()
+        return { if (this.command === command) { this.command = null; seeker = null; changed() } }
     }
+    fun seek(to: Double) { seeker?.invoke(to) }
     fun play(playing: Boolean) { command?.invoke(playing) } // events confirm the new state, including play() failures
 }
 
@@ -36,6 +38,7 @@ internal object PlaybackSession {
     val controls = PlaybackControls()
     private lateinit var prefs: android.content.SharedPreferences
     private val listeners = mutableSetOf<(Boolean) -> Unit>()
+    val now = androidx.compose.runtime.mutableStateOf("" to 0.0) // the playing video's key and second (SkipIntro)
     var suspended = false
         private set
 
@@ -55,6 +58,7 @@ internal object PlaybackSession {
     fun position(key: String, state: JSONObject) {
         val at = state.optDouble("time", -1.0)
         if (at.isFinite() && at >= 0) {
+            now.value = key to at
             prefs.edit().putString("video:$key", state.toString()).apply()
             if (!suspended && state.opt("paused") is Boolean) controls.report(state.getBoolean("paused"))
         }
@@ -69,17 +73,19 @@ internal object PlaybackSession {
         listeners.toList().forEach { it(on) }
     }
 
-    fun attach(view: WebView, key: String, onVideo: () -> Unit = {}): () -> Unit {
+    val bridged get() = WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) && WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT) // without it, the host's video can't be heard from
+
+    fun attach(view: WebView, key: String, onVideo: () -> Unit = {}, onDead: () -> Unit = {}): () -> Unit {
         var unbind: (() -> Unit)? = null
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) &&
-            WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-            unbind = controls.bind(position(key).optBoolean("paused", true)) { playing ->
+        if (bridged) {
+            unbind = controls.bind(position(key).optBoolean("paused", true), { at -> if (!suspended) view.evaluateJavascript("window.postMessage({medflixSeek:$at}, '*');", null) }) { playing ->
                 if (!suspended) view.evaluateJavascript("window.postMessage({medflixPlay:$playing}, '*');", null)
             }
             // The bridge accepts playback numbers only; it exposes no files, navigation or arbitrary native calls.
             WebViewCompat.addWebMessageListener(view, "medflixPosition", setOf("*")) { _, message, _, _, _ ->
                 runCatching { JSONObject(message.data.orEmpty()) }.getOrNull()?.let { state ->
                     if (state.optDouble("duration", 0.0) > 0) { position(key, state); onVideo() }
+                    else if (state.optBoolean("dead")) onDead()
                 }
             }
             WebViewCompat.addDocumentStartJavaScript(view, playbackScript(position(key), suspended), setOf("*"))
@@ -193,8 +199,26 @@ internal fun playbackScript(saved: JSONObject, suspended: Boolean): String = """
       if (suspended) { if (!v.paused) v.pause(); return; }
       report(v, name !== 'timeupdate');
     }, true));
+  const dead = () => window.medflixPosition?.postMessage('{"dead":true}');
+  // the video's own error, before it ever had a length (its last source gone: only then is it out of them)
+  addEventListener('error', e => {
+    const v = e.target.closest?.('video');
+    if (v && (v.error || v.networkState === 3) && !(v.duration > 0)) dead();
+  }, true);
+  // the host's "file deleted" page, which most answer with a plain 200: short, with no video, in a frame as big as a player (not an ad's 404)
+  const deadPage = () => {
+    const text = document.body?.innerText || '';
+    if (!document.querySelector('video') && innerWidth > 300 && innerHeight > 150 && text.length < 600 && /no longer available|(has been|been|was|got) (deleted|removed)|deleted by|expired|not found|не найден|غير موجود|تم حذف/i.test(text)) dead();
+  };
+  addEventListener('load', () => [0, 3000].forEach(ms => setTimeout(deadPage, ms)));
   addEventListener('message', e => {
     if (e.source !== window && e.source !== parent) return;
+    const seek = e.data?.medflixSeek;
+    if (typeof seek === 'number') {
+      document.querySelectorAll('video').forEach(v => { if (v.duration > seek) v.currentTime = seek; }); // not a shorter ad's
+      for (let i = 0; i < frames.length; i++) frames[i].postMessage(e.data, '*');
+      return;
+    }
     const playing = e.data?.medflixPlay;
     if (typeof playing === 'boolean') {
       if (suspended) return;

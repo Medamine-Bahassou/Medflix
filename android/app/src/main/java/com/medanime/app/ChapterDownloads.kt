@@ -13,6 +13,11 @@ internal object ChapterDownloads {
             .filter { it.isNotEmpty() }.toSet()
     }
 
+    /** the chapters downloaded, all at once: Downloads.done on each of a series' goes through every download for each one that isn't */
+    fun doneIds(all: JSONObject): Set<String> = all.keys().asSequence().flatMap { key ->
+        all.optJSONObject(key)?.takeIf { it.optString("state") == "done" }?.let { d -> ids(d) + setOfNotNull(key.takeIf { it.startsWith("manga:") }?.removePrefix("manga:")) }.orEmpty()
+    }.toSet()
+
     fun alias(d: JSONObject, id: String) { d.put("chapterIds", JSONArray((ids(d) + id).toList())) }
 
     fun find(all: JSONObject, show: String, number: String): JSONObject? = all.keys().asSequence().mapNotNull { all.optJSONObject(it) }

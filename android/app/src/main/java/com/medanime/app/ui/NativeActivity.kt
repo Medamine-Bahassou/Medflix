@@ -657,7 +657,7 @@ internal fun asksFirst(c: Card) = resumeOf(c) != null || (c.showPath.isNotEmpty(
 internal fun ownOf(c: Card, resume: Screen?): Pair<Screen, String>? {
     val own = screenFor(c)
     val same = own == resume || own == pageOf(c) || (own is Screen.MangaRead && own.cid == (resume as? Screen.MangaRead)?.cid)
-    return if (same) null else own to c.badge.replace(Regex("\\bEP\\b|الحلقة"), t("ep")).ifEmpty { c.ep?.let { "${t("ep")} $it" } ?: t("play") }
+    return if (same) null else own to c.badge.replace(Regex("\\bEP\\b|الحلقة"), t("ep")).replace("والأخيرة", t("epFinal")).ifEmpty { c.ep?.let { "${t("ep")} $it" } ?: t("play") }
 }
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -756,17 +756,16 @@ fun PosterCard(c: Card, nav: Nav, width: Dp? = 112.dp) {
         .combinedClickable(onLongClick = { if (p?.on == true) p.toggle(c.showPath) else { cardMenuPicks = p; cardMenu = c } }) { if (p?.on == true) p.toggle(c.showPath) else if (asksFirst(c)) cardAsk = c else nav.go(screenFor(c)) }) {
         Box(Modifier.fillMaxWidth().aspectRatio(2 / 3f).picked(on).clip(RoundedCornerShape(4.dp)).background(CardC)) {
             NetImage(c.poster, Modifier.fillMaxSize(), icon = iconOf(c.showPath), title = c.title)
-            if (c.badge.isNotEmpty()) Text(c.badge.replace(Regex("\\bEP\\b|الحلقة"), t("ep")), Modifier.padding(4.dp).background(Red, RoundedCornerShape(3.dp)).padding(horizontal = 5.dp, vertical = 1.dp),
+            if (c.badge.isNotEmpty()) Text(c.badge.replace(Regex("\\bEP\\b|الحلقة"), t("ep")).replace("والأخيرة", t("epFinal")), Modifier.padding(4.dp).background(Red, RoundedCornerShape(3.dp)).padding(horizontal = 5.dp, vertical = 1.dp),
                 fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
             PickMark(on)
         }
         Text(c.title, Modifier.padding(top = 4.dp), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        // the site's own score (scraped with the card), gold like the page's rating, then the year
-        val rated = c.score.ifEmpty { c.rating }
-        if (rated.isNotEmpty() || c.year.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically) {
-            if (rated.isNotEmpty()) {
+        // the rating filter's score (IMDb, AniList...), gold like the page's rating, then the year
+        if (c.score.isNotEmpty() || c.year.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically) {
+            if (c.score.isNotEmpty()) {
                 Icon(Ic.star, null, Modifier.size(11.dp), tint = Color(0xFFF5C518))
-                Text(rated, Modifier.padding(start = 3.dp, end = 8.dp), color = Color(0xFFF5C518), fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                Text(c.score, Modifier.padding(start = 3.dp, end = 8.dp), color = Color(0xFFF5C518), fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
             }
             if (c.year.isNotEmpty() && c.score.isEmpty()) Text(c.year, color = Muted, fontSize = 11.sp, maxLines = 1) // "IMDb 7.8" leaves no room for it
         }

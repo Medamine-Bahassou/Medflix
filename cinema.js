@@ -53,6 +53,13 @@ const edSlug = href => {
 const edPath = slug => slug.replace(/^(serie|season|episode)\//, (_, d) => d === 'episode' ? '' : 'selary/');
 const edShowKey = c => c.path.startsWith('/cinema/') && /^\/cinema\/(serie|season|episode)\//.test(c.path) && c.title.replace(/\s*(الموسم|الحلقة)\s.*$/, '');
 const edHref = slug => '#/cinema/' + slug.split('/').map(encodeURIComponent).join('/');
+// search also lists software and games using movie cards: require evidence that a post is screen media
+const edMedia = (slug, cat, name) => {
+  if (/كمبيوتر|موبايل|تطبيقات|ألعاب|العاب|\b(?:software|apps|games)\b/i.test(cat)) return false;
+  return /أفلام|افلام|مسلسلات|كرتون|أنيميشن|انيميشن|وثائقي|مسرحي|برامج (?:تلفزيونية|تليفزيونية)|\b(?:movies|films|series|tv shows)\b/i.test(cat)
+    || /^(?:serie|season)\/|^episode\/(?!برنامج-)|^(?:فيلم|مسلسل)-/.test(slug)
+    || /^(?:(?:مشاهدة|تحميل|و)\s+)*(?:فيلم|مسلسل|الحلقة)\s/.test(name.trim());
+};
 const edCards = root => {
   const els = [...(root?.querySelectorAll('a.movie__block[href], .series__box > a[href], .innov-series-card > a[href], li.movieItem > a[href]') || [])];
   const animeStems = new Set();
@@ -64,7 +71,7 @@ const edCards = root => {
       if (w.length) animeStems.add(w.slice(0, 2).join(' '));
       return null;
     }
-    return slug && { slug, cat, name, t, a };
+    return slug && edMedia(slug, cat, name) && { slug, cat, name, t, a };
   }).filter(Boolean);
   return raw.filter(r => {
     if (!animeStems.size || !/أنيميشن|كرتون/.test(r.cat)) return true;
@@ -357,7 +364,7 @@ async function cinemaTitle(slug, force) {
           <h1 dir="auto">${esc(m.title)}</h1>
           <div class="chips">${m.cat.map(c => `<span class="chip red">${esc(c)}</span>`).join('')}${[...m.tags, ...m.genres].map(g => `<span class="chip">${esc(g)}</span>`).join('')}</div>
           <p class="desc" dir="auto">${esc(m.desc)}</p>
-          <div class="actions">${Ratings.slot({title:m.title, type:"cinema", year:m.year, imdb:m.imdb})}
+          <div class="actions">${Ratings.slot({title:m.title, type:"cinema", path, year:m.year, imdb:m.imdb})}
             ${play ? `<a class="btn red" href="${play.href}">${ICON.play} ${esc(play.label)}</a>` : ''}
             <button class="btn ghost" id="fav">${inList(path) ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList')}</button>
             ${m.trailer ? `<button class="btn ghost" id="trl">${ICON.play} ${t('trailer')}</button>` : ''}
@@ -453,7 +460,7 @@ async function cinemaPlay(slug) {
     if (!here() || !f.servers.length || urls(f) === urls(w)) return;
     const had = w.servers.length;
     w = f; cur = w.servers.find(s => s.url === cur?.url) || cur;
-    had ? draw() : route(); // "no servers" showing: drawn again with them
+    had ? (cur ? draw() : nextServer()) : route(); // "no servers" showing: drawn again with them; none of the old ones worked: on to these
     drawDl();
   }, () => {}).finally(() => { more = false; here() && w.servers.length && draw(); });
   const draw = () => {
@@ -468,16 +475,27 @@ async function cinemaPlay(slug) {
         + g.map(([s, i]) => `<button class="dd-item ${s === cur ? 'on' : ''}" data-i="${i}"><span class="host">${esc(s.label)}</span>${s.quality ? `<span class="q" data-q="${esc(s.quality)}">${esc(s.quality)}</span>` : ''}${CHECK}</button>`).join('');
     }).join('') + (more ? ddSkel() : '');
   };
-  const pick = async i => {
+  const tried = new Set();
+  const pick = async (i, patient) => {
     const s = cur = w.servers[i]; draw();
-    store.prefs.edServer = cur.label; persist('prefs');
+    tried.add(s.url);
     stream = null; api.player(null); stage.innerHTML = '<div class="spin"></div>'; showPlayBar(false);
     const url = s.label === 'myseed' ? await myseedNow(m, slug, s.quality).catch(e => (console.error(e), s.url)) : s.url;
     if (cur !== s || !here()) return; // another server picked, or the page left, meanwhile
     stream = url; place(); showPlayBar(true);
+    watchServer(() => cur === s && here(), patient, () => {
+      store.prefs.edServer = s.label; (store.prefs.showServer ||= {})[show] = s.label; persist('prefs');
+    }, nextServer);
+  };
+  // the next one not tried yet; uqload only when it's all that's left
+  const nextServer = () => {
+    const rest = w.servers.filter(s => !tried.has(s.url)), n = rest.find(ok) || rest[0];
+    if (n) return pick(w.servers.indexOf(n));
+    cur = stream = null; api.player(null); showPlayBar(false); draw();
+    stage.innerHTML = `<div class="empty"><b>${t('noneWorked')}</b>${t('noneWorkedHint')}</div>`;
   };
   srv.querySelector('.dd-btn').onclick = () => srv.classList.contains('open') ? closeMenu(srv) : openMenu(srv);
-  srv.querySelector('.dd-menu').onclick = e => { const b = e.target.closest('.dd-item'); if (b) { closeMenu(); pick(+b.dataset.i); } };
+  srv.querySelector('.dd-menu').onclick = e => { const b = e.target.closest('.dd-item'); if (b) { closeMenu(); tried.clear(); pick(+b.dataset.i, true); } };
   // downloads are on third-party hosts: they open in the browser
   const drawDl = () => dlm.querySelector('.dd-menu').innerHTML = w.downloads.length
     ? w.downloads.map((d, i) => `<button class="dd-item" data-i="${i}"><span class="host">${esc(d.label)}</span>${d.quality ? `<span class="q">${esc(d.quality)}</span>` : ''}<span class="tag">${ICON.external} ${t('browser')}</span></button>`).join('')
@@ -491,7 +509,7 @@ async function cinemaPlay(slug) {
     $('#again').onclick = () => route();
     return;
   }
-  // the last server used, else the first one; uqload only when it's all there is
-  const ok = s => s.label !== LAST_HOST, saved = w.servers.findIndex(s => ok(s) && s.label === store.prefs.edServer);
-  pick(Math.max(0, saved >= 0 ? saved : w.servers.findIndex(ok)));
+  // the one that last played this show, else the last one used, else the first one; uqload only when it's all there is
+  const ok = s => s.label !== LAST_HOST, mine = w.servers.findIndex(s => s.label === store.prefs.showServer?.[show]), saved = w.servers.findIndex(s => ok(s) && s.label === store.prefs.edServer);
+  pick(Math.max(0, mine >= 0 ? mine : saved >= 0 ? saved : w.servers.findIndex(ok)));
 }

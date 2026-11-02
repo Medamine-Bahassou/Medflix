@@ -274,6 +274,29 @@ object Witanime {
     private const val RA = "https://ristoanime.me"
     private val AR_NTH = listOf("الاول", "الثاني", "الثالث", "الرابع", "الخامس", "السادس", "السابع", "الثامن", "التاسع", "العاشر")
     private val ORD = listOf("first", "second", "third", "fourth", "fifth", "sixth")
+    // witanime's "3rd Season Cour 2" is their "3rd Season Part 2"
+    fun courName(s: String) = s.replace(Regex("\\s*cour 1$", RegexOption.IGNORE_CASE), "").replace(Regex("cour (\\d+)$", RegexOption.IGNORE_CASE), "part $1")
+    /** an episode's opening in seconds, or null: AniSkip has it by MyAnimeList id, which AniList has under the title's names (scraper.js intro) */
+    suspend fun intro(title: String, alt: String, ep: String): Pair<Double, Double>? {
+        val n = ep.toIntOrNull() ?: return null // a film's "ep" is its label
+        return try {
+            val names = listOf(title, alt).map(::courName).filter { Manga.norm(it).isNotEmpty() }
+            val want = names.map(Manga::norm).toSet()
+            names.firstNotNullOfOrNull { name ->
+                val query = "{Page(perPage:10){media(search:${JSONObject.quote(name)},type:ANIME){idMal title{romaji english} synonyms}}}"
+                val rows = JSONObject(Pages.load("https://graphql.anilist.co", body = JSONObject().put("query", query).toString(), every = Pages.DAY, interactive = false)).getJSONObject("data").getJSONObject("Page").getJSONArray("media")
+                // an exact name only: a near one is often another season, with another opening
+                (0 until rows.length()).map(rows::getJSONObject).firstOrNull { m ->
+                    val t = m.getJSONObject("title"); val syn = m.getJSONArray("synonyms")
+                    (listOf(t.optString("romaji"), t.optString("english")) + (0 until syn.length()).map(syn::getString)).any { Manga.norm(it) in want }
+                }?.optInt("idMal")?.takeIf { it > 0 }
+            }?.let { id ->
+                val i = JSONObject(Pages.load("https://api.aniskip.com/v2/skip-times/$id/$n?types%5B%5D=op&types%5B%5D=mixed-op&episodeLength=0", every = Pages.DAY, interactive = false)).getJSONArray("results").getJSONObject(0).getJSONObject("interval")
+                i.getDouble("startTime") to i.getDouble("endTime")
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null } // not known (a 404), or offline: no button
+    }
+
     // "Black Clover 2nd Season" -> ("Black Clover", 2); null for later cours / parts: their numbering can't be mapped (scraper.js splitSeason)
     private fun splitSeason(title: String): Pair<String, Int>? {
         if (Regex("\\b(?:cour|part)\\s*[2-9]\\b", RegexOption.IGNORE_CASE).containsMatchIn(title)) return null

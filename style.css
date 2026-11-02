@@ -111,8 +111,6 @@ input:focus-visible, select:focus-visible { outline: none; }
 .card .meta { position: absolute; inset: auto 0 0; padding: 40px 10px 10px; background: linear-gradient(#0000, #000e 55%); }
 .card .t { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card .s { font-size: 11px; color: #bbb; display: flex; gap: 8px; }
-.card .s .star { display: inline-flex; align-items: center; gap: 3px; color: #f5c518; font-weight: 700; direction: ltr; } /* the site's own score, scraped with the card */
-.card .s .star svg { width: 11px; height: 11px; }
 .card .badge { position: absolute; top: 8px; inset-inline-start: 8px; background: var(--red); font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 3px; box-shadow: 0 2px 10px #0008; }
 .card .fav { position: absolute; top: 8px; inset-inline-end: 8px; width: 30px; height: 30px; border-radius: 50%; background: #000a; border: 1px solid #fff6; color: #fff;
   display: grid; place-items: center; opacity: 0; transform: scale(.7); transition: all .25s var(--ease); }
@@ -422,6 +420,7 @@ html, body { overscroll-behavior-y: none; } /* no WebView stretch / glow (or bro
 /* under the video, in the thumb's reach: play / pause for every server's player (MEGA's has none on phones); the video makes room */
 .pbar { display: flex; justify-content: center; padding: 8px 0 calc(env(safe-area-inset-bottom, 0px) + 10px); }
 .pbar[hidden] { display: none; }
+#skip[hidden] { display: none; }
 .pbar .icon-btn { width: 48px; height: 48px; background: #fff; color: #000; }
 .pbar .icon-btn svg { width: 22px; height: 22px; }
 .pbar .icon-btn:active { background: #ddd; transform: scale(.94); }
@@ -630,6 +629,7 @@ body.drawer-open #drawer-bg { opacity: 1; pointer-events: auto; }
 .hidden-page > h2 small { color: var(--muted); font-weight: 400; }
 .card, .ep, .dl { -webkit-touch-callout: none; user-select: none; } /* long-pressed for their menu, not the system's */
 a, img { -webkit-user-drag: none; -webkit-touch-callout: none; } /* a held link or poster would start a drag (or the link preview) and cancel the long-press */
+.set-row input { width: 20px; height: 20px; flex: none; margin-inline-end: 12px; accent-color: var(--red); }
 .set-row .icon-btn { width: 44px; height: 44px; flex: none; background: none; color: #ddd; }
 .set-row .icon-btn:active:not(:disabled) { background: #ffffff14; }
 .set-row .icon-btn:disabled { opacity: .25; cursor: default; }
@@ -753,6 +753,4 @@ img.broken:not(.rd-pages img) { content: url("data:image/gif;base64,R0lGODlhAQAB
 .source-rating:empty { display: none; }
 .source-rating svg { height: 18px; width: auto; border-radius: 4px; }
 .source-rating b { color: #f5c518; }
-.source-rating.site { padding-inline-start: 10px; color: #f5c518; }
-.source-rating.site svg { width: 15px; height: 15px; }
 .source-rating small { color: var(--muted); font-size: 11px; margin-inline-start: -4px; }

@@ -20,7 +20,7 @@ const MC = 'https://cima.my-cima.net'; // the movies section's backup servers (M
 // pages (pop-up ads and all) are never opened in a window for the check (see refused below)
 const WC = 'https://wecima.singles';
 const RA = 'https://ristoanime.me'; // anime backup servers
-const SUGGEST = ['https://graphql.anilist.co', 'https://api.tvmaze.com', 'https://api.jikan.moe', 'https://www.wikidata.org', 'https://kitsu.io', 'https://v3.sg.media-imdb.com', 'https://www.imdb.com', 'https://caching.graphql.imdb.com']; // the search's typo-tolerant title suggestions (app.js)
+const SUGGEST = ['https://graphql.anilist.co', 'https://api.tvmaze.com', 'https://api.jikan.moe', 'https://www.wikidata.org', 'https://kitsu.io', 'https://v3.sg.media-imdb.com', 'https://www.imdb.com', 'https://caching.graphql.imdb.com', 'https://api.aniskip.com', 'https://myanimelist.net', 'https://www.rottentomatoes.com', 'https://backend.metacritic.com']; // the search's typo-tolerant title suggestions (app.js)
 const EGYDEAD = /^https:\/\/([a-z0-9-]+\.)*(egydead|myseed|arabseed)\.[a-z]+$/; // the movies section: the site hops between domains
 // plain Chrome of the version Electron really runs: Cloudflare's check fails a user agent that disagrees with the
 // browser's client hints (they name the real version)
@@ -90,6 +90,7 @@ ipcMain.handle('fetch', async (_, url, form, background = false) => {
   // a form is the site's own XHR (myseed answers its server calls only to one): sent as its page sends it
   // imdb's graphql (the cast lists): json only, and answered only to a client naming itself as imdb's site
   const opts = u.origin === 'https://caching.graphql.imdb.com' ? { method: 'POST', body: JSON.stringify(form), headers: { ...headers, 'Content-Type': 'application/json', 'x-imdb-client-name': 'imdb-web-next-localized' } }
+    : u.origin === 'https://graphql.anilist.co' ? { method: 'POST', body: JSON.stringify(form), headers: { ...headers, 'Content-Type': 'application/json' } } // json only too (scraper.js intro)
     : form ? { method: 'POST', body: new URLSearchParams(form).toString(), headers: { ...headers, 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest', Origin: u.origin } } : { headers };
   const res = background ? await session.defaultSession.fetch(u.href, opts) : await retry429(() => session.defaultSession.fetch(u.href, opts), u.origin, form ? u.origin + '/' : u.href); // a form's page can't be opened: its site's home
   if (!res.ok) throw new Error(`HTTP ${res.status} ${u.pathname}${res.headers.get('cf-mitigated') ? ' · Cloudflare check' : ''}`);
@@ -401,6 +402,17 @@ ipcMain.handle('player:snapshot', async () => {
   const img = player && await player.webContents.capturePage();
   return img && !img.isEmpty() ? img.toDataURL() : ''; // empty while the view isn't on screen yet
 });
+// the host's video is in some frame of the player view, of any site: only from here can they be reached (app.js skipIntro)
+const inPlayer = async js => (await Promise.allSettled((player?.webContents.mainFrame.framesInSubtree || []).map(async f => f.executeJavaScript(js)))).map(r => r.value);
+ipcMain.handle('player:time', async () => (await inPlayer(`[...document.querySelectorAll('video')].find(v => v.duration > 0)?.currentTime`)).find(Number.isFinite));
+ipcMain.on('player:seek', (_, at) => Number.isFinite(at) && inPlayer(`document.querySelectorAll('video').forEach(v => { if (v.duration > ${at}) v.currentTime = ${at}; })`)); // not a shorter ad's
+// how the server's video is doing (app.js watchServer). Dead: the view's page refused, the video's own error, or the host's "file deleted"
+// page, which most answer with a plain 200: short, with no video, in a frame as big as a player (not an ad's 404). Same words as PlaybackSession's frame script
+const DEAD_PAGE = /no longer available|(has been|been|was|got) (deleted|removed)|deleted by|expired|not found|не найден|غير موجود|تم حذف/i;
+ipcMain.handle('player:health', async () => {
+  const frames = (await inPlayer(`(() => { const v = [...document.querySelectorAll('video')], text = document.body?.innerText || ''; return { works: v.some(x => x.duration > 0), dead: v.some(x => x.error) || (!v.length && innerWidth > 300 && innerHeight > 150 && text.length < 600 && ${DEAD_PAGE}.test(text)) }; })()`)).filter(Boolean);
+  return frames.some(f => f.works) ? 'works' : playerFailed || frames.some(f => f.dead) ? 'dead' : playerClicked ? 'clicked' : '';
+});
 // the feedback form (app.js feedbackSheet), emailed on by web3forms. its access key is public by design
 ipcMain.handle('feedback', async (_, { email = '', message = '' }) => {
   const res = await session.defaultSession.fetch('https://api.web3forms.com/submit', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -410,7 +422,7 @@ ipcMain.handle('feedback', async (_, { email = '', message = '' }) => {
 });
 ipcMain.on('open-external', (_, url) => /^https:\/\//.test(url) && shell.openExternal(url)); // site pages, and egydead's download hosts
 
-let player = null, playerBounds, playerFull = false, playerMediaKey = null;
+let player = null, playerBounds, playerFull = false, playerMediaKey = null, playerFailed = false, playerClicked = false;
 const PLAYER_CDNS = /(^|\.)(jsdelivr\.net|cdnjs\.cloudflare\.com|jwpcdn\.com|jwplayer\.com|jquery\.com|googleapis\.com|gstatic\.com|unpkg\.com|bootstrapcdn\.com|fluidplayer\.com|videojs\.com|cloudflare\.com)$/;
 ipcMain.on('player', (e, url, b, referrer, native = false) => {
   const win = BrowserWindow.fromWebContents(e.sender);
@@ -423,6 +435,10 @@ ipcMain.on('player', (e, url, b, referrer, native = false) => {
     // the embed may navigate itself, but not off to another site
     wc.on('will-navigate', (ev, to) => { if (new URL(to).origin !== new URL(wc.getURL()).origin) ev.preventDefault(); });
     wc.on('before-input-event', (ev, i) => { if (i.type === 'keyDown' && i.key === 'Escape' && !playerFull) e.sender.send('player:back'); });
+    // the host's page refused (not Cloudflare's check or a burst limit: those can pass), or can't be reached (-3: only replaced by another load)
+    wc.on('did-navigate', (ev, to, code) => { if (code >= 400 && ![403, 429, 503].includes(code)) playerFailed = true; });
+    wc.on('did-fail-load', (ev, code, why, to, main) => { if (main && code !== -3) playerFailed = true; });
+    wc.on('input-event', (ev, i) => { if (i.type === 'mouseDown') playerClicked = true; }); // it may be waiting for that (app.js watchServer)
     // video fullscreen: stretch the view over the whole window, then put it back
     wc.on('enter-html-full-screen', () => { playerFull = true; const { width, height } = win.getContentBounds(); player.setBounds({ x: 0, y: 0, width, height }); });
     wc.on('leave-html-full-screen', () => { playerFull = false; player.setBounds(playerBounds); });
@@ -437,6 +453,7 @@ ipcMain.on('player', (e, url, b, referrer, native = false) => {
   const key = `${native}:${url}`;
   if (playerMediaKey !== key) {
     playerMediaKey = key;
+    playerFailed = playerClicked = false;
     player.webContents.loadURL(native ? 'data:text/html;charset=utf-8,' + encodeURIComponent(MediaHosts.videoHtml(url)) : url,
       { httpReferrer: referrer || undefined });
   }

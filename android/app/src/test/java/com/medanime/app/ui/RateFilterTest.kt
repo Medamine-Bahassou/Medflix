@@ -139,4 +139,59 @@ class RateFilterTest {
         assertTrue(hits[1].series); assertNull(hits[1].a)
         assertFalse(hits[2].series)
     }
+
+    // as myanimelist's pages have them
+    private fun malRow(name: String, type: String, score: String, id: Int = 1) = """<tr><td><a class="hoverinfo_trigger"><img></a></td><td><a class="hoverinfo_trigger fw-bold" href="https://myanimelist.net/manga/$id/x"><strong>$name</strong></a></td><td>$type</td><td>15</td><td>$score</td></tr>"""
+    private fun malList(vararg rows: String) = """<meta property="og:url" content="https://myanimelist.net/manga.php?q=x"><table>${rows.joinToString("")}</table>"""
+    private fun malPage(name: String, type: String, score: String, english: String = "", synonyms: String = "") = """<meta property="og:url" content="https://myanimelist.net/manga/1/x"><meta property="og:title" content="$name"><div class="spaceit_pad">Synonyms: $synonyms</div><div class="spaceit_pad">English: $english</div><div class="spaceit_pad">Type: $type</div><span itemprop="ratingValue">$score</span>"""
+    private fun mal(names: List<String>, kind: String, pages: (String) -> String?) = kotlinx.coroutines.runBlocking { Scores.malFind(names, kind) { pages(it) } }
+
+    @Test fun `myanimelist going straight to a title's page is its answer`() {
+        val pick = malPage("Pick Me Up", "Manhwa", "8.41", "Pick Me Up", "Pick Me Up!, Infinite Gacha")
+        assertEquals(8.41, mal(listOf("Pick Me Up : Infinite Gacha"), "manga") { pick }!!, 0.0)
+        assertEquals(8.01, mal(listOf("Murim Login"), "manga") { malPage("Log-in Murim", "Manhwa", "8.01", "Log-in Murim", "Murim Login, Login Murim") }!!, 0.0)
+    }
+    @Test fun `myanimelist's page of another season or a novel isn't this title's`() {
+        assertNull(mal(listOf("Aoashi Season 2"), "anime") { malPage("Aoashi", "TV", "8.1") })
+        assertNull(mal(listOf("Unrelated Words Entirely"), "manga") { malPage("Pick Me Up", "Manhwa", "8.41") })
+        assertNull(mal(listOf("Solo Leveling"), "manga") { malPage("Solo Leveling", "Novel", "8.22") })
+    }
+    @Test fun `myanimelist's 404 is nothing found, and the next name is asked`() {
+        val asked = mutableListOf<String>()
+        assertEquals(7.5, mal(listOf("Swallow the whole world", "Other Name"), "manga") { u -> asked += u; if ("Swallow" in u) null else malList(malRow("Other Name", "Manhwa", "7.50")) }!!, 0.0)
+        assertEquals(2, asked.size)
+    }
+    @Test fun `myanimelist's rows are by that very name`() {
+        val page = malList(malRow("Black Clover", "TV", "8.15"), malRow("Black Clover 2nd Season", "TV", "8.86"))
+        assertEquals(8.15, mal(listOf("Black Clover"), "anime") { page }!!, 0.0)
+        assertEquals(8.86, mal(listOf("بلاك كلوفر", "black clover: 2nd season"), "anime") { page }!!, 0.0)
+        assertEquals("a leading The is the same title", 7.84, mal(listOf("Infinite Mage"), "manga") { malList(malRow("The Infinite Mage", "Manhwa", "7.84")) }!!, 0.0)
+    }
+    @Test fun `myanimelist's light novel under the manga's name isn't the manga`() {
+        assertEquals(8.54, mal(listOf("Solo Leveling"), "manga") { malList(malRow("Solo Leveling", "Manhwa", "8.54"), malRow("Solo Leveling", "Novel", "8.22")) }!!, 0.0)
+    }
+    @Test fun `myanimelist with two of a name, or no score yet, is none`() {
+        assertNull(mal(listOf("Hunter"), "anime") { malList(malRow("Hunter", "TV", "7.0"), malRow("Hunter", "Movie", "6.0")) })
+        assertNull(mal(listOf("New Show"), "anime") { malList(malRow("New Show", "TV", "N/A")) })
+    }
+    @Test fun `myanimelist's near row counts only if its page has the very name`() {
+        val rows = malList(malRow("Ore no Ie ga Maryoku Spot Datta", "Manga", "6.27", 5), malRow("Something Else", "Manga", "9.00", 6))
+        val pages = { u: String -> if ("/5/" in u) malPage("Ore no Ie ga Maryoku Spot Datta", "Manga", "6.27", "My House is a Magic Power Spot") else if ("/6/" in u) malPage("Something Else", "Manga", "9.00") else rows }
+        assertEquals(6.27, mal(listOf("My House is a Magic Power Spot"), "manga", pages)!!, 0.0)
+        assertNull(mal(listOf("A Title Nobody Has"), "manga", pages))
+        assertNull("an alias on a novel page is not a manga match", mal(listOf("My House is a Magic Power Spot"), "manga") { u ->
+            if ("/5/" in u || "/6/" in u) malPage("Other Title", "Light Novel", "8.50", "My House is a Magic Power Spot") else rows
+        })
+    }
+    @Test fun `titles in both alphabets, and films named a year, are found`() {
+        val hit = Hit(listOf("Siccin 9"), "2026", false, 6.0)
+        assertSame(hit, Scores.pick(listOf(hit), Card("/cinema/x", "cinema", "سجين Siccin 9", "", "", "2026", "", null, "/cinema/x")))
+        val film = Hit(listOf("1917"), "2019", false, 8.2)
+        assertSame(film, Scores.pick(listOf(film), Card("/cinema/x", "cinema", "1917", "", "", "2019", "", null, "/cinema/x")))
+    }
+    @Test fun `metacritic's own search says what's a show`() {
+        val rows = Scores.mcHits("""{"data":{"items":[{"title":"Dexter: Resurrection","premiereYear":2025,"type":"show","criticScoreSummary":{"score":67}},{"title":"No Score","premiereYear":2020,"type":"movie","criticScoreSummary":{"score":null}}]}}""")
+        assertEquals(67.0, rows[0].a!!, 0.0); assertTrue(rows[0].series); assertEquals("2025", rows[0].year)
+        assertNull(rows[1].a); assertFalse(rows[1].series)
+    }
 }

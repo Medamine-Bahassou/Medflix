@@ -52,7 +52,7 @@ fun filmSlides(items: List<Card>) = items.filter { it.poster.isNotEmpty() }.map 
 suspend fun mangaTop(items: List<Card>) = coroutineScope { items.map { async { runCatching { Manga.seriesOf(it.path.substringAfterLast('/')) }.getOrNull() } }.map { it.await() }.filterNotNull() }
 
 /** Home: a bit of every section; a site that doesn't answer just leaves its rows out (app.js home) */
-private class HomeData(val anime: HomePage?, val hot: List<Card>?, val latest: List<Card>?, val films: List<Card>?, val slides: List<Slide>)
+private class HomeData(val anime: HomePage?, val hot: List<Card>?, val latest: List<Card>?, val films: List<Card>?, val novels: List<Card>?, val novelUpdates: List<Card>?, val slides: List<Slide>)
 
 @Composable
 fun HomeScreen(nav: Nav) {
@@ -62,21 +62,24 @@ fun HomeScreen(nav: Nav) {
             val hot = async { runCatching { Manga.hot(f) }.getOrNull() }
             val latest = async { runCatching { Manga.latestFlow(f).first() }.getOrNull() }
             val films = async { runCatching { Cinema.list("all", 1, f).items }.getOrNull() }
+            val novels = async { runCatching { Novels.list(mapOf("sort" to "trending"), f).items }.getOrNull() }
+            val novelUpdates = async { runCatching { Novels.updates(f) }.getOrNull() }
             val m = async { mangaSlides(mangaTop(hot.await()?.take(3) ?: emptyList())) }
             if (a.await() == null && hot.await() == null && films.await() == null) throw java.io.IOException(t("unreachable"))
             // the slider takes turns: anime, manga, film, anime…
             val an = a.await()?.let(::animeSlides)?.take(3) ?: emptyList(); val mg = m.await(); val fl = filmSlides(films.await()?.take(3) ?: emptyList())
-            HomeData(a.await(), hot.await(), latest.await(), films.await(), (0 until 3).flatMap { listOfNotNull(an.getOrNull(it), mg.getOrNull(it), fl.getOrNull(it)) })
+            HomeData(a.await(), hot.await(), latest.await(), films.await(), novels.await(), novelUpdates.await(), (0 until 3).flatMap { listOfNotNull(an.getOrNull(it), mg.getOrNull(it), fl.getOrNull(it)) })
         }
     }
     SectionPage(l, refresh, nav, { it.slides }) { d ->
         item { CardRowView(t("continueWatching"), continued(setOf("anime", "cinema", "manga", "novel")), nav) }
         item { CardRowView(t("myList"), listed(), nav, Screen.MyList) }
-        items(d.anime?.rows?.take(2) ?: emptyList(), { it.title }) { CardRowView(it.title, it.items, nav, Screen.Section(it.title)) }
-        item { CardRowView(t("mHot"), d.hot, nav, Screen.MangaBrowse(mapOf("is_hot" to "true"))) }
-        item { CardRowView(t("mLatest"), d.latest, nav, Screen.Manga) }
+        items(d.anime?.rows ?: emptyList(), { it.title }) { CardRowView(t(it.title), it.items, nav, Screen.Section(it.title)) }
+        item { CardRowView(t("homeHotManga"), d.hot, nav, Screen.MangaBrowse(mapOf("is_hot" to "true"))) }
+        item { CardRowView(t("homeLatestManga"), d.latest, nav, Screen.Manga) }
         item { CardRowView(t("cinema"), d.films, nav, Screen.Cinema) }
-        items(d.anime?.rows?.drop(2) ?: emptyList(), { "r" + it.title }) { CardRowView(it.title, it.items, nav, Screen.Section(it.title)) }
+        item { CardRowView(t("homeHotNovels"), d.novels, nav, Screen.NovelBrowse(mapOf("sort" to "trending"))) }
+        item { CardRowView(t("homeLatestNovels"), d.novelUpdates, nav, Screen.Novels) }
     }
 }
 
@@ -87,14 +90,14 @@ fun AnimeScreen(nav: Nav) {
     SectionPage(l, refresh, nav, ::animeSlides) { d ->
         item { Chips(listOf(t("series") to Screen.Grid(t("series"), "/browse"), t("movies") to Screen.Grid(t("movies"), "/movies"), t("schedule") to Screen.Schedule), nav) }
         item { CardRowView(t("continueWatching"), continued(setOf("anime")), nav) }
-        items(d.rows, { it.title }) { CardRowView(it.title, it.items, nav, Screen.Section(it.title)) }
+        items(d.rows, { it.title }) { CardRowView(t(it.title), it.items, nav, Screen.Section(it.title)) }
     }
 }
 
 /** a home row's full listing: the site's own (sorted browse, the season's, films), the latest episodes' pager, else the row (app.js section) */
 @Composable
 fun SectionScreen(name: String, nav: Nav) = Column {
-    PageTitle(name, nav)
+    PageTitle(t(name), nav)
     val base = Witanime.SECTIONS[name]
     when {
         base != null -> CardGrid(base, nav)
@@ -665,9 +668,7 @@ fun TitleScreen(path: String, nav: Nav) {
                 val day = if (android.text.format.DateUtils.isToday(a.at)) t("today") else java.text.SimpleDateFormat("EEEE d MMM", loc).format(at)
                 "${t("nextEp")} · ${if (a.ep.isNotEmpty()) "${t("epShort")} ${a.ep} · " else ""}$day · ${java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT, loc).format(at)}" to true
             }
-            val score = d.tags.find { it.matches(Regex("\\d+\\.\\d+")) } ?: "" // the site's score, among the tags: shown with the actions instead
-            DetailPage(d.banner, d.poster, d.title, d.alt, Ic.series, listOfNotNull(airChip) + d.tags.filter { it != score }.map { it to false } + d.genres.map { it to false }, d.desc, {
-                SiteRating(score)
+            DetailPage(d.banner, d.poster, d.title, d.alt, Ic.series, listOfNotNull(airChip) + d.tags.filter { !it.matches(Regex("\\d+\\.\\d+")) }.map { it to false } + d.genres.map { it to false }, d.desc, { // the site's score is among the tags
                 SourceRating(listOf(d.title) + d.alt.split(Regex("[,،]")), "anime")
                 ListButton(path, d.title, d.poster, type)
                 if (type == "anime") NotifyButton(path, d.title, d.poster, d.episodes.lastOrNull()?.path ?: "")

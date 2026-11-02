@@ -122,8 +122,8 @@ fun CinemaPlayScreen(slug: String, nav: Nav) {
     Body(l, retry) { p ->
         val m = p.m
         val title = if (p.ep != null) m.title.replace(Regex("\\s*الحلقة\\s.*$"), "") else m.title
+        val show = "/cinema/" + (if (p.ep != null) m.up.ifEmpty { slug } else slug)
         LaunchedEffect(slug) { // Continue Watching: one entry per film, or per season for episodes (the one watched last)
-            val show = "/cinema/" + (if (p.ep != null) m.up.ifEmpty { slug } else slug)
             Store["history"].put(show, JSONObject().put("show", show).put("slug", slug).put("title", title).put("poster", m.poster).put("at", System.currentTimeMillis()).apply { if (p.ep != null) put("ep", p.ep) })
             Store["seen"].put("/cinema/$slug", 1)
             Store.persist("history"); Store.persist("seen")
@@ -140,19 +140,32 @@ fun CinemaPlayScreen(slug: String, nav: Nav) {
         val scope = rememberCoroutineScope()
         var job by remember { mutableStateOf<Job?>(null) }
         var attempt by remember { mutableIntStateOf(0) }
+        val attempted = remember(slug) { mutableSetOf<String>() }
+        var chosen by remember(slug) { mutableStateOf(false) } // picked in the menu: not given up on just for being slow
+        var dead by remember(slug) { mutableStateOf(false) }
         fun pick(n: Int) {
             val s = servers?.getOrNull(n) ?: return
-            cur = n; url = null
-            PlaybackSession.server("/cinema/$slug", s.label, s.quality)
-            Store["prefs"].put("edServer", s.label); Store.persist("prefs")
+            cur = n; url = null; dead = false
+            attempted.add(s.url)
             job?.cancel()
             job = scope.launch { url = if (s.label == "myseed") runCatching { Cinema.myseedNow(m, slug, s.quality) }.getOrElse { if (it is CancellationException) throw it; s.url } else s.url }
+        }
+        // only a video seen counts, not a server that answered
+        fun worked() { servers?.getOrNull(cur)?.let { PlaybackSession.server("/cinema/$slug", it.label, it.quality); Store.worked(show, "edServer", it.label) } }
+        // the next one not tried yet; uqload only when it's all that's left
+        fun failed() {
+            chosen = false
+            val l = servers.orEmpty()
+            val rest = l.indices.map { (cur + 1 + it).mod(l.size) }.filter { l[it].url !in attempted }
+            val n = rest.firstOrNull { !Cinema.isLast(l[it]) } ?: rest.firstOrNull()
+            if (n != null) pick(n) else { cur = -1; url = null; dead = true }
         }
         LaunchedEffect(slug, attempt) {
             searching = true
             // the last server used, else the first one; uqload only when it's all there is
             val start = { l: List<Link> ->
                 l.indexOfFirst { "${it.label}|${it.quality}" == PlaybackSession.server("/cinema/$slug") }.takeIf { it >= 0 }
+                    ?: l.indexOfFirst { it.label == Store.workedOn(show) }.takeIf { it >= 0 }
                     ?: l.indexOfFirst { !Cinema.isLast(it) && it.label == Store["prefs"].optString("edServer") }.let { if (it >= 0) it else l.indexOfFirst { s -> !Cinema.isLast(s) }.coerceAtLeast(0) }
             }
             // the answer saved last time (kept 90 days) plays at once, while the sites are asked again behind it (cinema.js edWatchSoon)
@@ -179,12 +192,13 @@ fun CinemaPlayScreen(slug: String, nav: Nav) {
             }
             searching = false
         }
-        PlayerChrome(title, if (p.ep != null) "${t("ep")} ${p.ep}" else m.year, nav, servers?.map { it.label to it.quality }, cur, cur >= 0 && url == null, { pick(it) },
+        PlayerChrome(title, if (p.ep != null) "${t("ep")} ${p.ep}" else m.year, nav, servers?.map { it.label to it.quality }, cur, cur >= 0 && url == null, { chosen = true; attempted.clear(); pick(it) },
             prev?.let { { nav.replace(Screen.CinemaPlay(it.slug)) } }, next?.let { { nav.replace(Screen.CinemaPlay(it.slug)) } },
             { nav.go(Screen.CinemaTitle(if (p.ep != null) m.up.ifEmpty { slug } else slug)) }, { page, close -> LinksItems(page, close, downloads) }, { castTo(title, null, url) }, searching = searching) { // downloads: third-party hosts, in the browser
             val u = url
             when {
-                u != null -> HostPlayer(u, "/cinema/$slug")
+                u != null -> HostPlayer(u, "/cinema/$slug", chosen, ::worked, ::failed)
+                dead -> Empty(t("noneWorked"), t("noneWorkedHint"))
                 servers?.isEmpty() == true -> Empty(t("noServers"), t("noServersEdHint") + if (why.isNotEmpty()) "\n" + noNames(why) else "") {
                     Button({ servers = null; attempt++ }, colors = ButtonDefaults.buttonColors(Red)) { Text(t("retry")) }
                 }

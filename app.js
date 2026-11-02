@@ -29,7 +29,15 @@ const STR = {
     results: q => `نتائج البحث عن «${q}»`, listEmpty: 'قائمتك فارغة', listHint: 'مرّر على أي عنوان واضغط + لحفظه هنا.',
     resume: e => `متابعة الحلقة ${e}`, inList: 'في قائمتي', trailer: 'الإعلان', episodes: 'الحلقات', jump: 'انتقل إلى حلقة…', moreLike: 'أعمال مشابهة',
     back: 'رجوع (Esc)', loadingServers: 'جارٍ تحميل السيرفرات…', openBrowser: 'فتح في المتصفح', openBrowserTip: 'إذا لم يعمل المشغّل داخل التطبيق', cast: 'عرض على التلفاز', casting: 'يُعرض الآن على التلفاز', castPlayFirst: 'شغّل الفيديو هنا أولاً، ثم اعرضه على التلفاز', castWifi: 'اتصل بشبكة الواي فاي نفسها التي يتصل بها التلفاز', castFailed: 'تعذّر التشغيل على التلفاز، جرّب سيرفراً آخر',
-    prevEp: 'الحلقة السابقة', nextEp: 'الحلقة التالية', chooseServer: 'اختر سيرفرًا', searchingServers: 'جارٍ البحث عن سيرفرات…', searching: 'جارٍ البحث…',
+    // witanime's row headings, always Arabic and vague: its heading stays the row's key (SECTIONS), this is what's shown
+    'الأكثر مشاهدة': 'أكثر حلقات الأنمي مشاهدة',
+    'أحدث الحلقات': 'أحدث حلقات الأنمي',
+    'أحدث الأفلام': 'أحدث أفلام الأنمي',
+    'أكثر الأنميات مشاهدة': 'أكثر الأنميات مشاهدة',
+    'أكثر الأفلام مشاهدة': 'أكثر أفلام الأنمي مشاهدة',
+    'أشهر أنميات الموسم': 'أشهر أنميات الموسم',
+homeHotManga: 'المانجا الرائجة', homeLatestManga: 'أحدث فصول المانجا', homeHotNovels: 'الروايات الرائجة', homeLatestNovels: 'أحدث فصول الروايات', epFinal: 'والأخيرة',
+    prevEp: 'الحلقة السابقة', nextEp: 'الحلقة التالية', skipIntro: 'تخطي المقدمة', playback: 'تشغيل الفيديو', skipIntroSet: 'زر تخطي المقدمة', skipIntroHint: 'يظهر زر لتخطي مقدمة الحلقة أثناء عرضها.', chooseServer: 'اختر سيرفرًا', searchingServers: 'جارٍ البحث عن سيرفرات…', searching: 'جارٍ البحث…',
     server: 'سيرفر', noneWorked: 'لم يعمل أي سيرفر', noneWorkedHint: 'جرّب سيرفرًا آخر من القائمة أو افتح الحلقة في المتصفح.',
     rateLimited: 'الموقع يطلب الانتظار قليلًا', rateLimitedHint: 'طلبات كثيرة في وقت قصير. انتظر دقيقة أو دقيقتين ثم أعد المحاولة.', noServers: 'لا توجد سيرفرات لهذه الحلقة', noServersHint: 'لم يتم العثور عليها في أي مصدر.', noServersEdHint: 'لم يتم العثور عليها في المصدر.', verify: 'التحقق من الوصول', verifyFailed: 'لم يكتمل التحقق', today: 'اليوم',
     downloads: 'التنزيلات', download: 'تحميل الحلقة', dlPreparing: 'جارٍ تجهيز التحميل…', dlStarted: 'بدأ التحميل', dlFinished: n => `اكتمل تحميل «\u2068${n}\u2069»`,
@@ -65,7 +73,8 @@ const STR = {
     results: q => `Results for “${q}”`, listEmpty: 'Your list is empty', listHint: 'Hover any title and press + to save it here.',
     resume: e => `Resume Ep ${e}`, inList: 'In My List', trailer: 'Trailer', episodes: 'Episodes', jump: 'Jump to ep…', moreLike: 'More Like This',
     back: 'Back (Esc)', loadingServers: 'Loading servers…', openBrowser: 'Open in browser', openBrowserTip: "If the in-app player won't load", cast: 'Cast to TV', casting: 'Playing on the TV', castPlayFirst: 'Start the video here first, then cast it', castWifi: 'Connect to the same Wi-Fi as the TV', castFailed: "Couldn't play it on the TV, try another server",
-    prevEp: 'Previous', nextEp: 'Next', chooseServer: 'Choose server', searchingServers: 'Searching servers…', searching: 'Searching…',
+homeHotManga: 'Trending manga', homeLatestManga: 'Latest manga chapters', homeHotNovels: 'Trending novels', homeLatestNovels: 'Latest novel chapters', epFinal: '(final)',
+    prevEp: 'Previous', nextEp: 'Next', skipIntro: 'Skip intro', playback: 'Playback', skipIntroSet: 'Skip intro button', skipIntroHint: "Shows a button to skip an episode's opening while it plays.", chooseServer: 'Choose server', searchingServers: 'Searching servers…', searching: 'Searching…',
     server: 'Server', noneWorked: 'No server worked', noneWorkedHint: 'Try another one above, or open in browser.',
     rateLimited: 'The site asks to slow down', rateLimitedHint: 'Too many requests in a short time. Wait a minute or two, then retry.', noServers: 'No servers for this episode', noServersHint: 'Not found on any source.', noServersEdHint: 'Not found on the source.', verify: 'Verify access', verifyFailed: 'Check not passed', today: 'Today',
     downloads: 'Downloads', download: 'Download episode', dlPreparing: 'Preparing download…', dlStarted: 'Download started', dlFinished: n => `Downloaded “\u2068${n}\u2069”`,
@@ -78,8 +87,8 @@ const STR = {
     selectedN: n => `${n} selected`, selectAll: 'Select all',
     schedSearch: 'Find a show in the schedule…', schedNone: 'Not on this week’s schedule', schedNoneHint: 'Try its English or Japanese name.',
     // the site's own section titles
-    'الأكثر مشاهدة': 'Most Watched', 'أحدث الحلقات': 'Latest Episodes', 'أحدث الأفلام': 'Latest Movies', 'تابع المشاهدة': 'Continue Watching',
-    'أكثر الأنميات مشاهدة': 'Most Watched Anime', 'أكثر الأفلام مشاهدة': 'Most Watched Movies', 'أشهر أنميات الموسم': 'Popular This Season',
+    'الأكثر مشاهدة': 'Most watched anime episodes', 'أحدث الحلقات': 'Latest anime episodes', 'أحدث الأفلام': 'Latest anime movies', 'تابع المشاهدة': 'Continue Watching',
+    'أكثر الأنميات مشاهدة': 'Most watched anime', 'أكثر الأفلام مشاهدة': 'Most watched anime movies', 'أشهر أنميات الموسم': 'Top anime this season',
   },
 };
 let lang = 'ar';
@@ -305,12 +314,15 @@ function settingsView() {
     </section>
     <div class="set-side">
     ${api.storage ? `<section class="set-card">${head(t('storage'), t('storageHint'))}<div class="set-stor" id="stor"></div></section>` : ''}
+    <section class="set-card">${head(t('playback'), t('skipIntroHint'))}
+      <div class="set-list"><label class="set-row"><i class="set-tile">${ICON.skipForward}</i><span>${t('skipIntroSet')}</span><input type="checkbox" id="intro-on" ${store.prefs.skipIntro === false ? '' : 'checked'}></label></div></section>
     <section class="set-card">${head(t('hiddenTitle'), t('hiddenHint'))}
       <div class="set-list"><a class="set-row set-link" href="#/hidden"><i class="set-tile">${ICON.eyeSlash}</i><span>${t('openHidden', hidden)}</span>${ICON.caretRight}</a></div></section>
     <section class="set-card">${head(t('language'))}
       <div class="lang set-lang"><button data-l="ar" class="${lang === 'ar' ? 'on' : ''}">العربية</button><button data-l="en" class="${lang === 'en' ? 'on' : ''}">English</button></div>
     </section>${window.BUILD ? `<p class="set-build" dir="ltr">Build ${esc(BUILD)}</p>` : ''}</div></div></div>`;
   if (api.storage) drawStorage();
+  $('#intro-on').onchange = e => { store.prefs.skipIntro = e.target.checked; persist('prefs'); };
   $('.settings').onclick = e => {
     const b = e.target.closest('[data-act]');
     if (!b) return;
@@ -356,12 +368,12 @@ function card(c, i = 0) {
   const h = store.history[show];
   return `<div class="card" data-id="${id}" style="--i:${i % 12}">
     <div class="img" data-ph="${esc(c.title)}"><img src="${esc(img(c.poster))}" loading="lazy" alt="" draggable="false"></div>
-    ${c.badge ? `<span class="badge">${esc(c.badge.replace(/\bEP\b|الحلقة/, t('ep')))}</span>` : ''}
+    ${c.badge ? `<span class="badge">${esc(c.badge.replace(/\bEP\b|الحلقة/, t('ep')).replace('والأخيرة', t('epFinal')))}</span>` : ''}
     ${c.rm ? `<button class="fav rm" title="${t('remove')}" aria-label="${t('remove')}">${ICON.x}</button>`
       : show.startsWith('/airing/') ? '' // a schedule card: not a show page yet (found on witanime when opened), so nothing to list
       : `<button class="fav ${inList(show) ? 'on' : ''}" title="${t('myList')}">${inList(show) ? ICON.check : ICON.plus}</button>`}
     <div class="meta"><div class="t" dir="auto" title="${esc(c.title)}">${esc(c.title)}</div>
-      <div class="s">${c.rating ? `<span class="star">${ICON.star}${esc(c.rating)}</span>` : ''}${c.year ? `<span>${esc(c.year)}</span>` : ''}${h?.ep ? `<span>${t('epShort')} ${esc(h.ep)}</span>` : ''}</div></div>
+      <div class="s">${c.year ? `<span>${esc(c.year)}</span>` : ''}${h?.ep ? `<span>${t('epShort')} ${esc(h.ep)}</span>` : ''}</div></div>
   </div>`;
 }
 const row = (title, items, href) => !items?.length ? '' : `<section class="row"><h3>${href ? `<a href="${href}">${esc(t(title))} ${ICON.next}</a>` : esc(t(title))}</h3>
@@ -608,11 +620,10 @@ async function home(force) {
   heroPage(hero, `
       ${row(t('continueWatching'), continued(['anime', 'cinema', 'manga']))}
       ${row(t('myList'), Object.values(store.list).sort((a, b) => b.at - a.at), '#/list')}
-      ${d ? animeRows({ rows: d.rows.slice(0, 2) }) : ''}
-      ${row(t('mHot'), hot?.items, '#/manga/browse/1?is_hot=true')}
-      ${row(t('mLatest'), mMerge([latest?.items, oLatest?.items]), '#/manga')}
-      ${row(t('cinema'), dubbed(films?.items), '#/cinema')}
-      ${d ? animeRows({ rows: d.rows.slice(2) }) : ''}`, () => home(true));
+      ${d ? animeRows(d) : ''}
+      ${row(t('homeHotManga'), hot?.items, '#/manga/browse/1?is_hot=true')}
+      ${row(t('homeLatestManga'), mMerge([latest?.items, oLatest?.items]), '#/manga')}
+      ${row(t('cinema'), dubbed(films?.items), '#/cinema')}`, () => home(true));
 }
 
 // Anime: witanime's series, films and schedule
@@ -1210,12 +1221,14 @@ function offline(epPath) {
       <div class="ttl"><a href="${esc(showHref(d.show))}">${esc(d.title)}</a><small>${t('episode')} ${esc(d.ep)}</small></div>
       <div class="sp"></div>
       ${api.cast ? `<button class="icon-btn pcast" title="${t('cast')}" aria-label="${t('cast')}">${ICON.cast}</button>` : ''}
+      ${skipBtn}
       <span class="chip">${ICON.download} ${t('offline')}</span>
     </header>
     <div class="stage"><video controls autoplay playsinline src="${esc(api.fileSrc(d.file))}" data-file="${esc(d.file)}"></video></div>
     ${playBar(true)}
   </div>`;
   $('#back').onclick = () => (history.length > 1 ? history.back() : (location.hash = '#/downloads'));
+  if (epPath.startsWith('/watch/')) { const v = $('.player video'); skipIntro(d.title, '', d.ep, () => v.currentTime, at => { v.currentTime = at; }); } // not a film or a series: they aren't on AniSkip
 }
 
 function myList() {
@@ -1238,16 +1251,15 @@ async function title(path, force) {
   const h = store.history[path];
   const type = path.startsWith('/movie') ? 'movie' : 'anime';
   const first = h?.epPath || d.episodes[0]?.path;
-  const score = d.tags.find(x => /^\d+\.\d+$/.test(x)); // the site's score, among the tags: shown with the actions instead
   view.innerHTML = `
     <div class="det-hero"><div class="bg" style="background-image:url('${esc(img(d.banner))}')"></div>
       <div class="det">
         ${d.poster ? `<img class="poster" src="${esc(img(d.poster))}" alt="">` : ''}
         <div>
           <h1>${esc(d.title)}</h1>${d.alt ? `<div class="alt">${esc(d.alt)}</div>` : ''}
-          <div class="chips">${d.tags.filter(x => x !== score).map(x => `<span class="chip">${esc(x)}</span>`).join('')}${d.genres.map(g => `<span class="chip">${esc(g)}</span>`).join('')}</div>
+          <div class="chips">${d.tags.filter(x => !/^\d+\.\d+$/.test(x)).map(x => `<span class="chip">${esc(x)}</span>`).join('')}${d.genres.map(g => `<span class="chip">${esc(g)}</span>`).join('')}</div>
           <p class="desc" dir="auto">${esc(d.desc)}</p>
-          <div class="actions">${Ratings.site(score)}${Ratings.slot({title:d.title, type:"anime"})}
+          <div class="actions">${Ratings.slot({title:d.title, alt:d.alt, type:"anime"})}
             ${first ? `<a class="btn red" href="${playHash(first)}">${ICON.play} ${h ? esc(t('resume', h.ep)) : t('play')}</a>` : ''}
             <button class="btn ghost" id="fav">${inList(path) ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList')}</button>
             ${d.trailer ? `<button class="btn ghost" id="trl">${ICON.play} ${t('trailer')}</button>` : ''}
@@ -1383,6 +1395,7 @@ async function play(epPath) {
         <div class="dd-menu"></div>
       </div>
       <button class="btn ghost small" id="ext" title="${t('openBrowserTip')}">${ICON.external} <span>${t('openBrowser')}</span></button>
+      ${skipBtn}
       <button class="icon-btn" id="prev" title="${t('prevEp')}" aria-label="${t('prevEp')}" ${prev ? '' : 'disabled'}>${ICON.skipBack}</button>
       <button class="icon-btn" id="next" title="${t('nextEp')}" aria-label="${t('nextEp')}" ${next ? '' : 'disabled'}>${ICON.skipForward}</button>
     </header>
@@ -1402,6 +1415,7 @@ async function play(epPath) {
 
   $('#back').onclick = () => (history.length > 1 ? history.back() : (location.hash = '#/title' + show));
   $('#ext').onclick = () => api.openExternal(scraper.SITE + epPath);
+  skipIntro(d.title, d.alt, ep, () => api.playerTime?.(), at => api.playerSeek?.(at));
   if (prev) $('#prev').onclick = () => location.replace(playHash(prev.path));
   if (next) $('#next').onclick = () => location.replace(playHash(next.path));
 
@@ -1421,7 +1435,9 @@ async function play(epPath) {
   if (servers.length) fresh.then(l => { // after the remembered ones, before animerco's
     const add = bestPerHost([...servers.filter(s => s.st), ...l]).filter(s => !s.st);
     servers.splice(servers.filter(s => s.st).length, 0, ...add);
-    if (here()) draw();
+    if (!here()) return;
+    draw();
+    if (dead && add.length) tryFrom(servers.indexOf(add[0])); // the saved links all died before these came
   }, e => console.error(e));
   else try { servers = await fresh; } catch (e) { console.error(e); limited = /rate-limited/.test(e.message); why = noNames(e.message); }
   if (!here()) return; // navigated away meanwhile
@@ -1444,7 +1460,7 @@ async function play(epPath) {
   draw();
   Promise.allSettled([fresh, backup]).then(() => { more = false; if (here()) draw(); });
   // try the chosen server, falling through to the next ones (animerco's included) until one resolves
-  let seq = 0;
+  let seq = 0, picked = false; // picked: chosen in the menu, not given up on just for being slow
   const tryFrom = async (i, n = 0, my = ++seq) => {
     dead = n >= servers.length;
     if (dead) { busy = false; draw(); stage.innerHTML = `<div class="empty"><b>${t('noneWorked')}</b>${t('noneWorkedHint')}</div>`; return; }
@@ -1456,8 +1472,14 @@ async function play(epPath) {
     if (cur.token) { Object.assign(store.streams[epPath] ||= { list: {} }, { at: Date.now() }).list[key(cur)] = st; persist('streams'); }
     if (!here() || my !== seq) return;
     stream = st; busy = false; draw();
-    store.prefs.server = cur.label; persist('prefs');
     place();
+    const s = cur;
+    watchServer(() => here() && my === seq, picked, () => {
+      store.prefs.server = s.label; (store.prefs.showServer ||= {})[show] = s.label; persist('prefs');
+    }, () => {
+      if (store.streams[epPath]?.list[key(s)]) { delete store.streams[epPath].list[key(s)]; persist('streams'); } // its saved link is what died: the next visit asks for a fresh one
+      picked = false; tryFrom(i, n + 1, my);
+    });
   };
   srv.querySelector('.dd-btn').onclick = () => srv.classList.contains('open') ? closeMenu(srv) : openMenu(srv);
 
@@ -1495,8 +1517,8 @@ async function play(epPath) {
     if (inAppHost(l.label)) startDownload({ id: epPath, epPath, show, title: d.title, ep, poster: d.poster }, l.quality);
     else api.openDownloadPage(l.token).then(() => toast(t('openedBrowser')), () => toast(t('dlFailed'), true));
   };
-  srv.querySelector('.dd-menu').onclick = e => { const b = e.target.closest('.dd-item'); if (b) { closeMenu(); tryFrom(+b.dataset.i); } };
-  if (servers.length) tryFrom(Math.max(0, servers.findIndex(s => s.label === store.prefs.server)));
+  srv.querySelector('.dd-menu').onclick = e => { const b = e.target.closest('.dd-item'); if (b) { closeMenu(); picked = true; tryFrom(+b.dataset.i); } };
+  if (servers.length) tryFrom([store.prefs.showServer?.[show], store.prefs.server].map(l => servers.findIndex(s => s.label === l)).find(i => i >= 0) ?? 0); // this show's, else the last one anywhere
   else stage.innerHTML = '<div class="spin"></div>'; // nothing on witanime: wait for animerco
   const all = await backup, extra = bestPerHost([...servers, ...all]).filter(s => all.includes(s)); // a host already listed isn't offered twice
   if (!here()) return;
@@ -1511,6 +1533,36 @@ async function play(epPath) {
   $('#verify')?.addEventListener('click', () => api.unblock().then(route, () => toast(t('verifyFailed'), true))); // phones: witanime's Cloudflare check
 }
 let playerObs;
+// a server's video, watched until it's known how it went: works() once there's a video (only then is the server remembered),
+// dead() when its page says so or, unless picked by hand (patient), after 25s of nothing on screen. Some hosts wait for a click: one stops that clock
+const watchServer = (still, patient, works, dead) => {
+  if (!api.playerHealth) return works();
+  let waited = 0;
+  const tick = async () => {
+    if (!still()) return;
+    const h = await api.playerHealth();
+    if (!still()) return;
+    if (h === 'works') return works();
+    if (h === 'dead') return dead();
+    if (h !== 'clicked' && !patient && !document.hidden && ++waited >= 25) return dead();
+    setTimeout(tick, 1000);
+  };
+  tick();
+};
+// "skip intro" while the opening plays (scraper.intro). In the header: a server's video is a native view over the page, which
+// would cover a button on it. now / seek: the video's time
+const skipBtn = `<button class="btn red small" id="skip" hidden>${t('skipIntro')}</button>`;
+const skipIntro = async (title, alt, ep, now, seek) => {
+  if (store.prefs.skipIntro === false) return; // turned off in settings: nothing asked of AniSkip either
+  const b = $('#skip'), [from, to] = await scraper.intro(title, alt, ep).catch(e => console.error(e)) || [];
+  if (to === undefined || !b.isConnected) return; // left for another episode meanwhile: its own button is its own
+  b.onclick = () => { seek(to); b.hidden = true; };
+  const tick = setInterval(async () => {
+    if (!b.isConnected) return clearInterval(tick);
+    const at = await now();
+    b.hidden = !(at >= from && at < to);
+  }, 1000);
+};
 // the native video view would cover the menus, so while one is open the view is swapped for a still frame of itself
 const openMenu = async dd => {
   dd.classList.add('open');

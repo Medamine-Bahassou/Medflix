@@ -18,7 +18,8 @@ import org.json.JSONObject
 @Composable
 fun NativeVideo(mediaUri: android.net.Uri, epPath: String, full: MutableState<Boolean>,
                 onError: (androidx.media3.common.PlaybackException) -> Unit,
-                onEnded: () -> Unit = {}, onFinished: () -> Unit = {}) {
+                onEnded: () -> Unit = {}, onFinished: () -> Unit = {}, onVideo: () -> Unit = {}) {
+    val ready by rememberUpdatedState(onVideo)
     val failure by rememberUpdatedState(onError)
     val ended by rememberUpdatedState(onEnded)
     val finished by rememberUpdatedState(onFinished)
@@ -45,7 +46,7 @@ fun NativeVideo(mediaUri: android.net.Uri, epPath: String, full: MutableState<Bo
     }
     LaunchedEffect(exo) { while (true) { save(); kotlinx.coroutines.delay(500) } }
     DisposableEffect(exo) {
-        val unbind = PlaybackSession.controls.bind(!exo.playWhenReady) { play -> if (!PlaybackSession.suspended) { exo.playWhenReady = play; save() } } // the PiP window's button
+        val unbind = PlaybackSession.controls.bind(!exo.playWhenReady, { exo.seekTo((it * 1000).toLong()) }) { play -> if (!PlaybackSession.suspended) { exo.playWhenReady = play; save() } } // the PiP window's button
         var playing = exo.playWhenReady
         var wasStopped: Boolean? = null
         val detach = PlaybackSession.observe { stopped ->
@@ -88,6 +89,7 @@ fun NativeVideo(mediaUri: android.net.Uri, epPath: String, full: MutableState<Bo
                     override fun onPlayerError(e: androidx.media3.common.PlaybackException) { android.util.Log.w("medflix", "video", e); failure(e) }
                     override fun onPlaybackStateChanged(state: Int) {
                         if (state == Player.STATE_ENDED && !PlaybackSession.suspended) ended()
+                        if (state == Player.STATE_READY) ready()
                     }
                 })
             }

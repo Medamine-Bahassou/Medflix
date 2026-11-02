@@ -2,7 +2,10 @@ package com.medanime.app.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -253,6 +256,15 @@ fun NovelReaderScreen(novel: String, start: String, nav: Nav, title0: String = "
     }
     BackHandler(findOpen) { r.find = null }
 
+    // pages are laid out once, so theirs run under the bars: opened without them, or the first page would start hidden
+    LaunchedEffect(Unit) { if (look.paged) r.bars = false }
+    // how tall the bars are right now (nothing once they've gone): running text keeps clear of them, rather than sliding under them
+    var topH by remember { mutableIntStateOf(0) }
+    var bottomH by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
+    val clearTop by animateDpAsState(with(density) { topH.toDp() }, tween(150), label = "clearTop")
+    val clearBottom by animateDpAsState(with(density) { bottomH.toDp() }, tween(150), label = "clearBottom")
+
     var sheet by remember { mutableStateOf("") } // "look", "index", "voice", or none
     val focus = remember { FocusRequester() }
     LaunchedEffect(sheet, findOpen, r.pressed) { if (sheet.isEmpty() && !findOpen && r.pressed == null) runCatching { focus.requestFocus() } } // the volume keys come here; a sheet or the search box took them
@@ -263,15 +275,15 @@ fun NovelReaderScreen(novel: String, start: String, nav: Nav, title0: String = "
     }) {
         CompositionLocalProvider(LocalContentColor provides paper.fg) {
             if (c != null) {
-                if (look.paged) PagedText(r, look, paper, setLook, nav) else ScrollText(r, look, paper, setLook, nav)
+                if (look.paged) PagedText(r, look, paper, setLook, nav) else Box(Modifier.padding(top = clearTop, bottom = clearBottom)) { ScrollText(r, look, paper, setLook, nav) }
             } else if (failed != null) Empty(t("unreachable"), noNames(failed?.message)) { Button({ attempt++ }, colors = ButtonDefaults.buttonColors(Red)) { Text(t("retry")) } }
             if ((r.want != null && failed == null) || r.switching) CircularProgressIndicator(Modifier.align(Alignment.Center), color = Red)
 
-            Box(Modifier.align(Alignment.TopCenter)) {
+            Box(Modifier.align(Alignment.TopCenter).onSizeChanged { topH = it.height }) {
                 AnimatedVisibility(findOpen, enter = fadeIn(), exit = fadeOut()) { if (c != null) FindBar(r, c, paper) }
                 AnimatedVisibility(showBars && !findOpen, enter = fadeIn(), exit = fadeOut()) { TopBarOf(r, c, title, n0, poster, paper, book.data, nav, look, setLook, scope) }
             }
-            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().onSizeChanged { bottomH = it.height }) {
                 if (speaking != null) SpeechBar(speaking, paper) { sheet = "voice" }
                 AnimatedVisibility(showBars && !findOpen, enter = fadeIn(), exit = fadeOut()) {
                     if (c != null) BottomBarOf(r, c, look, setLook, paper, title, poster, speaking != null) { sheet = it }
@@ -519,7 +531,7 @@ private fun PagedText(r: Rd, l: Look, p: Paper, setLook: (Look) -> Unit, nav: Na
 
 @Composable
 private fun TopBarOf(r: Rd, c: NovelChapter?, title: String, n0: String, poster: String, p: Paper, full: NovelFull?, nav: Nav, l: Look, setLook: (Look) -> Unit, scope: kotlinx.coroutines.CoroutineScope) {
-    Row(Modifier.fillMaxWidth().background(p.bg.copy(alpha = .94f)).statusBarsPadding().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().background(p.bg).statusBarsPadding().padding(4.dp), verticalAlignment = Alignment.CenterVertically) { // solid: a page's text can still be under it
         IconButton(nav.back) { Icon(Ic.back, t("back"), Modifier.size(22.dp)) }
         Column(Modifier.weight(1f).clickable { nav.replace(Screen.NovelTitle(r.novel)) }) {
             Text(title.ifEmpty { t("novels") }, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -614,7 +626,7 @@ private fun BottomBarOf(r: Rd, c: NovelChapter, l: Look, setLook: (Look) -> Unit
     // auto-scrolling, the page never stops: the bars a tap shows go by themselves
     LaunchedEffect(r.bars, r.auto, speedOpen) { if (r.auto && r.bars && !speedOpen) { delay(4000); r.bars = false } }
     val on = Red
-    Column(Modifier.fillMaxWidth().background(p.bg.copy(alpha = .94f)).navigationBarsPadding().padding(horizontal = 4.dp)) {
+    Column(Modifier.fillMaxWidth().background(p.bg).navigationBarsPadding().padding(horizontal = 4.dp)) { // solid: a page's text can still be under it
         if (speedOpen && !l.paged) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("⁦${if (l.speed % 1 == 0f) l.speed.toInt() else l.speed}x⁩", Modifier.padding(start = 12.dp).width(36.dp), fontSize = 13.sp)
             Slider(l.speed, { setLook(l.copy(speed = Math.round(it * 2) / 2f)) }, Modifier.weight(1f).padding(end = 12.dp), valueRange = .5f..10f, steps = 18, colors = SliderDefaults.colors(thumbColor = on, activeTrackColor = on))

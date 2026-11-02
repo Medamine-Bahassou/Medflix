@@ -354,6 +354,7 @@ fun OfflineScreen(epPath: String, nav: Nav) {
             onError = { failed = true },
             onEnded = { if (next != null) { carryFull = full.value; nav.replace(Screen.Offline(next)) } },
             onFinished = { if (Store["prefs"].optBoolean("dlAutoDel")) { Downloads.delete(epPath); toast(t("dlAutoDeleted")) } })
+        if (!failed && epPath.startsWith("/watch/")) SkipIntro(d.optString("title"), "", ep, epPath) // not a film or a series: they aren't on AniSkip
     }
 }
 

@@ -182,7 +182,8 @@ object Manga {
         return null
     }
     /** a series as shown: MangaSwat's (plus its Olympus twin's extra chapters), or Olympus's alone */
-    fun fullFlow(id: String, force: Boolean = false): Flow<MFull> = flow {
+    // hold: its last answer is on screen, twins' chapters and all, so not this one's parts: they'd take those chapters away and put them back, redrawing the list each time
+    fun fullFlow(id: String, force: Boolean = false, hold: Boolean = false): Flow<MFull> = flow {
         val base = when {
             id.startsWith("s:") -> Slayer.series(id, force).let { merged(it, it.chapters, listOf(it.id)) }
             id.startsWith("o:") -> oSeries(id.drop(2), force).let { merged(it, it.chapters, listOf(it.id)) }
@@ -192,14 +193,18 @@ object Manga {
             }
             else -> full(id, force) // migration of saved IDs
         }
-        emit(base)
+        val whole = hold && id.all(Char::isDigit)
+        if (!whole) emit(base)
         if (id.all(Char::isDigit)) {
+            var latest = base
             mangaProgressive(listOf<suspend () -> List<MSeries>>(
                 { listOfNotNull(oTwin(base.s, force)) }, { Slayer.twins(base.s, force) }
             )).catch { /* optional sources failed: the selected source is already visible */ }.collect { sources ->
                 val extra = sources.filterNotNull().flatten()
-                emit(merged(base.s, base.chs + extra.flatMap { it.chapters }, base.ids + extra.map { it.id }))
+                latest = merged(base.s, base.chs + extra.flatMap { it.chapters }, base.ids + extra.map { it.id })
+                if (!whole) emit(latest)
             }
+            if (whole) emit(latest)
         } else if (id.startsWith("s:") || id.startsWith("o:")) {
             try { swatTwin(base.s)?.let { sw -> fullFlow(sw, force).collect { emit(it) } } }
             catch (e: CancellationException) { throw e } catch (_: Exception) { /* keep the selected source */ }

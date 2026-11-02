@@ -64,10 +64,11 @@ internal object SourceRatings {
 
 private fun preferred() = Store["prefs"].optString("rateSite")
 
-/** one score of a title page's, or several that come in one answer (IMDb's has Metacritic's) */
+/** one score of a title page's */
 private suspend fun titleScores(id: String, names: List<String>, kind: String, year: String): Map<String, Double?> = withContext(Dispatchers.IO) {
     if (id == "anilist") mapOf(id to Scores.calm { SourceRatings.get(names, kind, year)?.second?.toDoubleOrNull() })
-    else Scores.get(names[0].let { t -> (if (kind == "series") "/cinema/serie/$t" else "/cinema/$t").let { Card(it, "cinema", t, "", "", year, "", null, it) } }, if (id == "rt") setOf(id) else setOf("imdb", "mc"))
+    else if (id == "mal") mapOf(id to Scores.calm { Scores.mal(names, kind) })
+    else Scores.get(names[0].let { t -> (if (kind == "series") "/cinema/serie/$t" else "/cinema/$t").let { Card(it, "cinema", t, "", "", year, "", null, it) } }, setOf(id))
 }
 
 /**
@@ -85,7 +86,7 @@ internal fun FlowRowScope.SourceRating(names: List<String>, kind: String, year: 
     val ordered = opts.sortedByDescending { it.id == pref }
     suspend fun ask(id: String) { if (id !in scores) titleScores(id, names, kind, year).let { got -> scores = got + scores } } // what the page said stands
     LaunchedEffect(names, kind, year, imdb, pref, open) {
-        if (open) { coroutineScope { opts.filter { it.id != "mc" }.forEach { launch { ask(it.id) } } }; if (opts.any { it.id == "mc" }) ask("mc") } // last: IMDb's answer usually brought it
+        if (open) coroutineScope { opts.forEach { launch { ask(it.id) } } }
         else for (r in ordered) { ask(r.id); if (scores[r.id] != null) break }
     }
     val shown = ordered.firstOrNull { scores[it.id] != null }
@@ -118,28 +119,19 @@ internal fun FlowRowScope.SourceRating(names: List<String>, kind: String, year: 
 }
 private fun markOf(r: Rater, v: Double) = if (r.top == 100) r.mark(v) else "\u2605 ${r.mark(v)}"
 
-/** the site's own score, as an actions row item: a gold star over it */
-@Composable
-internal fun FlowRowScope.SiteRating(value: String) {
-    if (value.isEmpty()) return
-    Column(Modifier.weight(1f).padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Icon(Ic.star, null, Modifier.size(24.dp), tint = Color(0xFFF5C518))
-        Text(value, Modifier.padding(top = 4.dp), color = Color(0xFFF5C518), fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-    }
-}
-
 internal fun kindOf(c: Card) = when (c.type) { "manga" -> "manga"; "novel" -> "novels"; "cinema" -> "cinema"; else -> "anime" } // "movie" is an anime film
 
 /** a score the search can filter by: out of 10 stars or 100%, and the sections it rates */
 internal class Rater(val id: String, val label: String, val short: String, val top: Int, val kinds: Set<String>, val logo: Int) {
-    fun mark(v: Double) = if (top == 100) "${Math.round(v)}%" else String.format(java.util.Locale.US, "%.1f", v)
+    fun mark(v: Double) = if (top == 100) "${Math.round(v)}%" else String.format(java.util.Locale.US, if (id == "mal") "%.2f" else "%.1f", v) // myanimelist's are known by two decimals
     fun covers() = t(if ("cinema" in kinds) "rfFilms" else "rfAnime")
 }
 internal val RATERS = listOf(
     Rater("imdb", "IMDb", "IMDb", 10, setOf("cinema"), com.medanime.app.R.drawable.logo_imdb),
     Rater("rt", "Rotten Tomatoes", "RT", 100, setOf("cinema"), com.medanime.app.R.drawable.logo_rt),
     Rater("mc", "Metacritic", "MC", 100, setOf("cinema"), com.medanime.app.R.drawable.logo_mc),
-    Rater("anilist", "AniList", "AL", 10, setOf("anime", "manga"), com.medanime.app.R.drawable.logo_anilist))
+    Rater("anilist", "AniList", "AL", 10, setOf("anime", "manga"), com.medanime.app.R.drawable.logo_anilist),
+    Rater("mal", "MyAnimeList", "MAL", 10, setOf("anime", "manga"), com.medanime.app.R.drawable.logo_mal))
 
 /** what the search keeps: each score turned on and its lowest mark; kept in prefs, so it's still set next time */
 internal data class RateFilter(val mins: Map<String, Double> = emptyMap(), val any: Boolean = false, val keep: Boolean = false, val sort: String = "") {
@@ -198,14 +190,16 @@ internal class Hit(val names: List<String>, val year: String, val series: Boolea
 internal class Ranked(val hits: List<Hit>, val next: String?) // next: where its following page starts, if it has one
 
 internal object Scores {
-    private fun term(c: Card) = Credits.clean(c.title).takeIf { Regex("[a-zA-Z0-9]").containsMatchIn(it) } // these sites know titles in Latin letters: an Arabic one finds nothing
+    // a title in both ("سجين Siccin 9"): these sites know the Latin part, and the Arabic words only spoil their search
+    private fun latin(s: String) = s.replace(Regex("\\p{IsArabic}+"), " ").trim().takeIf { Regex("[a-zA-Z0-9]").containsMatchIn(it) } ?: s
+    private fun term(c: Card) = Credits.clean(latin(c.title)).takeIf { Regex("[a-zA-Z0-9]").containsMatchIn(it) } // these sites know titles in Latin letters: an Arabic one finds nothing
     private fun isSeries(c: Card) = Regex("^/cinema/(serie|season|episode)/").containsMatchIn(c.path)
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8").replace("+", "%20")
 
     // the same name and kind. A film also by its year (a site's may be a year off the release); a series' card has its season's year, so
     // the first, as the site's search ranks by fame. A film with no year and two of that name: none, rather than the wrong one's score
     internal fun pick(rows: List<Hit>, c: Card): Hit? {
-        val named = rows.filter { h -> h.series == isSeries(c) && h.names.any { Credits.norm(it) == Credits.norm(c.title) } }
+        val named = rows.filter { h -> h.series == isSeries(c) && h.names.any { Credits.norm(it) == Credits.norm(latin(c.title)) } }
         val y = c.year.toIntOrNull()
         return if (isSeries(c)) named.firstOrNull() else if (y != null) named.firstOrNull { h -> h.year.toIntOrNull()?.let { kotlin.math.abs(it - y) <= 1 } == true } else named.singleOrNull()
     }
@@ -291,6 +285,14 @@ internal object Scores {
         val query = "query{mainSearch(first:6,options:{searchTerm:${JSONObject.quote(q)},type:TITLE}){edges{node{entity{... on Title{titleType{id} titleText{text} originalTitleText{text} releaseYear{year} ratingsSummary{aggregateRating} metacritic{metascore{score}}}}}}}}"
         return pick(imdbHits(Pages.load("https://caching.graphql.imdb.com/", body = JSONObject().put("query", query).toString(), headers = mapOf("x-imdb-client-name" to "imdb-web-next-localized"), every = Pages.DAY)), c)
     }
+    internal fun mcHits(json: String) = objs(JSONObject(json).optJSONObject("data")?.optJSONArray("items")).map { i ->
+        Hit(listOf(i.optString("title")), i.optString("premiereYear"), i.optString("type") == "show", i.optJSONObject("criticScoreSummary")?.optDouble("score")?.takeIf { it.isFinite() && it in 0.0..100.0 })
+    }
+    // its own search: IMDb's answer has Metacritic's score for films, and never for a series
+    private suspend fun mc(c: Card): Double? {
+        val q = term(c) ?: return null
+        return pick(mcHits(Pages.load("https://backend.metacritic.com/finder/metacritic/search/${enc(q)}/web?offset=0&limit=12&mcoTypeId=1%2C2&componentName=search-tabs&componentDisplayName=Search+Page+Tab+Filters&componentType=FilterConfig", every = Pages.DAY, interactive = false)), c)?.a
+    }
     private suspend fun rt(c: Card): Double? {
         val q = term(c) ?: return null
         val key = "rt|${c.path}|$q"
@@ -298,6 +300,63 @@ internal object Scores {
         val r = Net.fetch("https://www.rottentomatoes.com/search?search=${enc(q)}")
         if (r.status >= 400) throw java.io.IOException("HTTP ${r.status}")
         return pick(rtHits(r.body), c)?.a.also { Pages.put(key, it?.toString().orEmpty()) }
+    }
+    internal class MalRow(val name: String, val type: String, val score: Double?, val url: String)
+    internal class MalTitle(val names: List<String>, val type: String, val score: Double?)
+    private fun malScore(s: String?) = s?.trim()?.toDoubleOrNull()?.takeIf { it > 0 && it <= 10 } // "N/A", "-": none yet
+    private fun malNorm(s: String) = Manga.norm(s).removePrefix("the ") // "Infinite Mage" is its "The Infinite Mage"
+    // its search page: a row per title, its name in bold, its type, and last its score. A row's closest <tr> may be missing on a page of another shape
+    internal fun malRows(d: org.jsoup.nodes.Document) = d.select("a.hoverinfo_trigger strong").mapNotNull { n ->
+        val tr = n.closest("tr") ?: return@mapNotNull null
+        MalRow(n.text(), tr.children().getOrNull(2)?.text().orEmpty(), malScore(tr.children().lastOrNull()?.text()), n.closest("a")?.attr("href").orEmpty())
+    }
+    // a title's own page, with every name it goes by. A search it's sure of goes straight here, with no rows to read
+    internal fun malTitle(d: org.jsoup.nodes.Document): MalTitle? {
+        if (!Regex("/(anime|manga)/\\d+").containsMatchIn(d.selectFirst("meta[property=og:url]")?.attr("content").orEmpty())) return null
+        val lines = d.select(".spaceit_pad").map { it.text() }
+        fun line(k: String) = lines.find { it.startsWith("$k:") }?.substringAfter(':')?.trim().orEmpty()
+        val names = listOf(d.selectFirst("meta[property=og:title]")?.attr("content").orEmpty(), line("English"), line("Synonyms")) + line("Synonyms").split(", ")
+        return MalTitle(names.filter { it.isNotBlank() }, line("Type"), malScore(d.selectFirst("span[itemprop=ratingValue]")?.text()))
+    }
+    // what it went straight to is what it took the words for: most of them there, under one name or another, and every number (another season's isn't this one)
+    internal fun malTrusts(asked: String, t: MalTitle): Boolean {
+        val words = Manga.norm(asked).split(' ').filter { it.isNotEmpty() }
+        val theirs = t.names.flatMap { Manga.norm(it).split(' ') }.toSet()
+        fun digits(l: Collection<String>) = l.flatMap { Regex("\\d+").findAll(it).map { m -> m.value } }.toSet()
+        return words.count { it in theirs } * 2 >= words.size && digits(theirs).containsAll(digits(words))
+    }
+    private fun malNovel(type: String) = "Novel" in type // manga.php has the light novels too, often under the manga's very name
+    /**
+     * a title's score, asked by each of its names. Rows only by an exact name (a near one is often another season; two of that name: none,
+     * rather than the wrong one's). None by name: its first rows' own pages, for one with that name among its others ("My House is a
+     * Magic Power Spot" is "Ore no Ie ga Maryoku Spot Datta"). get: a page, null if there's no such page, which is its answer to finding nothing
+     */
+    internal suspend fun malFind(names: List<String>, kind: String, get: suspend (String) -> String?): Double? {
+        val latin = names.map { Witanime.courName(it.trim()) }.filter { Manga.norm(it).isNotEmpty() }.distinct() // its titles are never Arabic
+        val want = latin.map(::malNorm).toSet()
+        var near = emptyList<MalRow>()
+        for (name in latin.take(3)) {
+            val d = Jsoup.parse(get("https://myanimelist.net/$kind.php?q=${enc(name)}&cat=$kind") ?: continue)
+            val t = malTitle(d)
+            if (t != null) { if (!malNovel(t.type) && malTrusts(name, t)) t.score?.let { return it }; continue }
+            val rows = malRows(d).filter { !malNovel(it.type) }
+            val same = rows.filter { malNorm(it.name) in want }
+            same.singleOrNull()?.score?.let { return it }
+            if (same.isEmpty() && near.isEmpty()) near = rows.take(2)
+        }
+        for (r in near) {
+            val t = malTitle(Jsoup.parse(get(r.url) ?: continue)) ?: continue
+            if (!malNovel(t.type) && t.names.any { malNorm(it) in want }) return t.score
+        }
+        return null
+    }
+    suspend fun mal(names: List<String>, kind: String): Double? {
+        val key = "mal2|$kind|${names.firstOrNull { Manga.norm(it).isNotEmpty() }?.trim() ?: return null}" // 2: the first version's "none"s were its own misreading: not kept a week more
+        Pages.saved(key)?.takeIf { !Pages.due(key, KEPT) }?.let { return it.toDoubleOrNull() } // its pages are 200KB: only the number is kept
+        return malFind(names, kind) { url ->
+            val r = Net.fetch(url, interactive = false)
+            if (r.status == 404) null else if (r.status >= 400) throw java.io.IOException("HTTP ${r.status}") else r.body // not kept: it may just be busy
+        }.also { Pages.put(key, it?.toString().orEmpty()) }
     }
     private fun aniKey(c: Card) = "al|${c.path}"
     private const val KEPT = 7 * Pages.DAY
@@ -314,9 +373,9 @@ internal object Scores {
 
     /** the scores asked for, of a card these rate; one that can't be had (offline, not found) is none */
     suspend fun get(c: Card, ids: Set<String>): Map<String, Double?> = coroutineScope {
-        val i = if ("imdb" in ids || "mc" in ids) async { calm { imdb(c) } } else null // one answer has both
+        val i = if ("imdb" in ids) async { calm { imdb(c) } } else null
         val rot = if ("rt" in ids) async { calm { rt(c) } } else null
-        ids.associateWith { id -> when (id) { "imdb" -> i?.await()?.a; "mc" -> i?.await()?.b; "rt" -> rot?.await(); "anilist" -> Pages.saved(aniKey(c))?.toDoubleOrNull(); else -> null } } // anilist: primeAniList asked already
+        ids.associateWith { id -> when (id) { "imdb" -> i?.await()?.a; "mc" -> calm { mc(c) }; "rt" -> rot?.await(); "anilist" -> Pages.saved(aniKey(c))?.toDoubleOrNull(); "mal" -> calm { mal(listOf(c.title) + c.names, kindOf(c)) }; else -> null } } // anilist: primeAniList asked already
     }
 }
 
@@ -490,7 +549,7 @@ private class Walk {
         }) { hand ->
             pages.forEach { (id, r) -> r.hits.forEach { h -> launch {
                 val c = withContext(Dispatchers.IO) { gate.withPermit { Scores.calm { Scores.onSite(h)?.let { it to shelfKey(it) } } } } ?: return@launch
-                hand(Triple(c.second, c.first, if (id == "imdb") mapOf("imdb" to h.a, "mc" to h.b) else mapOf(id to h.a)))
+                hand(Triple(c.second, c.first, if (id == "imdb") mapOf("imdb" to h.a) + (h.b?.let { mapOf("mc" to it) }.orEmpty()) else mapOf(id to h.a)))
             } } }
         }
         pages.forEach { (id, r) -> r.next?.let { after[id] = it } ?: spent.add(id) }

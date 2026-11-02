@@ -106,6 +106,15 @@ object Store {
         return l.has(path)
     }
 
+    /** the server a show's video last played on (app.js store.prefs.showServer), tried first on its other episodes; pref: the same for shows with none yet */
+    fun worked(show: String, pref: String, label: String) {
+        val p = get("prefs")
+        if (workedOn(show) == label && p.optString(pref) == label) return // a stream buffering again says it's ready again
+        (p.optJSONObject("showServer") ?: JSONObject().also { p.put("showServer", it) }).put(show, label)
+        p.put(pref, label); persist("prefs")
+    }
+    fun workedOn(show: String) = get("prefs").optJSONObject("showServer")?.optString(show).orEmpty()
+
     fun watched(show: String, epPath: String, ep: String, title: String, poster: String, slug: String = "") { // slug: a series' episode (its history is by slug)
         get("history").put(show, JSONObject().put("show", show).put("epPath", epPath).put("ep", ep).put("title", title)
             .put("poster", poster.ifEmpty { get("history").optJSONObject(show)?.optString("poster").orEmpty() }).put("at", System.currentTimeMillis()) // no cover scraped: keep the last one

@@ -299,7 +299,7 @@ function fetchPage(kind, url, background = false) {
     p = api.fetch(url, kind === 'slayerPages' ? { action: 'chapter_navigate_page' } : kind === 'slayerChapters' ? { action: 'manga_get_chapters', manga: new URL(url).searchParams.get('manga') } : undefined, false, background).then(text => {
       const isJson = /^(manga|kitsu)/.test(kind);
       const data = parsers[kind](isJson ? JSON.parse(text) : ['newEpisodes', 'slayerPages'].includes(kind) ? text : parse(text), url);
-      cache[url] = { at: Date.now(), data, ...(kind === 'slayerSeries' && { parser: 2 }) };
+      cache[url] = { at: Date.now(), data, ...(kind === 'slayerSeries' && { parser: 2 }), ...(kind === 'edList' && { parser: 1 }) };
       save();
       return data;
     }).finally(() => inflight.delete(requestKey));
@@ -318,6 +318,7 @@ async function load(kind, url, force = false, keep = false) {
   if (!keep) viewed.set(url, kind);
   if (kind === 'slayerSeries' && cache[url] && cache[url].parser !== 2 &&
       (!cache[url].data?.title || !cache[url].data?.postId || Slayer.blockedTitle(cache[url].data.title))) delete cache[url];
+  if (kind === 'edList' && cache[url] && cache[url].parser !== 1) delete cache[url]; // old cards included software downloads
   const hit = cache[url];
   if (!hit || force) {
     try { return fresh(await fetchPage(kind, url, keep && /^(oly|slayer)/.test(kind))); }
@@ -353,6 +354,23 @@ async function remember(key, task) {
   return hit.data;
 }
 
+// an episode's opening as [from, to] seconds, or null: AniSkip has it by MyAnimeList id, which AniList has under the title's
+// names. An exact name only (a near one is often another season, with another opening). background: no check windows
+const intro = async (title, alt, ep) => {
+  if (!/^\d+$/.test(ep)) return null; // a film's "ep" is its label
+  const names = [title, alt].map(s => (s || '').replace(/\s*cour 1$/i, '').replace(/cour (\d+)$/i, 'part $1')).filter(s => norm(s)); // witanime's "3rd Season Cour 2" is their "3rd Season Part 2"
+  const want = new Set(names.map(norm));
+  for (const name of names) {
+    const query = `{Page(perPage:10){media(search:${JSON.stringify(name)},type:ANIME){idMal title{romaji english} synonyms}}}`;
+    const rows = JSON.parse(await api.fetch('https://graphql.anilist.co', { query }, false, true)).data.Page.media;
+    const id = rows.find(m => [m.title.romaji, m.title.english, ...m.synonyms].some(n => want.has(norm(n))))?.idMal;
+    if (!id) continue;
+    const i = JSON.parse(await api.fetch(`https://api.aniskip.com/v2/skip-times/${id}/${ep}?types%5B%5D=op&types%5B%5D=mixed-op&episodeLength=0`, null, false, true)).results[0]?.interval;
+    return i ? [i.startTime, i.endTime] : null;
+  }
+  return null;
+};
+
 window.scraper = {
   remember,
   changed: () => onChange?.(),
@@ -371,6 +389,7 @@ window.scraper = {
   search: q => load('list', `/search?q=${encodeURIComponent(q)}`),
   details: (path, force) => load('details', path, force),
   episodeInfo,
+  intro,
   animerco,
   ristoanime,
   wecima,

@@ -76,6 +76,14 @@ object Cinema {
     fun url(slug: String) = "$ED/${pathOf(slug)}/"
     private fun showKey(c: Card) = if (Regex("^/cinema/(serie|season|episode)/").containsMatchIn(c.path)) c.title.replace(Regex("\\s*(الموسم|الحلقة)\\s.*$"), "") else null
 
+    // search also lists software and games using movie cards: require evidence that a post is screen media
+    internal fun isMedia(slug: String, cat: String, name: String): Boolean {
+        if (Regex("كمبيوتر|موبايل|تطبيقات|ألعاب|العاب|\\b(?:software|apps|games)\\b", RegexOption.IGNORE_CASE).containsMatchIn(cat)) return false
+        return Regex("أفلام|افلام|مسلسلات|كرتون|أنيميشن|انيميشن|وثائقي|مسرحي|برامج (?:تلفزيونية|تليفزيونية)|\\b(?:movies|films|series|tv shows)\\b", RegexOption.IGNORE_CASE).containsMatchIn(cat) ||
+            Regex("^(?:serie|season)/|^episode/(?!برنامج-)|^(?:فيلم|مسلسل)-").containsMatchIn(slug) ||
+            Regex("^(?:(?:مشاهدة|تحميل|و)\\s+)*(?:فيلم|مسلسل|الحلقة)\\s").containsMatchIn(name.trim())
+    }
+
     fun cards(root: Element?): List<Card> {
         root ?: return emptyList()
         val stems = HashSet<String>()
@@ -86,7 +94,7 @@ object Cinema {
             val name = a.attr("title").ifEmpty { txt(a.selectFirst("h1, h3, .title___")) }
             val t = edTitle(name)
             if (isAnimeCat("$cat $name")) { norm(t.first).split(' ').filter { it.isNotEmpty() }.take(2).joinToString(" ").takeIf { it.isNotEmpty() }?.let(stems::add); return@mapNotNull null }
-            if (slug.isEmpty()) null else Raw(slug, cat, name, t, a)
+            if (slug.isEmpty() || !isMedia(slug, cat, name)) null else Raw(slug, cat, name, t, a)
         }
         val out = raw.filter { r -> // a cartoon that's one of the anime dropped above
             if (stems.isEmpty() || !Regex("أنيميشن|كرتون").containsMatchIn(r.cat)) true

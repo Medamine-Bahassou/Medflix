@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.runtime.withFrameNanos
@@ -140,10 +141,12 @@ fun Pick(name: String, cur: String?, opts: List<Pair<String, String>>, pick: (St
 }
 
 /** a series: both sites' chapters, newest first (manga.js mangaSeries) */
+private val seriesShown = java.util.concurrent.ConcurrentHashMap.newKeySet<String>() // its page has had its whole answer: coming back, that's on screen until the new one's whole
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MangaSeriesScreen(id: String, nav: Nav) {
-    val (l, refresh) = loaded(id, quiet = true) { f -> Manga.fullFlow(id, f) }
+    val (l, refresh) = loaded(id, quiet = true) { f -> Manga.fullFlow(id, f, hold = id in seriesShown).onCompletion { if (it == null) seriesShown += id } }
     androidx.compose.material3.pulltorefresh.PullToRefreshBox(l.busy && l.data != null, refresh) {
         Body(l, refresh) { full ->
             val s = full.s
@@ -167,27 +170,29 @@ fun MangaSeriesScreen(id: String, nav: Nav) {
                 val cid = it.optString("chapterId").takeIf { c -> full.chs.any { x -> x.id == c } } ?: full.chs.find { x -> x.n == rn }?.id
                 cid?.let { c -> c to t("resumeCh", rn) }
             } ?: full.chs.lastOrNull()?.let { it.id to t("read") }
+            // a series can have a thousand: not built again on every redraw, nor their downloads looked up one by one
+            val saved = remember(Store.version.intValue) { com.medanime.app.ChapterDownloads.doneIds(com.medanime.app.Downloads.all()) }
+            val chapters = remember(full, saved, Store.version.intValue) { full.chs.map { Numbered(it.n, seen.has(it.id), r?.optString("chapterId") == it.id, Screen.MangaRead(it.id, s.title, it.n), it.id, it.id in saved, seen.optInt(it.id) == 2) } }
             DetailPage(s.cover, s.poster, s.title, s.alt, Ic.manga,
-                // type and status under the title; the rating and views lead the actions row
+                // type and status under the title; AniList's rating and the views lead the actions row
                 listOfNotNull(s.type.takeIf { it.isNotEmpty() }?.let { Manga.typeName(it) to true }, s.status.takeIf { it.isNotEmpty() }?.let { Manga.label(Manga.STATUS, it) to true }) + s.genres.map { it to false },
                 s.story, {
-                    SiteRating(s.rating)
                     SourceRating(listOf(s.title) + s.alt.split(Regex("[,،]")), "manga")
                     Action("%,d".format(s.views), Ic.eye)
                     ListButton("/manga/series/$id", s.title, s.poster, "manga")
                     NotifyButton("/manga/series/$id", s.title, s.poster, full.chs.firstOrNull()?.id ?: "")
                 }, emptyList(), nav, t("chapters"),
-                full.chs.map { Numbered(it.n, seen.has(it.id), r?.optString("chapterId") == it.id, Screen.MangaRead(it.id, s.title, it.n), it.id, com.medanime.app.Downloads.done("manga:${it.id}"), seen.optInt(it.id) == 2) }, t("jumpCh"),
+                chapters, t("jumpCh"),
                 after = { item { CreditsSection(listOf(s.title) + s.alt.split(Regex("[,،]")), false, kind = "manga", nav = nav) } },
                 // several chapters: mark them read or unread, download them, or delete their saved copies (manga.js acts)
                 acts = { ids -> listOfNotNull("read" to t("markRead"), "unread" to t("markUnread"),
-                    if (ids.any { !com.medanime.app.Downloads.done("manga:$it") }) "dl" to t("downloadShort") else null,
-                    if (ids.any { com.medanime.app.Downloads.done("manga:$it") }) "del" to t("delDownloads") else null) },
+                    if (ids.any { it !in saved }) "dl" to t("downloadShort") else null,
+                    if (ids.any { it in saved }) "del" to t("delDownloads") else null) },
                 run = { v, ids ->
                     when (v) {
                         "read" -> ids.forEach { seen.put(it, 2) }
                         "unread" -> ids.forEach { seen.remove(it) }
-                        "dl" -> com.medanime.app.Downloads.chapters(s.id, s.title, s.poster, full.chs.filter { it.id in ids && !com.medanime.app.Downloads.done("manga:${it.id}") }.reversed()) // oldest first
+                        "dl" -> com.medanime.app.Downloads.chapters(s.id, s.title, s.poster, full.chs.filter { it.id in ids && it.id !in saved }.reversed()) // oldest first
                         "del" -> ids.forEach { com.medanime.app.Downloads.delete("manga:$it") }
                     }
                     Store.persist("mangaSeen")

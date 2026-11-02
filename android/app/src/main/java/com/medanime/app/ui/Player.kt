@@ -35,7 +35,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -91,13 +94,21 @@ fun PlayerScreen(epPath: String, nav: Nav) {
                         e.getJSONObject("list").put("${s.label}|${s.quality}", JSONObject().put("url", u).put("referrer", ""))
                         st.put(epPath, e.put("at", System.currentTimeMillis())); Store.persist("streams")
                     }
-                    PlaybackSession.server(epPath, s.label, s.quality)
-                    Store["prefs"].put("server", s.label); Store.persist("prefs")
                     return@launch
                 } catch (e: CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("medflix", "server ${s.label}", e) }
             }
             cur = null; dead = true
         }
+    }
+    var chosen by remember(epPath) { mutableStateOf(false) } // picked in the menu: not given up on just for being slow
+    // only a video seen counts: until now a dead server was remembered for having answered
+    fun worked() { cur?.let { PlaybackSession.server(epPath, it.label, it.quality); Store.worked(show, "server", it.label) } }
+    fun failed() {
+        cur?.let { s -> // its saved link is what died: the next visit asks the site for a fresh one
+            Store["streams"].optJSONObject(epPath)?.optJSONObject("list")?.let { if (it.remove("${s.label}|${s.quality}") != null) Store.persist("streams") }
+        }
+        chosen = false; url = null
+        tryFrom((all().indexOf(cur) + 1).coerceAtLeast(0), automatic = true)
     }
     LaunchedEffect(epPath) {
         // servers played before (kept 90 days): they play straight away, and witanime's fresh list is merged in behind them
@@ -106,6 +117,7 @@ fun PlayerScreen(epPath: String, nav: Nav) {
         } ?: emptyList()
         val first = { l: List<Server> ->
             l.indexOfFirst { "${it.label}|${it.quality}" == PlaybackSession.server(epPath) }.takeIf { it >= 0 }
+                ?: l.indexOfFirst { it.label == Store.workedOn(show) }.takeIf { it >= 0 }
                 ?: l.indexOfFirst { it.label == Store["prefs"].optString("server") }.coerceAtLeast(0)
         }
         if (known.isNotEmpty()) { servers = known; tryFrom(first(known)) }
@@ -114,6 +126,7 @@ fun PlayerScreen(epPath: String, nav: Nav) {
             val have = known.map { it.label.lowercase().substringBefore(' ') }.toSet()
             servers = known + l.filter { it.label.lowercase().substringBefore(' ') !in have } // a host already there isn't listed twice
             if (known.isEmpty() && all().isNotEmpty()) tryFrom(first(l))
+            else if (dead) tryFrom(0, automatic = true) // the saved links all died before these came
         } catch (e: CancellationException) { throw e } catch (e: Exception) {
             android.util.Log.w("medflix", "sources", e)
             if (known.isEmpty()) { why = e.message ?: e.toString(); servers = emptyList(); if (extra.isNotEmpty()) tryFrom(0) }
@@ -130,24 +143,43 @@ fun PlayerScreen(epPath: String, nav: Nav) {
             extra = aw.sortedBy { Witanime.QUALITY.indexOf(it.quality) }.distinctBy { it.label } + ra
         } catch (e: CancellationException) { throw e } catch (e: Exception) { android.util.Log.w("medflix", "ristoanime", e) }
         extraDone = true
-        if (cur == null && extra.isNotEmpty()) servers?.let { tryFrom(it.size) }
+        if (cur == null && extra.isNotEmpty()) servers?.let { tryFrom(it.size, automatic = true) } // automatic: the ones that failed aren't tried again
     }
 
     val open = openUrl()
     PlayerChrome(d?.title ?: "", if (ep.firstOrNull()?.isDigit() == true) "${t("episode")} $ep" else ep, nav,
-        all().takeIf { servers != null || extra.isNotEmpty() }?.map { it.label to it.quality }, all().indexOf(cur), url == null && cur != null, { tryFrom(it) },
+        all().takeIf { servers != null || extra.isNotEmpty() }?.map { it.label to it.quality }, all().indexOf(cur), url == null && cur != null, { chosen = true; tryFrom(it) },
         prev?.let { { nav.replace(Screen.Play(it.path)) } }, next?.let { { nav.replace(Screen.Play(it.path)) } }, { nav.go(Screen.Title(show)) }, { page, close -> DownloadItems(page, close, dlLinks, scope, epPath, show, ep, d, nav) }, { castTo("${d?.title ?: ""} · ${t("episode")} $ep", null, url) }, fullButton = cur?.token?.startsWith("aw:") != true,
         searching = !mainDone || (!extraDone && (d != null || !detailsDone))) { full ->
         val u = url
         when {
             u != null && cur?.token?.startsWith("aw:") == true -> NativeVideo(Uri.parse(u), epPath, full,
-                onError = { url = null; tryFrom((all().indexOf(cur) + 1).coerceAtLeast(0), automatic = true) },
+                onError = { failed() }, onVideo = { worked() },
                 onEnded = { next?.let { carryFull = full.value; nav.replace(Screen.Play(it.path)) } })
-            u != null -> HostPlayer(u, epPath)
+            u != null -> HostPlayer(u, epPath, chosen, ::worked, ::failed)
             dead -> Empty(t("noneWorked"), t("noneWorkedHint")) { OutlinedButton({ open(SITE + epPath) }) { Text(t("openBrowser"), color = Color.White) } }
             servers?.isEmpty() == true && extra.isEmpty() -> if ("rate-limited" in why) Empty(t("rateLimited"), t("rateLimitedHint"))
                 else Empty(t("noServers"), noNames(why)) { OutlinedButton({ open(SITE + epPath) }) { Text(t("openBrowser"), color = Color.White) } }
             else -> CircularProgressIndicator(color = Red)
+        }
+        if (u != null && d != null) SkipIntro(d!!.title, d!!.alt, ep, epPath)
+    }
+}
+
+/**
+ * "skip intro" over the video while the opening plays (Witanime.intro). A window of its own, so it stays above a host's fullscreen
+ * video, which covers the whole activity; not focusable: the rest of the screen still takes taps
+ */
+@Composable
+fun SkipIntro(title: String, alt: String, ep: String, epPath: String) {
+    if (!Store["prefs"].optBoolean("skipIntro", true)) return // turned off in settings: nothing asked of AniSkip either
+    val intro by produceState<Pair<Double, Double>?>(null, title, alt, ep) { value = null; value = Witanime.intro(title, alt, ep) }
+    val show by remember(epPath) { derivedStateOf { val (key, at) = PlaybackSession.now.value; val i = intro; key == epPath && i != null && at >= i.first && at < i.second && !inPip.value } }
+    if (!show) return
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    Popup(Alignment.BottomEnd, with(density) { IntOffset(-16.dp.roundToPx(), -72.dp.roundToPx()) }, properties = PopupProperties(focusable = false)) {
+        Button({ intro?.let { PlaybackSession.controls.seek(it.second) } }, colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black)) {
+            Text(t("skipIntro"), fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -319,11 +351,28 @@ fun LinksItems(page: MutableState<String>, close: () -> Unit, links: List<Link>?
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun HostPlayer(url: String, playbackKey: String = url) = key(url, playbackKey) { HostPlayerView(url, playbackKey) }
+fun HostPlayer(url: String, playbackKey: String = url, patient: Boolean = true, onWorks: () -> Unit = {}, onDead: (() -> Unit)? = null) = key(url, playbackKey) { HostPlayerView(url, playbackKey, patient, onWorks, onDead) }
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-private fun HostPlayerView(url: String, playbackKey: String) {
+private fun HostPlayerView(url: String, playbackKey: String, patient: Boolean, onWorks: () -> Unit, onDead: (() -> Unit)?) {
+    val works by rememberUpdatedState(onWorks)
+    val dead by rememberUpdatedState(onDead)
+    var played by remember { mutableStateOf(false) } // a video seen: from then on it's this server's, whatever else goes wrong
+    var gone by remember { mutableStateOf(false) }
+    var touched by remember { mutableStateOf(false) }
+    fun fail() { if (!played && !gone) { gone = true; dead?.invoke() } }
+    val life = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    // some hosts sit on "loading" forever. Others wait for a tap on their play button, so a touch stops the clock, and
+    // a server picked by hand (patient) has none. Only time the app is on screen counts: the video won't load behind it
+    if (onDead != null && !patient && PlaybackSession.bridged) LaunchedEffect(Unit) {
+        var waited = 0
+        while (waited < 25 && !played && !touched) {
+            kotlinx.coroutines.delay(1000)
+            if (life.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED) && !PlaybackSession.suspended) waited++
+        }
+        if (!played && !touched) fail()
+    }
     var full by remember { mutableStateOf<Pair<View, WebChromeClient.CustomViewCallback>?>(null) }
     var loading by remember { mutableStateOf(true) } // the host's video still coming: black until then, so a spinner over it
     var pageDone by remember { mutableStateOf(false) }
@@ -348,7 +397,8 @@ private fun HostPlayerView(url: String, playbackKey: String) {
     Box(Modifier.fillMaxSize(), Alignment.Center) {
     AndroidView({ ctx ->
         WebView(ctx).apply {
-            detach = PlaybackSession.attach(this, playbackKey) { loading = false }
+            detach = PlaybackSession.attach(this, playbackKey, { loading = false; if (!played) { played = true; works() } }, ::fail)
+            setOnTouchListener { _, _ -> touched = true; false }
             keepScreenOn = !PlaybackSession.suspended // the host's player holds no wake lock: the screen stays on mid-episode
             setBackgroundColor(AColor.BLACK)
             settings.javaScriptEnabled = true
@@ -360,6 +410,9 @@ private fun HostPlayerView(url: String, playbackKey: String) {
                 // our page never navigates: the frame taking the whole page somewhere is an ad
                 override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest) = r.isForMainFrame
                 override fun onPageFinished(v: WebView, u: String?) { pageDone = true } // our page's load waits for the host's frame, whose player then fetches its video
+                // the host's page itself refused (not Cloudflare's check or a burst limit: those can pass), or can't be reached
+                override fun onReceivedHttpError(v: WebView, r: WebResourceRequest, e: android.webkit.WebResourceResponse) { if (r.url.toString() == url && e.statusCode >= 400 && e.statusCode !in setOf(403, 429, 503)) fail() }
+                override fun onReceivedError(v: WebView, r: WebResourceRequest, e: android.webkit.WebResourceError) { if (r.url.toString() == url) fail() }
                 // the players' video, for casting to a TV
                 override fun shouldInterceptRequest(v: WebView, r: WebResourceRequest): android.webkit.WebResourceResponse? { com.medanime.app.Cast.sniff(r); return null }
             }
