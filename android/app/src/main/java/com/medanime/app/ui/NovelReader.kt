@@ -51,6 +51,9 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -348,7 +351,12 @@ private fun ScrollText(r: Rd, l: Look, p: Paper, setLook: (Look) -> Unit, nav: N
         r.chain.forEach { ch -> if (ch.slug == slug) return b + 1 + para.coerceIn(-1, ch.paras.size); b += ch.paras.size + 2 }
         return 0
     }
-    r.turn = { d -> scope.launch { list.animateScrollBy(d * list.layoutInfo.viewportSize.height * .85f) } }
+    // a push up at the very top of the list: nothing scrolls there, so lastScrolledBackward never says so (opened on a chapter's start)
+    var pulled by remember { mutableStateOf(false) }
+    val pull = remember { object : NestedScrollConnection {
+        override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource) = Offset.Zero.also { if (available.y > 0) pulled = true }
+    } }
+    r.turn = { d -> if (d < 0 && !list.canScrollBackward) pulled = true; scope.launch { list.animateScrollBy(d * list.layoutInfo.viewportSize.height * .85f) } }
     // going somewhere: the paragraph, then how far down it (known once it's laid out)
     LaunchedEffect(r.jump, r.chain.size) {
         val j = r.jump?.takeIf { s -> r.chain.any { it.slug == s.slug } } ?: return@LaunchedEffect
@@ -366,17 +374,19 @@ private fun ScrollText(r: Rd, l: Look, p: Paper, setLook: (Look) -> Unit, nav: N
         snapshotFlow { list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset }.sample(500).collect { (i, off) ->
             if (r.chain.isEmpty() || r.jump != null || r.want != null) return@collect
             val (ch, para) = of(i)
+            val left = r.chain.indexOfFirst { it.slug == r.cur }
             val size = list.layoutInfo.visibleItemsInfo.firstOrNull()?.size ?: 1
             r.place(ch, if (para < 0) 0.0 else para + minOf(.999, off.toDouble() / maxOf(1, size)))
             if (i > 0 && list.isScrollInProgress && !r.auto && System.currentTimeMillis() - r.seekAt > 1000) r.bars = false // reading: the bars go; not while sliding the progress in them
-            r.chain.takeWhile { it.id != ch.id }.forEach(Novels::finished)
+            // the chapter just scrolled out of is read; one put before this one (scrolling back up) isn't
+            if (left in 0 until r.chain.indexOfFirst { it.id == ch.id }) Novels.finished(r.chain[left])
             val (lastCh, lastP) = of(list.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: i)
             if (lastP >= lastCh.paras.size) Novels.finished(lastCh)
         }
     }
     // the next chapter joins on as this one's end comes up; the one before as the top's reached scrolling back up
     val nearEnd by remember { derivedStateOf { list.layoutInfo.let { (it.visibleItemsInfo.lastOrNull()?.index ?: 0) >= it.totalItemsCount - 6 } } }
-    val nearTop by remember { derivedStateOf { list.firstVisibleItemIndex < 2 && list.lastScrolledBackward } }
+    val nearTop by remember { derivedStateOf { list.firstVisibleItemIndex < 2 && (list.lastScrolledBackward || pulled) } }
     val tailNext = r.chain.lastOrNull()?.next; val headPrev = r.chain.firstOrNull()?.prev
     LaunchedEffect(nearEnd, tailNext, l.cont) {
         if (nearEnd && l.cont && tailNext != null) try { Novels.chapter(r.novel, tailNext).let { x -> if (r.chain.none { it.id == x.id }) r.chain.add(x) } }
@@ -385,6 +395,7 @@ private fun ScrollText(r: Rd, l: Look, p: Paper, setLook: (Look) -> Unit, nav: N
     LaunchedEffect(nearTop, headPrev, l.cont) {
         if (nearTop && l.cont && headPrev != null) try { Novels.chapter(r.novel, headPrev).let { x -> if (r.chain.none { it.id == x.id }) r.chain.add(0, x) } }
         catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e }
+        pulled = false // failed: the next push asks again
     }
     // auto-scroll: the text glides at 0.5x-10x, a finger taking over meanwhile
     val dens = LocalDensity.current.density
@@ -403,7 +414,7 @@ private fun ScrollText(r: Rd, l: Look, p: Paper, setLook: (Look) -> Unit, nav: N
     val bms = remember(marks) { marks.filter { it.optString("kind") == "mark" }.map { it.optString("ch") to it.optInt("p") }.toSet() }
     val style = remember(l, p) { bodyStyle(l, p) }
     val q = r.find?.let(Novels::findRe)
-    LazyColumn(Modifier.fillMaxSize().pinchSize({ look.size }) { setLook(look.copy(size = it)) }, list, PaddingValues(top = 44.dp, bottom = 32.dp)) {
+    LazyColumn(Modifier.fillMaxSize().nestedScroll(pull).pinchSize({ look.size }) { setLook(look.copy(size = it)) }, list, PaddingValues(top = 44.dp, bottom = 32.dp)) {
         r.chain.forEach { ch ->
             item("${ch.id}:h") { Heading(ch, l, p, r) }
             itemsIndexed(ch.paras, { i, _ -> "${ch.id}:$i" }) { i, _ -> Para(r, ch, i, style, l, p, q, (ch.slug to i) in hls, (ch.slug to i) in bms) }

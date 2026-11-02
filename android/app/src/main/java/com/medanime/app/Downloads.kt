@@ -455,6 +455,7 @@ object Downloads {
                 get(url) { r ->
                     if (r.code == 404) return@get // pages the site lists but doesn't have: skipped, like its reader
                     if (r.code >= 400) throw IOException("HTTP ${r.code}")
+                    if (r.body?.contentType()?.type == "text") throw IOException("not an image: $url") // a block page as 200: saved, it would never open
                     r.body!!.byteStream().use { inp -> f.outputStream().use { inp.copyTo(it) } }
                     files += f.absolutePath
                 }

@@ -206,9 +206,15 @@ private var rdLocked by mutableStateOf(false)
 private suspend fun chapterOf(cid: String): MChapter {
     val dl = com.medanime.app.Downloads.of("manga:$cid")?.takeIf { it.optString("state") == "done" && (it.optJSONArray("files")?.length() ?: 0) > 0 } ?: return Manga.chapter(cid)
     val files = dl.getJSONArray("files"); val meta = dl.optJSONObject("meta")
+    val pages = (0 until files.length()).map { java.io.File(files.getString(it)) }
+    // the record outlives its pages (a reinstall empties the app's folder, all-files access taken back): the site's copy, not a screen of failed pages
+    if (!kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { pages.all { it.canRead() } }) return Manga.chapter(cid)
     return MChapter(cid, dl.optString("ep"), meta?.optString("prev")?.ifEmpty { null }, meta?.optString("next")?.ifEmpty { null }, dl.optString("show").substringAfterLast('/'),
-        dl.optString("title"), dl.optString("poster"), (0 until files.length()).map { java.io.File(files.getString(it)).toURI().toString() })
+        dl.optString("title"), dl.optString("poster"), pages.map { it.toURI().toString() })
 }
+
+// a saved page goes to coil as a File: given a file: uri with a %xx and a non-Latin letter (an Arabic title with a space), it decodes the path wrong and finds no file
+private fun pageData(src: String): Any = if (src.startsWith("file:")) java.io.File(java.net.URI(src)) else src
 
 /**
  * the reader: the chapter's pages down the screen, or one per screen swiped sideways (horizontal mode); a tap in the middle
@@ -603,7 +609,7 @@ private fun MangaPage(src: String, modifier: Modifier, known: Int? = null, onSiz
     var failed by remember(src, attempt) { mutableStateOf(false) }
     LaunchedEffect(ctx, src, attempt) {
         try {
-            val req = coil3.request.ImageRequest.Builder(ctx).data(src).memoryCachePolicy(coil3.request.CachePolicy.DISABLED)
+            val req = coil3.request.ImageRequest.Builder(ctx).data(pageData(src)).memoryCachePolicy(coil3.request.CachePolicy.DISABLED)
                 .size(coil3.size.Size.ORIGINAL).allowHardware(false)
                 .maxBitmapSize(coil3.size.Size.ORIGINAL).build()
             val result = coil3.SingletonImageLoader.get(ctx).execute(req)
@@ -651,7 +657,7 @@ private val ratios = java.util.concurrent.ConcurrentHashMap<String, Float>()
 /** pages measured ahead, decoded small (their download stays in Coil's disk cache for the page itself) */
 private suspend fun measure(srcs: List<String>) = coroutineScope {
     srcs.filter { !ratios.containsKey(it) }.map { src -> async {
-        val req = coil3.request.ImageRequest.Builder(Net.activity).data(src).memoryCachePolicy(coil3.request.CachePolicy.DISABLED)
+        val req = coil3.request.ImageRequest.Builder(Net.activity).data(pageData(src)).memoryCachePolicy(coil3.request.CachePolicy.DISABLED)
             .size(coil3.size.Size(coil3.size.Dimension(256), coil3.size.Dimension.Undefined)).build()
         (coil3.SingletonImageLoader.get(Net.activity).execute(req) as? coil3.request.SuccessResult)?.image?.let { ratios[src] = it.width.toFloat() / it.height }
     } }.forEach { it.await() }
