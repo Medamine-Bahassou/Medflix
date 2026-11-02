@@ -762,12 +762,13 @@ fun PosterCard(c: Card, nav: Nav, width: Dp? = 112.dp) {
         }
         Text(c.title, Modifier.padding(top = 4.dp), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         // the site's own score (scraped with the card), gold like the page's rating, then the year
-        if (c.rating.isNotEmpty() || c.year.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically) {
-            if (c.rating.isNotEmpty()) {
+        val rated = c.score.ifEmpty { c.rating }
+        if (rated.isNotEmpty() || c.year.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically) {
+            if (rated.isNotEmpty()) {
                 Icon(Ic.star, null, Modifier.size(11.dp), tint = Color(0xFFF5C518))
-                Text(c.rating, Modifier.padding(start = 3.dp, end = 8.dp), color = Color(0xFFF5C518), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text(rated, Modifier.padding(start = 3.dp, end = 8.dp), color = Color(0xFFF5C518), fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
             }
-            if (c.year.isNotEmpty()) Text(c.year, color = Muted, fontSize = 11.sp)
+            if (c.year.isNotEmpty() && c.score.isEmpty()) Text(c.year, color = Muted, fontSize = 11.sp, maxLines = 1) // "IMDb 7.8" leaves no room for it
         }
     }
 }

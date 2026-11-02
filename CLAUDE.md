@@ -44,7 +44,7 @@ Java no longer ship, except `DownloadService` (the download notification), which
 
 - **Sources**: witanime.site (anime, the main source), eva.animerco.org (backup servers), appswat.com + olympustaff.com (manga), novltime.com (novels: its open JSON API), seanovel.org + sunovels.com + kolnovel.com (novels: plain pages, `NovelSites.kt`; seanovel's robots.txt rules out its `/api/`; sunovels' locked chapters are left out),
   myseed/arabseed/egydead (movies, which hop between domains), cima.my-cima.net and wecima.singles (backup servers),
-  animeschedule.net (air times), kitsu.io + IMDb suggest (search suggestions).
+  animeschedule.net (air times), kitsu.io + IMDb suggest (search suggestions), IMDb GraphQL + rottentomatoes.com + backend.metacritic.com + AniList (the search's rating filter, Android only so far).
 - **Adding a host**: update the allowlist in `main.js`, the `fetch` allowlist in `mobile.js` (and its constants at the top),
   `ImageCache.HOSTS` if it serves images, and the CSP in `index.html` if needed.
 - **Page cache** (`scraper.js` `load()`): stale-while-revalidate. Scraped pages are kept 90 days and shown from the cache

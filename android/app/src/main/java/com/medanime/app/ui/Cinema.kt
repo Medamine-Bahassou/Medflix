@@ -113,6 +113,14 @@ object Cinema {
         return Listing(items, maxOf(1, doc.select("a[href*=/page/]").maxOfOrNull { Regex("/page/(\\d+)").find(it.attr("href"))?.groupValues?.get(1)?.toInt() ?: 0 } ?: 1))
     }
     suspend fun search(q: String) = cards(parse(Pages.load("$ED/find/?word=${URLEncoder.encode(q, "UTF-8")}"), ED))
+    // read one at a time: several of these together took the phone's cores from scrolling the grid they fill
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private val finding = kotlinx.coroutines.Dispatchers.Default.limitedParallelism(1)
+    // the rating lists' titles, one after another: unseen by the user, so no check window; not kept whole (470KB a page), Scores keeps the card
+    suspend fun find(q: String) = Net.fetch("$ED/find/?word=${URLEncoder.encode(q, "UTF-8")}", interactive = false).let { r ->
+        if (r.status >= 400) throw java.io.IOException("HTTP ${r.status}")
+        kotlinx.coroutines.withContext(finding) { cards(parse(r.body, ED)) }
+    }
 
     suspend fun movie(slug: String, force: Boolean = false): Movie {
         val u = url(slug)

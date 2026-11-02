@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -260,7 +261,17 @@ fun SearchScreen(q0: String, nav: Nav, kind0: String = "") {
     var kind by rememberSaveable { mutableStateOf(kind0) } // "": every section; else only that one is asked, and shown as a grid
     val typed by produceState(q0.trim(), q) { delay(400); value = q.trim() } // ask once typing stops
     val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { if (q.isEmpty()) focus.requestFocus() }
+    var rate by remember { mutableStateOf(RateFilter.load()) }
+    LaunchedEffect(Unit) { if (q.isEmpty() && rate.asks.isEmpty()) focus.requestFocus() } // a filter set: what it finds is on the screen, not under a keyboard
+    val setRate = { f: RateFilter -> rate = f; f.save() }
+    var rateOpen by rememberSaveable { mutableStateOf(false) }
+    var matches by remember { mutableStateOf<Int?>(null) } // the sheet's button says how many it's leaving
+    LaunchedEffect(typed, kind) { matches = null }
+    if (rateOpen) RateSheet(rate, kind, matches, setRate) { rateOpen = false }
+    // whichever came first is what's looked through: results and then a filter filter those; a filter's results and then typing search those
+    val shelfOn = rate.sections(kind).isNotEmpty()
+    var everywhere by rememberSaveable { mutableStateOf(q0.isNotBlank()) } // opened on a title (a row's full list, an airing card): that's asked of the sites
+    LaunchedEffect(q, typed, shelfOn) { if (q.isEmpty()) everywhere = false else if (typed.isNotEmpty() && !shelfOn) everywhere = true }
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(nav.back) { Icon(Ic.back, null, Modifier.size(22.dp)) }
@@ -269,9 +280,11 @@ fun SearchScreen(q0: String, nav: Nav, kind0: String = "") {
                 shape = RoundedCornerShape(6.dp), colors = TextFieldDefaults.colors(focusedContainerColor = CardC, unfocusedContainerColor = CardC, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, cursorColor = Red))
         }
         Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (RATERS.any { kind.isEmpty() || kind in it.kinds }) RateChip(rate, kind) { rateOpen = true } // no score rates novels
             listOf("", "anime", "cinema", "manga", "novels").forEach { k -> FilterChip(kind == k, { kind = k }, { Text(t(k.ifEmpty { "all" })) }) }
         }
-        if (typed.isEmpty()) return@Column
+        RateActive(rate, kind, setRate)
+        if (typed.isEmpty() || (shelfOn && !everywhere)) return@Column RateShelf(rate, kind, typed, nav, setRate, { everywhere = true }) { matches = it }
         val (l, retry) = loadedOnce(typed, kind) { _ ->
             coroutineScope {
                 // a section left out isn't asked (null, like one that didn't answer)
@@ -287,12 +300,15 @@ fun SearchScreen(q0: String, nav: Nav, kind0: String = "") {
         }
         Body(l, retry) { (a, c, m, n) ->
             if (a.isEmpty() && c.isEmpty() && m.isEmpty() && n.isEmpty()) return@Body Empty(t("nothing"), t("tryElse"))
-            if (kind.isNotEmpty()) return@Body CardsGrid(a + c + m + n, nav) // one section: the others are empty
-            LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
-                item { CardRowView(t("anime"), a, nav) }
-                item { CardRowView(t("cinema"), c, nav) }
-                item { CardRowView(t("manga"), m, nav) }
-                item { CardRowView(t("novels"), n, nav) }
+            val found = remember(a, c, m, n) { a + c + m + n }
+            val looked = scoresOf(found, rate)
+            val (a1, c1, m1, n1) = listOf(a, c, m, n).map { rate.apply(it, looked.scores) }
+            val shown = a1 + c1 + m1 + n1
+            SideEffect { matches = shown.size }
+            Column {
+                RateStatus(looked, found.size - shown.size)
+                if (shown.isEmpty()) { if (looked.left == 0) Empty(t("rfNone"), t("rfNoneHint")) { Button({ setRate(RateFilter()) }, colors = ButtonDefaults.buttonColors(Red)) { Text(t("reset")) } } }
+                else RatedCards(listOf("anime" to a1, "cinema" to c1, "manga" to m1, "novels" to n1), typed, nav, rememberLazyGridState().takeIf { kind.isNotEmpty() }) // one section: the others are empty
             }
         }
     }
@@ -306,8 +322,6 @@ fun MyListScreen(nav: Nav) {
     val nh = Store["hidden"].length()
     var q by rememberSaveable { mutableStateOf("") }
     var kind by rememberSaveable { mutableStateOf("") } // the chip picked: a kind, or a category's id
-    // a kind by the saved type: "movie" is an anime film, so it stays with anime
-    val kindOf = { c: Card -> when (c.type) { "manga" -> "manga"; "novel" -> "novels"; "cinema" -> "cinema"; else -> "anime" } }
     // only the kinds the list holds, and none when it holds one
     val kinds = listOf("anime", "cinema", "manga", "novels").filter { k -> all.any { kindOf(it) == k } }.takeIf { it.size > 1 }.orEmpty()
     val cats = Store.cats.all()

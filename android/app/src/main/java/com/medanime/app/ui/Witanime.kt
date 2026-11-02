@@ -20,9 +20,11 @@ import java.net.URLEncoder
 // scraper.js in Kotlin: witanime's HTML (Laravel + Livewire, server-rendered) into plain objects
 // open: where it leads when that isn't its show's page (a manga's latest chapter, a series' episode); names: all its titles
 // (manga: to spot one series on both sites); desc: its story, for the cover slider
+// immutable: a grid's cards that didn't change (equal, even as new copies) aren't redrawn when the ones around them do
+@androidx.compose.runtime.Immutable
 data class Card(val path: String, val type: String, val title: String, val poster: String, val rating: String, val year: String,
                 val badge: String, val ep: String?, val showPath: String, val open: Screen? = null, val names: List<String> = emptyList(),
-                val desc: String = "", val dub: Boolean = false)
+                val desc: String = "", val dub: Boolean = false, val score: String = "") // score: the rating filter's, shown in place of rating and year
 data class Hero(val path: String, val watch: String, val title: String, val desc: String, val banner: String)
 data class CardRow(val title: String, val items: List<Card>)
 data class HomePage(val hero: List<Hero>, val rows: List<CardRow>)
