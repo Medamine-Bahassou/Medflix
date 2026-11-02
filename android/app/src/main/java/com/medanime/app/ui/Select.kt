@@ -67,7 +67,7 @@ fun cardActs(cards: List<Card>) = listOfNotNull(
     if (cards.any { !Store.inList(it.showPath) }) "list" to t("listAdd") else null,
     if (cards.any { Store.inList(it.showPath) }) "unlist" to t("listRemove") else null,
     if (cards.any { !it.showPath.startsWith("/airing/") }) "cats" to t("catAssign") else null,
-    if (cards.any { !isHidden(it) }) "hide" to t("hideAnime").let { if (cards.all { c -> c.type == "manga" }) t("hideManga") else it } else null,
+    if (cards.any { !isHidden(it) }) "hide" to t("hideAnime").let { if (cards.all { c -> c.type == "manga" }) t("hideManga") else if (cards.all { c -> c.type == "novel" }) t("hideNovel") else it } else null,
     if (cards.any { isHidden(it) }) "unhide" to t("unhide") else null,
 )
 fun cardRun(v: String, cards: List<Card>) {

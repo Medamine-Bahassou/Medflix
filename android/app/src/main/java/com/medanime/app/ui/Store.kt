@@ -65,10 +65,11 @@ object Store {
         version.intValue++
     }
 
-    /** the phone's dock: up to 4 sections (settings) */
+    const val DOCK_MAX = 5
+    /** the phone's dock: up to DOCK_MAX sections (settings) */
     fun dock(): List<String> {
         val a = get("prefs").optJSONArray("dock")
-        val l = (0 until (a?.length() ?: 0)).map { a!!.getString(it) }.ifEmpty { listOf("home", "anime", "manga", "myList") }
+        val l = (0 until (a?.length() ?: 0)).map { a!!.getString(it) }.ifEmpty { listOf("home", "anime", "manga", "novels", "cinema") }
         return l.map { if (it == "series" || it == "movies") "anime" else it }.distinct().filter { it in NAV }  // series and movies were one section each before Anime held both
     }
     fun setDock(l: List<String>) { get("prefs").put("dock", org.json.JSONArray(l)); persist("prefs") }

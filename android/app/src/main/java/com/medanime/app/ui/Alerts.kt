@@ -71,7 +71,7 @@ class Alerts : JobService() {
             if (!quiet) toast(if (n.has(path)) t("notifyAdded", title) else t("notifyRemoved"))
         }
         private val ui = kotlinx.coroutines.MainScope() // outlives the card menu, which closes on tap
-        fun can(path: String) = path.startsWith("/anime/") || path.startsWith("/manga/series/") || Regex("^/cinema/(serie|season|episode)/").containsMatchIn(path)
+        fun can(path: String) = path.startsWith("/anime/") || path.startsWith("/manga/series/") || path.startsWith("/novel/") || Regex("^/cinema/(serie|season|episode)/").containsMatchIn(path)
         /** the card menu's bell */
         fun toggleCard(c: Card) { if (on(c.showPath)) toggle(c.showPath, c.title, c.poster, "") else follow(c.showPath, c.title, c.poster) }
         /**
@@ -95,7 +95,7 @@ class Alerts : JobService() {
          * auto-download: each title's own switch on its page (store.autoDl: path -> { title, poster, last }), notified or not;
          * only what the app downloads itself (the films' sites' open in the browser)
          */
-        fun canDl(path: String) = path.startsWith("/anime/") || path.startsWith("/manga/series/")
+        fun canDl(path: String) = path.startsWith("/anime/") || path.startsWith("/manga/series/") || path.startsWith("/novel/")
         fun autoDl(path: String) = Store["autoDl"].has(path)
         /** last: its newest episode or chapter now, so only later ones download */
         fun toggleDl(path: String, title: String, poster: String, last: String) {
@@ -125,6 +125,8 @@ class Alerts : JobService() {
         private suspend fun newest(path: String, o: JSONObject): Triple<String, String, () -> Unit>? = when {
             path.startsWith("/manga/series/") -> Manga.full(path.substringAfterLast('/'), true).chs.firstOrNull()?.let { // newest first
                 Triple(it.id, t("newCh", Manga.chNum(it.n)), { com.medanime.app.Downloads.chapters(path.substringAfterLast('/'), o.optString("title"), o.optString("poster"), listOf(it), quiet = true) }) }
+            path.startsWith("/novel/") -> Novels.newest(path.substringAfterLast('/'))?.let {
+                Triple(it.id, t("newCh", it.n), { com.medanime.app.Downloads.novel(path.substringAfterLast('/'), o.optString("title"), o.optString("poster"), listOf(it), quiet = true) }) }
             path.startsWith("/cinema/") -> Cinema.movie(path.removePrefix("/cinema/"), true).episodes.lastOrNull()?.let { Triple(it.slug, t("newEp", it.n), {}) }
             else -> Witanime.details(path, true).first().episodes.lastOrNull()?.let {
                 Triple(it.path, t("newEp", it.ep), { com.medanime.app.Downloads.episode(it.path, path, o.optString("title"), it.ep, o.optString("poster"), Store["prefs"].optString("dlQuality"), quiet = true) }) }

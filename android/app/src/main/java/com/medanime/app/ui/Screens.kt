@@ -69,7 +69,7 @@ fun HomeScreen(nav: Nav) {
         }
     }
     SectionPage(l, refresh, nav, { it.slides }) { d ->
-        item { CardRowView(t("continueWatching"), continued(setOf("anime", "cinema", "manga")), nav) }
+        item { CardRowView(t("continueWatching"), continued(setOf("anime", "cinema", "manga", "novel")), nav) }
         item { CardRowView(t("myList"), listed(), nav, Screen.MyList) }
         items(d.anime?.rows?.take(2) ?: emptyList(), { it.title }) { CardRowView(it.title, it.items, nav, Screen.Section(it.title)) }
         item { CardRowView(t("mHot"), d.hot, nav, Screen.MangaBrowse(mapOf("is_hot" to "true"))) }
@@ -269,7 +269,7 @@ fun SearchScreen(q0: String, nav: Nav, kind0: String = "") {
                 shape = RoundedCornerShape(6.dp), colors = TextFieldDefaults.colors(focusedContainerColor = CardC, unfocusedContainerColor = CardC, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, cursorColor = Red))
         }
         Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("", "anime", "cinema", "manga").forEach { k -> FilterChip(kind == k, { kind = k }, { Text(t(k.ifEmpty { "all" })) }) }
+            listOf("", "anime", "cinema", "manga", "novels").forEach { k -> FilterChip(kind == k, { kind = k }, { Text(t(k.ifEmpty { "all" })) }) }
         }
         if (typed.isEmpty()) return@Column
         val (l, retry) = loadedOnce(typed, kind) { _ ->
@@ -280,17 +280,19 @@ fun SearchScreen(q0: String, nav: Nav, kind0: String = "") {
                 val c = ask("cinema") { fuzzySearch(typed, "film") { Cinema.search(it) } }
                 // each spelling merges only its own sites' answers ("demonicemperor" finds just Olympus's copy): each series once across them all
                 val m = ask("manga") { Manga.merge(listOf(fuzzySearch(typed, "manga") { Manga.browse(mapOf("search" to it), 1, HashSet()).items })) }
-                if (a.await() == null && c.await() == null && m.await() == null) throw java.io.IOException(t("unreachable"))
-                Triple(a.await() ?: emptyList(), c.await() ?: emptyList(), m.await() ?: emptyList())
+                val n = ask("novels") { Novels.search(typed) } // the site's search knows its Arabic titles only: no other spellings to try
+                if (a.await() == null && c.await() == null && m.await() == null && n.await() == null) throw java.io.IOException(t("unreachable"))
+                listOf(a.await().orEmpty(), c.await().orEmpty(), m.await().orEmpty(), n.await().orEmpty())
             }
         }
-        Body(l, retry) { (a, c, m) ->
-            if (a.isEmpty() && c.isEmpty() && m.isEmpty()) return@Body Empty(t("nothing"), t("tryElse"))
-            if (kind.isNotEmpty()) return@Body CardsGrid(a + c + m, nav) // one section: the others are empty
+        Body(l, retry) { (a, c, m, n) ->
+            if (a.isEmpty() && c.isEmpty() && m.isEmpty() && n.isEmpty()) return@Body Empty(t("nothing"), t("tryElse"))
+            if (kind.isNotEmpty()) return@Body CardsGrid(a + c + m + n, nav) // one section: the others are empty
             LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
                 item { CardRowView(t("anime"), a, nav) }
                 item { CardRowView(t("cinema"), c, nav) }
                 item { CardRowView(t("manga"), m, nav) }
+                item { CardRowView(t("novels"), n, nav) }
             }
         }
     }
@@ -305,9 +307,9 @@ fun MyListScreen(nav: Nav) {
     var q by rememberSaveable { mutableStateOf("") }
     var kind by rememberSaveable { mutableStateOf("") } // the chip picked: a kind, or a category's id
     // a kind by the saved type: "movie" is an anime film, so it stays with anime
-    val kindOf = { c: Card -> when (c.type) { "manga" -> "manga"; "cinema" -> "cinema"; else -> "anime" } }
+    val kindOf = { c: Card -> when (c.type) { "manga" -> "manga"; "novel" -> "novels"; "cinema" -> "cinema"; else -> "anime" } }
     // only the kinds the list holds, and none when it holds one
-    val kinds = listOf("anime", "cinema", "manga").filter { k -> all.any { kindOf(it) == k } }.takeIf { it.size > 1 }.orEmpty()
+    val kinds = listOf("anime", "cinema", "manga", "novels").filter { k -> all.any { kindOf(it) == k } }.takeIf { it.size > 1 }.orEmpty()
     val cats = Store.cats.all()
     val cat = cats.find { it.id == kind }
     val on = if (cat != null || kind in kinds) kind else "" // its category deleted, or the last title of its kind gone: back to all
@@ -444,7 +446,7 @@ private fun CatNameDialog(title: String, start: String, id: String?, done: () ->
 
 // ---------- the details page shared by anime, manga and films (app.js det-hero) ----------
 class Numbered(val label: String, val seen: Boolean, val last: Boolean, val open: Screen, val id: String = label, val saved: Boolean = false, val read: Boolean = seen,
-               val thumb: String = "", val name: String = "") // id: what picking it hands the actions; read: the ✓ (manga: to the last page, not just opened); thumb: drawn as rows (anime, series)
+               val thumb: String = "", val name: String = "", val lateName: (suspend () -> String)? = null) // lateName: fetched as the row shows, when it came with no name; id: what picking it hands the actions; read: the ✓ (manga: to the last page, not just opened); thumb: drawn as rows (anime, series)
 
 /**
  * a title's page, laid out as the reading apps do: a bar with its name, then two tabs swiped between. details: poster and
@@ -458,14 +460,14 @@ fun DetailPage(banner: String, poster: String, title: String, alt: String, icon:
                buttons: @Composable FlowRowScope.() -> Unit, info: List<Pair<String, String>>, nav: Nav,
                listTitle: String? = null, list: List<Numbered> = emptyList(), jump: String = t("jump"), before: LazyListScope.() -> Unit = {}, after: LazyListScope.() -> Unit = {},
                acts: ((List<String>) -> List<Pair<String, String>>)? = null, run: (String, List<String>) -> Unit = { _, _ -> },
-               unit: String = t("ep"), play: Pair<String, () -> Unit>? = null, menu: List<MenuItem> = emptyList()) {
+               unit: String = t("ep"), play: Pair<String, () -> Unit>? = null, menu: List<MenuItem> = emptyList(), fullPoster: String = poster) {
     val picks = remember { Picks() } // long-press a row to pick several (acts: what can be done to them)
     var filter by rememberSaveable { mutableStateOf("") }
     var rev by rememberSaveable { mutableStateOf(false) }
     var more by rememberSaveable { mutableStateOf(false) }
     var big by remember { mutableStateOf(false) } // the poster, full screen
     if (big) androidx.compose.ui.window.Dialog({ big = false }, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(Modifier.fillMaxSize().background(Color.Black).clickable { big = false }) { NetImage(poster, Modifier.fillMaxSize(), ContentScale.Fit, title, icon, title) }
+        Box(Modifier.fillMaxSize().background(Color.Black).clickable { big = false }) { NetImage(fullPoster, Modifier.fillMaxSize(), ContentScale.Fit, title, icon, title) }
     }
     val shown = remember(list, rev, filter) { (if (rev) list.reversed() else list).filter { filter.isEmpty() || it.label.startsWith(filter) } }
     val pager = androidx.compose.foundation.pager.rememberPagerState { if (listTitle != null) 2 else 1 }
@@ -566,7 +568,8 @@ fun DetailPage(banner: String, poster: String, title: String, alt: String, icon:
                                     .background(CardC).graphicsLayer { alpha = if (e.seen) .45f else 1f }, icon = Ic.play)
                                 Column(Modifier.weight(1f)) {
                                     Text(label(e), color = if (e.last) Red else if (e.seen) Muted else Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                                    if (e.name.isNotEmpty()) Text(e.name, color = Muted, fontSize = 12.sp, lineHeight = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    val name = if (e.lateName == null || e.name.isNotEmpty()) e.name else produceState("", e.id) { value = e.lateName.invoke() }.value
+                                    if (name.isNotEmpty()) Text(name, color = Muted, fontSize = 12.sp, lineHeight = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 }
                                 if (mine.size >= 2) mine[if (e.read) 1 else 0].let { (v, what) -> IconButton({ run(v, listOf(e.id)) }) { Icon(Ic.eye, what, Modifier.size(20.dp), tint = if (e.read) Red else Muted) } }
                                 val dl = mine.find { it.first == "dl" }

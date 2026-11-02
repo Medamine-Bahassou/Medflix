@@ -14,6 +14,8 @@ import androidx.core.content.ContextCompat
 import com.medanime.app.ui.Ch
 import com.medanime.app.ui.Manga
 import com.medanime.app.ui.Net
+import com.medanime.app.ui.NovelCh
+import com.medanime.app.ui.Novels
 import com.medanime.app.ui.Store
 import com.medanime.app.ui.UA
 import com.medanime.app.ui.Witanime
@@ -143,6 +145,22 @@ object Downloads {
         pump()
     }
 
+    /** a novel's chapters, oldest first: one file of text each */
+    fun novel(novel: String, title: String, poster: String, chs: List<NovelCh>, quiet: Boolean = false) {
+        var added = 0
+        unhold("/novel/$novel")
+        for (c in chs) {
+            val id = Novels.dlId(novel, c.slug)
+            if (of(id)?.optString("state").let { it != null && it !in setOf("error", "cancelled") }) continue
+            all().put(id, JSONObject().put("id", id).put("kind", "novel").put("show", "/novel/$novel").put("chapterId", c.id).put("ch", c.slug).put("title", title)
+                .put("ep", c.n).put("poster", poster).put("state", "queued").put("received", 0).put("total", 0).put("at", System.currentTimeMillis() + added++))
+        }
+        save()
+        if (!quiet) toast(if (added == 0) t("dlDone") else if (onData()) t("dlWifiWait") else t("dlQueuedN", added))
+        askNotifications()
+        pump()
+    }
+
     // episode or chapter 1 first, up to the last: a batch is added in the same millisecond, so the time added only breaks ties (app.js dlOrder)
     private val order = compareBy<JSONObject>({ it.optString("ep").toDoubleOrNull() ?: Double.MAX_VALUE }, { it.optLong("at") })
     /** starts the next waiting item of every show that has nothing downloading */
@@ -168,12 +186,13 @@ object Downloads {
     private fun start(d: JSONObject, show: String) {
         val id = d.getString("id")
         val manga = d.optString("kind") == "manga"
+        val novel = d.optString("kind") == "novel"
         val epPath = d.optString("epPath")
         val chapterId = d.optString("chapterId")
         val rawTitle = d.optString("title")
         val ep = d.optString("ep")
         val quality = d.optString("quality")
-        val title = "$rawTitle · ${t(if (manga) "chapter" else "episode")} $ep"
+        val title = "$rawTitle · ${t(if (manga || novel) "chapter" else "episode")} $ep"
         d.put("state", "active").put("received", 0).put("total", 0)
         save()
         val run = (runs[id] ?: 0) + 1
@@ -184,7 +203,7 @@ object Downloads {
             if (runs[id] != run) return@launch
             val item = DownloadService.Item(title)
             var why: String? = null // a reason worth telling (a locked chapter), not the generic failure
-            val state = try { if (manga) pages(id, run, chapterId, rawTitle, ep, item) else episode(id, run, epPath, rawTitle, ep, quality, item); "done" }
+            val state = try { if (novel) text(id, run, show.substringAfterLast('/'), d.optString("ch"), item) else if (manga) pages(id, run, chapterId, rawTitle, ep, item) else episode(id, run, epPath, rawTitle, ep, quality, item); "done" }
                 catch (e: Throwable) { android.util.Log.w("medflix", "download $id", e); if (e is Manga.Locked) why = e.message; if (e is CancellationException) "cancelled" else "error" }
                 finally { DownloadService.active.remove(id, item) }
             if (runs[id] != run) return@launch // stopped: whoever stopped it set its state
@@ -196,7 +215,7 @@ object Downloads {
                 cur.put("state", state)
                 if (state == "done") cur.put("size", bytes)
                 save()
-                if (state == "done" && !com.medanime.app.ui.immersed) toast(t("dlFinished", "$rawTitle ${t(if (manga) "chapter" else "ep")} $ep"))
+                if (state == "done" && !com.medanime.app.ui.immersed) toast(t("dlFinished", "$rawTitle ${t(if (manga || novel) "chapter" else "ep")} $ep"))
                 // a locked chapter: said once a minute, not once per chapter of a long series' Download all
                 if (state == "error" && (why == null || System.currentTimeMillis() - lockedAt > 60_000)) { toast(why ?: t("dlFailed")); if (why != null) lockedAt = System.currentTimeMillis() }
                 if (state != "cancelled") DownloadService.finished(app, id, t(if (state == "done") "dlNotifDone" else "dlFailed"), title)
@@ -400,6 +419,18 @@ object Downloads {
             return
         }
         throw IOException("no link started")
+    }
+
+    /** a novel's chapter: its text, one file, in <downloads>/Novels/<novel id>/ */
+    private suspend fun text(id: String, run: Int, novel: String, ch: String, item: DownloadService.Item) {
+        item.total = 1
+        if (!ui(id, run) { it.put("total", 1); DownloadService.active[id] = item }) throw CancellationException()
+        val body = Novels.chapterFile(novel, ch)
+        coroutineContext.ensureActive()
+        val out = File(File(File(dir(), "Novels"), novel.takeLast(100)).apply { mkdirs() }, "${ch.takeLast(100)}.json") // a file name's limit: their ends tell them apart
+        out.writeText(body)
+        item.received = 1
+        if (!ui(id, run) { it.put("received", 1).put("file", out.absolutePath) }) { out.delete(); throw CancellationException() }
     }
 
     /** a chapter: each page image into <downloads>/Manga/<series>/Chapter <n>/ */

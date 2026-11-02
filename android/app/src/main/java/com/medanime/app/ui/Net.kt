@@ -87,7 +87,7 @@ object Net {
     private val ED_RE = Regex("^https://([a-z0-9-]+\\.)*(egydead|myseed|arabseed)\\.[a-z]+/")
     // olympus staff's pages sit behind Cloudflare too
     private const val OLY = "https://olympustaff.com"
-    private fun site(url: String) = if (url.startsWith(SITE)) "witanime" else if (url.startsWith("$OLY/")) "olympustaff" else if (Slayer.sources.values.any { url.startsWith("$it/") }) java.net.URI(url).host else ED_RE.find(url)?.groupValues?.get(2)
+    private fun site(url: String) = if (url.startsWith(SITE)) "witanime" else if (url.startsWith("$OLY/")) "olympustaff" else if (url.startsWith("${Novels.SITE}/")) "novltime" else if (url.startsWith("${Sea.home}/")) "seanovel" else if (Slayer.sources.values.any { url.startsWith("$it/") }) java.net.URI(url).host else ED_RE.find(url)?.groupValues?.get(2)
     // site -> the origin its requests go through a real page on, once Cloudflare refused our native client there
     private val via = java.util.concurrent.ConcurrentHashMap<String, String>()
     private val pages = java.util.concurrent.ConcurrentHashMap<String, SitePage>()
@@ -128,7 +128,9 @@ object Net {
             .header("User-Agent", if (url.startsWith(SITE) || asPlayer) wvUa else UA).header("Accept-Language", "ar,en;q=0.8")
             .apply { headers.forEach { (k, v) -> header(k, v) } }
             .apply { if (json != null) post(json.toRequestBody("application/json".toMediaType())) else if (form != null) post(okhttp3.FormBody.Builder().apply { form.forEach { (k, v) -> add(k, v) } }.build()) else if (post) post(ByteArray(0).toRequestBody()) }.build() // form: MyCima's search
-        val c = if (redirects) client else client.newBuilder().followRedirects(false).followSslRedirects(false).build()
+        // kolnovel builds a novel's page for up to a minute
+        val base = if (url.startsWith("${Kol.home}/")) client.newBuilder().readTimeout(90, TimeUnit.SECONDS).build() else client
+        val c = if (redirects) base else base.newBuilder().followRedirects(false).followSslRedirects(false).build()
         val call = c.newCall(req)
         val reg = coroutineContext[kotlinx.coroutines.Job]?.invokeOnCompletion { if (it != null) call.cancel() } // abort socket on pause/back
         try {
@@ -271,19 +273,19 @@ object Pages {
 
     const val DAY = 24 * 3600_000L
     private fun file(key: String) = java.io.File(dir, java.security.MessageDigest.getInstance("SHA-1").digest(key.toByteArray()).joinToString("") { "%02x".format(it) })
-    private fun saved(key: String) = file(key).takeIf { it.isFile && System.currentTimeMillis() - it.lastModified() < KEEP }?.readText()
+    fun saved(key: String) = file(key).takeIf { it.isFile && System.currentTimeMillis() - it.lastModified() < KEEP }?.readText()
     // the file's time too: a page fetched just before the app restarted isn't asked again at once
-    private fun due(key: String, every: Long = RECHECK) = System.currentTimeMillis() - maxOf(checked[key] ?: 0, file(key).lastModified()) >= every
+    fun due(key: String, every: Long = RECHECK) = System.currentTimeMillis() - maxOf(checked[key] ?: 0, file(key).lastModified()) >= every
 
     // body: a POST (AniList's and IMDb's GraphQL), cached under its query as well as its address
     private suspend fun fresh(url: String, key: String = url, body: String? = null, headers: Map<String, String> = emptyMap(), form: Map<String, String>? = null, interactive: Boolean = true): String {
         checked[key] = System.currentTimeMillis()
         val r = if (body != null) Net.fetch(url, headers, json = body, interactive = interactive) else Net.fetch(url, headers, form = form, interactive = interactive)
         if (r.status >= 400) throw IOException("HTTP ${r.status} ${java.net.URI(url).path}")
-        dir.mkdirs()
-        file(key).writeText(r.body) // rewritten even when unchanged: its time is when the site last confirmed it
+        put(key, r.body) // rewritten even when unchanged: its time is when the site last confirmed it
         return r.body
     }
+    fun put(key: String, text: String) { dir.mkdirs(); file(key).writeText(text) }
 
     /** the saved copy, then the site's answer if it changed: a screen showing one page redraws with it */
     fun flow(url: String, force: Boolean = false) = flow {

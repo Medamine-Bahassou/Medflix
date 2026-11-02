@@ -34,9 +34,12 @@ import kotlin.math.atan2
 import kotlin.math.roundToInt
 
 private fun JSONObject.manga() = optString("kind") == "manga"
-private fun JSONObject.kindName() = t(if (manga()) "manga" else if (optString("kind") == "cinema") "cinema" else "kindAnime")
+private fun JSONObject.novel() = optString("kind") == "novel"
+private fun JSONObject.book() = manga() || novel() // chapters, not episodes
+private fun JSONObject.seenKey() = if (novel()) "novelSeen" else "mangaSeen"
+private fun JSONObject.kindName() = t(if (manga()) "manga" else if (novel()) "novels" else if (optString("kind") == "cinema") "cinema" else "kindAnime")
 // a show's page: a manga's, a series' (the movie section's), an anime's
-private fun showScreen(d: JSONObject, show: String) = if (d.manga()) Screen.MangaSeries(show.substringAfterLast('/'))
+private fun showScreen(d: JSONObject, show: String) = if (d.manga()) Screen.MangaSeries(show.substringAfterLast('/')) else if (d.novel()) Screen.NovelTitle(show.substringAfterLast('/'))
     else if (show.startsWith("/cinema/")) Screen.CinemaTitle(show.removePrefix("/cinema/")) else Screen.Title(show)
 // an episode from the site (not its download): a series' plays in the movie section's player
 private fun playScreen(epPath: String) = if (epPath.startsWith("/cinema/")) Screen.CinemaPlay(epPath.removePrefix("/cinema/")) else Screen.Play(epPath)
@@ -48,8 +51,8 @@ private val RUNNING = setOf("active", "queued")
 private fun status(d: JSONObject): String {
     val r = d.optLong("received"); val tot = d.optLong("total"); val pct = if (tot > 0) (r * 100 / tot).toInt() else 0
     return when (d.optString("state")) {
-        "active" -> if (tot <= 0) t("dlPreparing") else if (d.manga()) "${t("pagesOf", r, tot)} · $pct%" else "\u2066${mb(r)} / ${mb(tot)} · $pct%\u2069"
-        "done" -> t("offline") + if (tot > 0) " · " + (if (d.manga()) t("pagesN", tot) else mb(tot)) else ""
+        "active" -> if (tot <= 0 || d.novel()) t("dlPreparing") else if (d.manga()) "${t("pagesOf", r, tot)} · $pct%" else "\u2066${mb(r)} / ${mb(tot)} · $pct%\u2069"
+        "done" -> t("offline") + if (tot > 0 && !d.novel()) " · " + (if (d.manga()) t("pagesN", tot) else mb(tot)) else ""
         "queued" -> t("dlQueued"); "paused" -> t("dlPaused"); "error" -> t("dlFailed"); "cancelled" -> t("dlCancelled")
         else -> ""
     }
@@ -108,7 +111,7 @@ fun DownloadsScreen(show: String, nav: Nav) {
                         NetImage(d0.optString("poster"), Modifier.width(56.dp).aspectRatio(2 / 3f).clip(RoundedCornerShape(4.dp)), icon = if (d0.manga()) Ic.manga else iconOf(key))
                         Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                             Text(d0.optString("title"), fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            Text("${d0.kindName()} · ${t(if (d0.manga()) "chCount" else "epCount", done)}" + (if (size > 0) " · ${mb(size)}" else "") + if (act.isNotEmpty()) " · ${t("dlActiveN", act.size)}" else "",
+                            Text("${d0.kindName()} · ${t(if (d0.book()) "chCount" else "epCount", done)}" + (if (size > 0) " · ${mb(size)}" else "") + if (act.isNotEmpty()) " · ${t("dlActiveN", act.size)}" else "",
                                 color = Muted, fontSize = 12.sp)
                             if (act.isNotEmpty()) {
                                 val r = act.sumOf { it.optLong("received") }; val tot = act.sumOf { it.optLong("total") }
@@ -131,23 +134,23 @@ fun DownloadsScreen(show: String, nav: Nav) {
             Column(Modifier.weight(1f).padding(horizontal = 12.dp).clickable { nav.go(showScreen(d0, show)) }) {
                 Text(d0.optString("title"), fontWeight = FontWeight.Bold, fontSize = 17.sp)
                 val size = items.filter { it.optString("state") == "done" }.sumOf(Downloads::size)
-                Text("${d0.kindName()} · ${t(if (d0.manga()) "chCount" else "epCount", items.size)}" + if (size > 0) " · ${mb(size)}" else "", color = Muted, fontSize = 12.sp)
+                Text("${d0.kindName()} · ${t(if (d0.book()) "chCount" else "epCount", items.size)}" + if (size > 0) " · ${mb(size)}" else "", color = Muted, fontSize = 12.sp)
             }
             if (act.isNotEmpty()) ShowToggle(show, Downloads.held(show) || act.none { it.optString("state") in RUNNING })
         }
         SelectBar(picks, { items.map { it.optString("id") } }, { ids -> ids.mapNotNull(byId::get).let { ds -> listOfNotNull(
-            "seen" to t(if (d0.manga()) "markRead" else "markWatched"), "unseen" to t(if (d0.manga()) "markUnread" else "markUnwatched"),
+            "seen" to t(if (d0.book()) "markRead" else "markWatched"), "unseen" to t(if (d0.book()) "markUnread" else "markUnwatched"),
             if (ds.any { it.optString("state") == "error" || it.optString("state") == "cancelled" }) "retry" to t("retry") else null,
             if (ds.any { it.optString("state") in PENDING }) "cancel" to t("cancel") else null,
             "delete" to t("delDownloads")) } }) { v, ids ->
             val ds = ids.mapNotNull(byId::get)
             for (d in ds) when (v) { // seen: the episode watched / the chapter read (app.js dlAct)
-                "seen" -> if (d.manga()) Store["mangaSeen"].put(d.optString("chapterId"), 2) else Store["seen"].put(d.optString("epPath"), 1)
-                "unseen" -> if (d.manga()) Store["mangaSeen"].remove(d.optString("chapterId")) else Store["seen"].remove(d.optString("epPath"))
+                "seen" -> if (d.book()) Store[d.seenKey()].put(d.optString("chapterId"), 2) else Store["seen"].put(d.optString("epPath"), 1)
+                "unseen" -> if (d.book()) Store[d.seenKey()].remove(d.optString("chapterId")) else Store["seen"].remove(d.optString("epPath"))
                 "retry" -> if (d.optString("state") == "error" || d.optString("state") == "cancelled") Downloads.retry(d.optString("id"))
                 "cancel" -> if (d.optString("state") in PENDING) Downloads.cancel(d.optString("id"))
             }
-            if (v == "seen" || v == "unseen") { Store.persist("seen"); Store.persist("mangaSeen") }
+            if (v == "seen" || v == "unseen") { Store.persist("seen"); Store.persist("mangaSeen"); Store.persist("novelSeen") }
             if (v == "delete") ask = t("confirmDelN", ds.size) to { ds.forEach { Downloads.delete(it.optString("id")) } }
         }
         LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -157,24 +160,24 @@ fun DownloadsScreen(show: String, nav: Nav) {
                 val id = d.optString("id")
                 Row(Modifier.fillMaxWidth().picked(picks.has(id)).clip(RoundedCornerShape(6.dp)).background(CardC)
                     .combinedClickable(onLongClick = { if (picks.on) picks.toggle(id) else picks.start(id) }) { // a tap reads or plays it: its download once done, else from the site
-                        if (picks.on) picks.toggle(id) else nav.go(if (d.manga()) Screen.MangaRead(d.optString("chapterId"), d.optString("title"), d.optString("ep")) else if (st == "done") Screen.Offline(d.optString("epPath")) else playScreen(d.optString("epPath")))
+                        if (picks.on) picks.toggle(id) else nav.go(if (d.novel()) d.readScreen() else if (d.manga()) Screen.MangaRead(d.optString("chapterId"), d.optString("title"), d.optString("ep")) else if (st == "done") Screen.Offline(d.optString("epPath")) else playScreen(d.optString("epPath")))
                     }
                     .padding(start = 14.dp, end = 4.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("${t(if (d.manga()) "chapter" else "episode")} ${d.optString("ep")}" + d.optString("quality").let { if (it.isEmpty()) "" else "  $it" }, fontWeight = FontWeight.SemiBold)
-                            if (d.manga() && Store["mangaSeen"].optInt(d.optString("chapterId")) == 2) ReadBadge()
+                            Text("${t(if (d.book()) "chapter" else "episode")} ${d.optString("ep")}" + d.optString("quality").let { if (it.isEmpty()) "" else "  $it" }, fontWeight = FontWeight.SemiBold)
+                            if (d.book() && Store[d.seenKey()].optInt(d.optString("chapterId")) == 2) ReadBadge()
                         }
                         if (st == "active") LinearProgressIndicator({ d.optLong("total").let { if (it > 0) d.optLong("received").toFloat() / it else 0f } },
                             Modifier.fillMaxWidth().padding(vertical = 4.dp), color = Red, trackColor = Color(0x22FFFFFF))
                         Text(status(d), color = Muted, fontSize = 12.sp)
                     }
-                    if (st == "done") IconButton({ nav.go(if (d.manga()) Screen.MangaRead(d.optString("chapterId"), d.optString("title"), d.optString("ep")) else Screen.Offline(d.optString("epPath"))) }) { Icon(Ic.play, t("play"), Modifier.size(20.dp), tint = Red) }
+                    if (st == "done") IconButton({ nav.go(if (d.novel()) d.readScreen() else if (d.manga()) Screen.MangaRead(d.optString("chapterId"), d.optString("title"), d.optString("ep")) else Screen.Offline(d.optString("epPath"))) }) { Icon(Ic.play, t("play"), Modifier.size(20.dp), tint = Red) }
                     if (st == "error" || st == "cancelled") IconButton({ Downloads.retry(id) }) { Icon(Ic.refresh, t("retry"), Modifier.size(20.dp)) }
                     if (st == "paused") IconButton({ Downloads.resume(id) }) { Icon(Ic.download, t("showResume"), Modifier.size(20.dp), tint = Red) }
                     if (st == "active" || st == "queued") IconButton({ Downloads.pause(id) }) { Icon(Ic.pause, t("showPause"), Modifier.size(20.dp)) }
                     if (st in PENDING) IconButton({ Downloads.cancel(id) }) { Icon(Ic.x, t("cancel"), Modifier.size(20.dp)) }
-                    else IconButton({ ask = t("confirmDel", "${d.optString("title")} · ${t(if (d.manga()) "chapter" else "episode")} ${d.optString("ep")}") to { Downloads.delete(id) } }) { Icon(Ic.trash, t("del"), Modifier.size(20.dp)) }
+                    else IconButton({ ask = t("confirmDel", "${d.optString("title")} · ${t(if (d.book()) "chapter" else "episode")} ${d.optString("ep")}") to { Downloads.delete(id) } }) { Icon(Ic.trash, t("del"), Modifier.size(20.dp)) }
                 }
             }
         }
@@ -186,7 +189,8 @@ fun DownloadsScreen(show: String, nav: Nav) {
     }
 }
 
-private fun JSONObject.seen() = if (manga()) Store["mangaSeen"].optInt(optString("chapterId")) == 2 else Store["seen"].has(optString("epPath"))
+private fun JSONObject.readScreen() = Screen.NovelRead(optString("show").substringAfterLast('/'), optString("ch"), optString("title"), optString("ep"))
+private fun JSONObject.seen() = if (book()) Store[seenKey()].optInt(optString("chapterId")) == 2 else Store["seen"].has(optString("epPath"))
 
 /**
  * the bar's ⋮: what can be done to these downloads at once (all of them, or one show's), each only when it applies.
@@ -241,7 +245,7 @@ private fun StatsSheet(groups: List<Pair<String, List<JSONObject>>>, nav: Nav, d
     val shows = groups.map { (k, l) -> Triple(k, l, l.filter { it.optString("state") == "done" }) }.filter { it.third.isNotEmpty() }
         .map { (k, l, d) -> k to Triple(l[0], d.size, d.sumOf(Downloads::size)) }.sortedByDescending { it.second.third }
     val slices = shows.take(SLICES.size).mapIndexed { i, (k, v) ->
-        Slice(k, v.first.optString("title"), v.first.optString("poster"), v.third, t(if (v.first.manga()) "chCount" else "epCount", v.second), SLICES[i])
+        Slice(k, v.first.optString("title"), v.first.optString("poster"), v.third, t(if (v.first.book()) "chCount" else "epCount", v.second), SLICES[i])
     } + shows.drop(SLICES.size).let { rest -> if (rest.isEmpty()) emptyList() else listOf(Slice(null, t("dlOthers", rest.size), "", rest.sumOf { it.second.third }, "", OTHER)) }
     val total = slices.sumOf { it.bytes }.coerceAtLeast(1)
     val pct = { n: Long -> (n * 100.0 / total).let { if (it < 1) "\u2066<1%\u2069" else "\u2066${it.roundToInt()}%\u2069" } }

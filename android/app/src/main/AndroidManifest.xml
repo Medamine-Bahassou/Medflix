@@ -36,6 +36,12 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- a novel read aloud, going on with the screen off: see ui/ReadAloud.kt -->
+        <service
+            android:name=".ui.ReadAloudService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
         <!-- new episodes and chapters of followed titles, checked in the background: see ui/Alerts.kt -->
         <service
             android:name=".ui.Alerts"
@@ -66,6 +72,13 @@
         </provider>
     </application>
 
+    <!-- Android 11+: without this the phone's speech engine can't be found (ui/ReadAloud.kt) -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
+
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
@@ -74,6 +87,7 @@
     <!-- episode downloads: keep running in the background with a progress notification -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- the new-episodes check (Alerts) stays scheduled after a reboot -->

@@ -8,13 +8,14 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};
 const STR = {
   ar: {
     home: 'الرئيسية', anime: 'أنمي', remove: 'إزالة', series: 'المسلسلات', movies: 'أفلام الأنمي', cinema: 'أفلام ومسلسلات', dubbed: 'مدبلج', schedule: 'مواعيد الأنمي', myList: 'قائمتي', searchPh: 'ابحث عن أنمي أو فيلم…', listSearchPh: 'ابحث في قائمتي…', cancel: 'إلغاء', clear: 'مسح',
-    settings: 'الإعدادات', more: 'المزيد', storage: 'مجلد التطبيق', storageHint: 'احفظ التنزيلات والإعدادات وقائمتك وسجل المشاهدة في مجلد MEDFLIX على الهاتف، لتبقى حتى بعد حذف التطبيق وإعادة تثبيته.', storageAllow: 'السماح بالوصول', storageOn: 'مفعّل', storageOff: 'يحتاج إذن الوصول إلى كل الملفات', storageReady: 'تم حفظ بياناتك في مجلد MEDFLIX', storageAsk: 'اسمح للتطبيق بالوصول إلى الملفات ليحفظ قائمتك وسجل المشاهدة والإعدادات والتنزيلات في مجلد MEDFLIX على الهاتف. هكذا تبقى بعد حذف التطبيق، وتعود تلقائيًا عند إعادة تثبيته والسماح مرة أخرى.', later: 'لاحقًا', close: 'إغلاق', reverse: 'عكس الترتيب', dockTitle: 'أزرار الشريط السفلي', dockHint: 'اختر حتى 4 أزرار تظهر في الشريط السفلي على الهاتف، والباقي تجده في القائمة الجانبية ☰.',
+    settings: 'الإعدادات', more: 'المزيد', storage: 'مجلد التطبيق', storageHint: 'احفظ التنزيلات والإعدادات وقائمتك وسجل المشاهدة في مجلد MEDFLIX على الهاتف، لتبقى حتى بعد حذف التطبيق وإعادة تثبيته.', storageAllow: 'السماح بالوصول', storageOn: 'مفعّل', storageOff: 'يحتاج إذن الوصول إلى كل الملفات', storageReady: 'تم حفظ بياناتك في مجلد MEDFLIX', storageAsk: 'اسمح للتطبيق بالوصول إلى الملفات ليحفظ قائمتك وسجل المشاهدة والإعدادات والتنزيلات في مجلد MEDFLIX على الهاتف. هكذا تبقى بعد حذف التطبيق، وتعود تلقائيًا عند إعادة تثبيته والسماح مرة أخرى.', later: 'لاحقًا', close: 'إغلاق', reverse: 'عكس الترتيب', dockTitle: 'أزرار الشريط السفلي', dockHint: 'اختر حتى 5 أزرار تظهر في الشريط السفلي على الهاتف، والباقي تجده في القائمة الجانبية ☰.',
     inDock: 'في الشريط', available: 'أزرار أخرى', dockFull: 'الشريط ممتلئ: أزل زرًا أولًا', dockMin: 'يجب أن يبقى زر واحد على الأقل', language: 'اللغة',
     moveUp: 'تحريك للأعلى', moveDown: 'تحريك للأسفل', removeDock: 'إزالة من الشريط', addDock: 'إضافة إلى الشريط',
+    novels: 'روايات', nvSearchPh: 'ابحث عن رواية…', nvGenre: 'النوع', nvAuthor: 'المؤلف', nvOngoing: 'مستمرة', nvOther: 'من مصادر أخرى', nvNoCopy: 'هذا الفصل غير متاح في ذلك المصدر', nvLockedRest: 'فصول غير متاحة هنا', nvLockedCh: 'هذا الفصل مقفل في مصدره', nvDone: 'مكتملة', nvSimilar: 'روايات مشابهة', hideNovel: 'إخفاء هذه الرواية', nvNoText: 'نص هذا الفصل غير متاح', nvFinished: 'وصلت إلى آخر فصل متوفر', nvDlNext: n => `تنزيل الفصول التالية (${n})`, minLeft: n => `${n} د متبقية`, minRead: n => `قراءة ${n} د`, minutesN: n => `${n} دقيقة`, rdDisplay: 'العرض', rdIndex: 'الفهرس', rdFont: 'الخط', fontSystem: 'خط الهاتف', fontAmiri: 'أميري', fontAlmarai: 'المراعي', fontTajawal: 'تجوال', paper_black: 'أسود', paper_dim: 'داكن', paper_sepia: 'ورقي', paper_light: 'فاتح', rdSize: 'حجم الخط', rdLine: 'تباعد الأسطر', rdGap: 'تباعد الفقرات', rdMargin: 'الهوامش', rdJustify: 'محاذاة النص من الجانبين', rdIndent: 'مسافة في أول الفقرة', rdBright: 'السطوع', rdAuto: 'تلقائي', rdScroll: 'تمرير', rdPages: 'صفحات', rdRotate: 'اتجاه الشاشة', rotPortrait: 'طولي', rotLand: 'عرضي', rdVolKeys: 'التقليب بأزرار الصوت', rdKeepOn: 'إبقاء الشاشة مضاءة', rdFindPh: 'ابحث في الفصل…', rdMark: 'إشارة مرجعية', rdMarkRemove: 'إزالة الإشارة المرجعية', rdMarkAdded: 'أضيفت إشارة مرجعية', rdMarkRemoved: 'أزيلت الإشارة المرجعية', rdMarks: 'العلامات', rdNoMarks: 'لا توجد علامات بعد. اضغط مطولًا على أي فقرة لإضافة إشارة أو تظليل.', rdHighlight: 'تظليل الفقرة', rdUnhighlight: 'إزالة التظليل', copy: 'نسخ', copied: 'تم النسخ', share: 'مشاركة', ttsListen: 'استماع', ttsReadFrom: 'اقرأ بصوت عالٍ من هنا', ttsNoArabic: 'لا يوجد صوت عربي على هاتفك: ثبّته ثم حاول مجددًا', ttsNone: 'القراءة الصوتية غير متاحة على هذا الهاتف', ttsSpeed: 'السرعة', ttsVoice: 'الصوت', voiceN: n => `صوت ${n}`, ttsSleep: 'إيقاف تلقائي بعد', ttsOff: 'بدون', nextPara: 'الفقرة التالية', prevPara: 'الفقرة السابقة',
     manga: 'مانجا', browseAll: 'تصفح الكل', continueReading: 'تابع القراءة', mHot: 'الأعمال الرائجة', mLatest: 'آخر الفصول', mPopular: 'الأكثر قراءة', mNew: 'أعمال جديدة',
     mSearchPh: 'ابحث عن مانجا أو مانهوا…', mSortNew: 'الأحدث', mSortViews: 'الأكثر قراءة', mSortRating: 'الأعلى تقييمًا', mSortTitle: 'أبجديًا',
     chapter: 'الفصل', chShort: 'ف', chapters: 'الفصول', read: 'ابدأ القراءة', resumeCh: n => `تابع الفصل ${n}`, prevCh: 'الفصل السابق', nextCh: 'الفصل التالي',
-    jumpCh: 'انتقل إلى فصل…', readMode: 'قراءة أفقية / عمودية', vertical: 'عمودي', horizontal: 'أفقي', continuous: 'قراءة متواصلة', readingMode: 'طريقة القراءة', nextEp: 'الحلقة القادمة', source: 'المصدر', sourceN: n => `المصدر ${n}`, autoScroll: 'تمرير تلقائي', slower: 'أبطأ', faster: 'أسرع', views: n => `${n} مشاهدة`, noImages: 'لا توجد صفحات في هذا الفصل', endOfChapter: 'نهاية الفصل', chRead: 'مقروء', fullscreen: 'ملء الشاشة', mainServers: 'السيرفرات', backupServers: 'سيرفرات احتياطية', theSite: 'الموقع', backAgain: 'اضغط رجوع مرة أخرى للخروج', lockUi: 'قفل الأزرار', unlockUi: 'إلغاء القفل', scheduleShort: 'المواعيد',
+    jumpCh: 'انتقل إلى فصل…', readMode: 'قراءة أفقية / عمودية', vertical: 'عمودي', horizontal: 'أفقي', continuous: 'قراءة متواصلة', readingMode: 'طريقة القراءة', nextEp: 'الحلقة القادمة', source: 'المصدر', sourceN: n => `المصدر ${n}`, autoScroll: 'تمرير تلقائي', slower: 'أبطأ', faster: 'أسرع', views: n => `${n} مشاهدة`, noImages: 'لا توجد صفحات في هذا الفصل', endOfChapter: 'نهاية الفصل', chRead: 'مقروء', fullscreen: 'ملء الشاشة', mainServers: 'السيرفرات', backupServers: 'سيرفرات احتياطية', theSite: 'الموقع', backAgain: 'اضغط رجوع مرة أخرى للخروج', lockUi: 'قفل الأزرار', unlockUi: 'إلغاء القفل', scheduleShort: 'المواعيد', cinemaShort: 'أفلام',
     filter: 'تصفية', apply: 'تطبيق', reset: 'إعادة ضبط', all: 'الكل',
     f_sort: 'الترتيب', f_type: 'النوع', f_status: 'الحالة', f_year: 'السنة', f_season: 'الموسم', seasons: 'المواسم', f_version: 'الترجمة',
     f_country: 'البلد', f_source: 'المصدر', f_genres: 'التصنيفات',
@@ -42,13 +43,14 @@ const STR = {
   },
   en: {
     home: 'Home', anime: 'Anime', remove: 'Remove', series: 'Series', movies: 'Anime Movies', cinema: 'Movies & TV', dubbed: 'Dubbed', schedule: 'Anime Schedule', myList: 'My List', searchPh: 'Titles, series, movies…', listSearchPh: 'Search my list…', cancel: 'Cancel', clear: 'Clear',
-    settings: 'Settings', more: 'More', storage: 'App folder', storageHint: 'Keep downloads, settings, your list and watch history in a MEDFLIX folder on the phone, so they survive uninstalling and reinstalling the app.', storageAllow: 'Allow access', storageOn: 'Active', storageOff: 'Needs all-files access', storageReady: 'Your data is now saved in the MEDFLIX folder', storageAsk: 'Allow file access so your list, watch history, settings and downloads are kept in a MEDFLIX folder on the phone. They then survive uninstalling the app, and come back when you reinstall and allow access again.', later: 'Later', close: 'Close', reverse: 'Reverse order', dockTitle: 'Bottom bar buttons', dockHint: "Pick up to 4 buttons for the phone's bottom bar; everything else is in the side menu ☰.",
+    settings: 'Settings', more: 'More', storage: 'App folder', storageHint: 'Keep downloads, settings, your list and watch history in a MEDFLIX folder on the phone, so they survive uninstalling and reinstalling the app.', storageAllow: 'Allow access', storageOn: 'Active', storageOff: 'Needs all-files access', storageReady: 'Your data is now saved in the MEDFLIX folder', storageAsk: 'Allow file access so your list, watch history, settings and downloads are kept in a MEDFLIX folder on the phone. They then survive uninstalling the app, and come back when you reinstall and allow access again.', later: 'Later', close: 'Close', reverse: 'Reverse order', dockTitle: 'Bottom bar buttons', dockHint: "Pick up to 5 buttons for the phone's bottom bar; everything else is in the side menu ☰.",
     inDock: 'In the bar', available: 'Other buttons', dockFull: 'The bar is full: remove one first', dockMin: 'Keep at least one button', language: 'Language',
     moveUp: 'Move up', moveDown: 'Move down', removeDock: 'Remove from bar', addDock: 'Add to bar',
+    novels: 'Novels', nvSearchPh: 'Search novels…', nvGenre: 'Genre', nvAuthor: 'Author', nvOngoing: 'Ongoing', nvOther: 'From other sources', nvNoCopy: "This chapter isn't available from that source", nvLockedRest: 'Chapters not available here', nvLockedCh: 'This chapter is locked at its source', nvDone: 'Completed', nvSimilar: 'Similar novels', hideNovel: 'Hide this novel', nvNoText: "This chapter's text isn't available", nvFinished: 'That was the latest chapter', nvDlNext: n => `Download next chapters (${n})`, minLeft: n => `${n} min left`, minRead: n => `${n} min read`, minutesN: n => `${n} min`, rdDisplay: 'Display', rdIndex: 'Contents', rdFont: 'Font', fontSystem: 'Phone font', fontAmiri: 'Amiri', fontAlmarai: 'Almarai', fontTajawal: 'Tajawal', paper_black: 'Black', paper_dim: 'Dark', paper_sepia: 'Sepia', paper_light: 'Light', rdSize: 'Text size', rdLine: 'Line spacing', rdGap: 'Paragraph spacing', rdMargin: 'Margins', rdJustify: 'Justify text', rdIndent: 'Indent paragraphs', rdBright: 'Brightness', rdAuto: 'Auto', rdScroll: 'Scroll', rdPages: 'Pages', rdRotate: 'Screen orientation', rotPortrait: 'Portrait', rotLand: 'Landscape', rdVolKeys: 'Turn with volume keys', rdKeepOn: 'Keep screen on', rdFindPh: 'Search this chapter…', rdMark: 'Bookmark', rdMarkRemove: 'Remove bookmark', rdMarkAdded: 'Bookmark added', rdMarkRemoved: 'Bookmark removed', rdMarks: 'Marks', rdNoMarks: 'No marks yet. Long-press any paragraph to bookmark or highlight it.', rdHighlight: 'Highlight paragraph', rdUnhighlight: 'Remove highlight', copy: 'Copy', copied: 'Copied', share: 'Share', ttsListen: 'Listen', ttsReadFrom: 'Read aloud from here', ttsNoArabic: 'No Arabic voice on your phone: install one, then try again', ttsNone: "Reading aloud isn't available on this phone", ttsSpeed: 'Speed', ttsVoice: 'Voice', voiceN: n => `Voice ${n}`, ttsSleep: 'Stop after', ttsOff: 'Off', nextPara: 'Next paragraph', prevPara: 'Previous paragraph',
     manga: 'Manga', browseAll: 'Browse all', continueReading: 'Continue Reading', mHot: 'Trending', mLatest: 'Latest Chapters', mPopular: 'Most Read', mNew: 'New Series',
     mSearchPh: 'Search manga, manhwa…', mSortNew: 'Newest', mSortViews: 'Most read', mSortRating: 'Top rated', mSortTitle: 'A-Z',
     chapter: 'Chapter', chShort: 'Ch', chapters: 'Chapters', read: 'Start reading', resumeCh: n => `Resume Ch ${n}`, prevCh: 'Previous chapter', nextCh: 'Next chapter',
-    jumpCh: 'Jump to chapter…', readMode: 'Horizontal / vertical reading', vertical: 'Vertical', horizontal: 'Horizontal', continuous: 'Continuous reading', readingMode: 'Reading mode', nextEp: 'Next episode', source: 'Source', sourceN: n => `Source ${n}`, autoScroll: 'Auto-scroll', slower: 'Slower', faster: 'Faster', views: n => `${n} views`, noImages: 'This chapter has no pages', endOfChapter: 'End of chapter', chRead: 'Read', fullscreen: 'Fullscreen', mainServers: 'Servers', backupServers: 'Backup servers', theSite: 'the site', backAgain: 'Press back again to leave', lockUi: 'Lock controls', unlockUi: 'Unlock', scheduleShort: 'Schedule',
+    jumpCh: 'Jump to chapter…', readMode: 'Horizontal / vertical reading', vertical: 'Vertical', horizontal: 'Horizontal', continuous: 'Continuous reading', readingMode: 'Reading mode', nextEp: 'Next episode', source: 'Source', sourceN: n => `Source ${n}`, autoScroll: 'Auto-scroll', slower: 'Slower', faster: 'Faster', views: n => `${n} views`, noImages: 'This chapter has no pages', endOfChapter: 'End of chapter', chRead: 'Read', fullscreen: 'Fullscreen', mainServers: 'Servers', backupServers: 'Backup servers', theSite: 'the site', backAgain: 'Press back again to leave', lockUi: 'Lock controls', unlockUi: 'Unlock', scheduleShort: 'Schedule', cinemaShort: 'Movies',
     filter: 'Filters', apply: 'Apply', reset: 'Reset', all: 'All',
     f_sort: 'Sort', f_type: 'Type', f_status: 'Status', f_year: 'Year', f_season: 'Season', seasons: 'Seasons', f_version: 'Language',
     f_country: 'Country', f_source: 'Source', f_genres: 'Genres',
@@ -98,7 +100,7 @@ document.addEventListener('click', e => { // language buttons: nav pill, drawer 
 });
 
 // ---------- navigation ----------
-// Desktop: every section in the top bar. Phones: a dock with up to 4 of them (chosen in settings), and ☰ in the top bar
+// Desktop: every section in the top bar. Phones: a dock with up to DOCK_MAX of them (chosen in settings), and ☰ in the top bar
 // opens a drawer with everything.
 const NAV = [
   { id: 'home', href: '#/' },
@@ -109,7 +111,8 @@ const NAV = [
   { id: 'myList', href: '#/list' },
   { id: 'downloads', href: '#/downloads' },
 ];
-const DOCK_DEFAULT = ['home', 'anime', 'manga', 'myList'];
+const DOCK_MAX = 5, DOCK_DEFAULT = ['home', 'anime', 'manga', 'cinema']; // no novels section here yet (Android has it, in the fourth place)
+const dockLabel = id => t(id === 'schedule' ? 'scheduleShort' : id === 'cinema' ? 'cinemaShort' : id); // a fifth of the screen
 const navSvg = id => ICON[id === 'anime' ? 'series' : id]; // nav icons share the section ids
 const navItem = id => NAV.find(n => n.id === id);
 // series and movies were one section each before Anime held both
@@ -117,7 +120,7 @@ const dockIds = () => [...new Set((store.prefs.dock?.length ? store.prefs.dock :
 function renderNav() {
   const dock = dockIds();
   $('#links').innerHTML = NAV.map(n => `<a href="${n.href}" class="${dock.includes(n.id) ? 'dock' : ''}" style="--o:${dock.indexOf(n.id)}">${navSvg(n.id)}`
-      + (n.id === 'schedule' ? `<span class="long">${t('schedule')}</span><span class="short">${t('scheduleShort')}</span>` : `<span>${t(n.id)}</span>`) + '</a>').join('');
+      + (n.id === 'schedule' || n.id === 'cinema' ? `<span class="long">${t(n.id)}</span><span class="short">${dockLabel(n.id)}</span>` : `<span>${t(n.id)}</span>`) + '</a>').join('');
   $('#drawer').innerHTML = `<div class="dr-head"><a href="#/" class="logo">${ICON.logo}<span class="logo-word" aria-hidden="true">edFlix</span></a><button class="icon-btn" id="drClose" data-ta="close" aria-label="${t('close')}">${ICON.x}</button></div>
     <nav class="dr-links">${NAV.map(n => `<a href="${n.href}">${navSvg(n.id)}<span>${t(n.id)}</span></a>`).join('')}</nav>
     <div class="dr-sep"></div>
@@ -287,13 +290,13 @@ function settingsView() {
   const btn = (act, id, label, txt, off) => `<button class="icon-btn" data-act="${act}" data-id="${id}" title="${label}" aria-label="${label}" ${off ? 'disabled' : ''}>${txt}</button>`;
   const line = (n, i) => `<div class="set-row ${i >= 0 ? 'on' : ''}"><i class="set-tile">${navSvg(n.id)}</i><span>${t(n.id)}</span>${i >= 0
     ? `<div class="set-acts">${btn('up', n.id, t('moveUp'), ICON.caretUp, i === 0) + btn('down', n.id, t('moveDown'), ICON.caretDown, i === dock.length - 1) + btn('del', n.id, t('removeDock'), ICON.minus)}</div>`
-    : btn('add', n.id, t('addDock'), ICON.plus).replace('class="icon-btn"', `class="icon-btn${dock.length >= 4 ? ' full' : ''}"`)}</div>`; // full: still tappable, says why
+    : btn('add', n.id, t('addDock'), ICON.plus).replace('class="icon-btn"', `class="icon-btn${dock.length >= DOCK_MAX ? ' full' : ''}"`)}</div>`; // full: still tappable, says why
   const head = (title, hint) => `<h2>${title}</h2>${hint ? `<p class="hint">${hint}</p>` : ''}`;
   const hidden = Object.keys(store.hidden).length;
   view.innerHTML = `<div class="page settings"><h1>${t('settings')}</h1><div class="set-grid">
     <section class="set-card set-dock">${head(t('dockTitle'), t('dockHint'))}
-      <div class="dock-preview">${dock.map((id, i) => `<span class="${i ? '' : 'on'}">${navSvg(id)}<small>${t(id === 'schedule' ? 'scheduleShort' : id)}</small></span>`).join('')}</div>
-      <h3>${t('inDock')} <small>${dock.length}/4</small></h3>
+      <div class="dock-preview">${dock.map((id, i) => `<span class="${i ? '' : 'on'}">${navSvg(id)}<small>${dockLabel(id)}</small></span>`).join('')}</div>
+      <h3>${t('inDock')} <small>${dock.length}/${DOCK_MAX}</small></h3>
       <div class="set-list">${dock.map((id, i) => line(navItem(id), i)).join('')}</div>
       <h3>${t('available')}</h3>
       <div class="set-list">${NAV.filter(n => !dock.includes(n.id)).map(n => line(n, -1)).join('')}</div>
@@ -310,7 +313,7 @@ function settingsView() {
     const b = e.target.closest('[data-act]');
     if (!b) return;
     const d = [...dock], i = d.indexOf(b.dataset.id);
-    if (b.dataset.act === 'add') { if (d.length >= 4) return toast(t('dockFull'), true); d.push(b.dataset.id); }
+    if (b.dataset.act === 'add') { if (d.length >= DOCK_MAX) return toast(t('dockFull'), true); d.push(b.dataset.id); }
     if (b.dataset.act === 'del') { if (d.length <= 1) return toast(t('dockMin'), true); d.splice(i, 1); }
     if (b.dataset.act === 'up') [d[i - 1], d[i]] = [d[i], d[i - 1]];
     if (b.dataset.act === 'down') [d[i + 1], d[i]] = [d[i], d[i + 1]];

@@ -105,6 +105,12 @@ sealed interface Screen {
     data class MangaBrowse(val query: Map<String, String> = emptyMap()) : Screen
     data class MangaSeries(val id: String) : Screen
     data class MangaRead(val cid: String, val title: String = "", val chapter: String = "") : Screen
+    data object Novels : Screen
+    data class NovelBrowse(val query: Map<String, String> = emptyMap()) : Screen
+    data class NovelTitle(val id: String) : Screen
+    data class NovelRead(val novel: String, val ch: String, val title: String = "", val n: String = "") : Screen {
+        override fun toString() = "NovelRead($novel)" // App keeps a page's state by this: one reader across its chapters, which change in place
+    }
     data object Cinema : Screen
     data class CinemaBrowse(val cat: String) : Screen
     data class CinemaTitle(val slug: String, val show: Boolean = false) : Screen // show: an episode's card, opening its season
@@ -119,13 +125,13 @@ sealed interface Screen {
 // full-screen pages: no dock, no drawer swipe
 var immersed = false // a video or a chapter open (App): no "download finished" toasts over it (Downloads)
     private set
-private fun Screen.full() = this is Screen.Play || this is Screen.CinemaPlay || this is Screen.MangaRead || this is Screen.Offline || this is Screen.Trailer
-private fun Screen.noDock() = full() || this is Screen.Title || this is Screen.MangaSeries || this is Screen.CinemaTitle // a title's page: all its room for its episodes; its own back button leaves it
+private fun Screen.full() = this is Screen.Play || this is Screen.CinemaPlay || this is Screen.MangaRead || this is Screen.NovelRead || this is Screen.Offline || this is Screen.Trailer
+private fun Screen.noDock() = full() || this is Screen.Title || this is Screen.MangaSeries || this is Screen.NovelTitle || this is Screen.CinemaTitle // a title's page: all its room for its episodes; its own back button leaves it
 
-// the sections (app.js NAV), in the drawer; up to 4 of them in the dock (settings)
+// the sections (app.js NAV), in the drawer; up to Store.DOCK_MAX of them in the dock (settings)
 val NAV = linkedMapOf<String, Pair<Screen, () -> ImageVector>>(
     "home" to (Screen.Home to { Ic.home }), "anime" to (Screen.Anime to { Ic.series }), "cinema" to (Screen.Cinema to { Ic.cinema }),
-    "manga" to (Screen.Manga to { Ic.manga }), "schedule" to (Screen.Schedule to { Ic.schedule }), "myList" to (Screen.MyList to { Ic.myList }), "downloads" to (Screen.Downloads() to { Ic.download }),
+    "manga" to (Screen.Manga to { Ic.manga }), "novels" to (Screen.Novels to { Ic.novel }), "schedule" to (Screen.Schedule to { Ic.schedule }), "myList" to (Screen.MyList to { Ic.myList }), "downloads" to (Screen.Downloads() to { Ic.download }),
     "search" to (Screen.Search() to { Ic.search }),
 )
 fun navLabel(id: String) = if (id == "search") (if (Store.lang == "ar") "بحث" else "Search") else t(id)
@@ -330,7 +336,7 @@ fun App() {
                 scrimColor = if (drawerBlocked) Color.Transparent else DrawerDefaults.scrimColor) {
                 Scaffold(containerColor = Bg, bottomBar = { if (!top.noDock()) Dock(top, tab) }) { pad ->
                     // the reader takes the whole screen, under the phone's bars, so its pages don't move as they hide; its own bars pad themselves
-                    Box(Modifier.padding(if (top is Screen.MangaRead) PaddingValues() else pad).fillMaxSize()) {
+                    Box(Modifier.padding(if (top is Screen.MangaRead || top is Screen.NovelRead) PaddingValues() else pad).fillMaxSize()) {
                         saved.SaveableStateProvider(top.toString()) {
                             when (top) {
                                 Screen.Home -> HomeScreen(nav)
@@ -346,6 +352,10 @@ fun App() {
                                 is Screen.MangaBrowse -> MangaBrowseScreen(top.query, nav)
                                 is Screen.MangaSeries -> MangaSeriesScreen(top.id, nav)
                                 is Screen.MangaRead -> MangaReaderScreen(top.cid, nav, top.title, top.chapter)
+                                Screen.Novels -> NovelHomeScreen(nav)
+                                is Screen.NovelBrowse -> NovelBrowseScreen(top.query, nav)
+                                is Screen.NovelTitle -> NovelTitleScreen(top.id, nav)
+                                is Screen.NovelRead -> NovelReaderScreen(top.novel, top.ch, nav, top.title, top.n)
                                 Screen.Cinema -> CinemaHomeScreen(nav)
                                 is Screen.CinemaBrowse -> Column { PageTitle(Cinema.catName(top.cat), nav); PagedGrid(top.cat, { f -> flow { emit(Cinema.list(top.cat, 1, f)) } }, { Cinema.list(top.cat, it) }, nav) }
                                 is Screen.CinemaTitle -> CinemaTitleScreen(top.slug, top.show, nav)
@@ -362,6 +372,7 @@ fun App() {
                 }
             }
             cardMenu?.let { CardMenu(it) { cardMenu = null } }
+            cardAsk?.let { ResumeSheet(it, nav) { cardAsk = null } }
             catSheet?.let { CatSheet(it) { catSheet = null } }
             if (askStorage) StorageSheet { askStorage = false }
             update?.let { u -> UpdateSheet(u) { update = null } }
@@ -378,7 +389,7 @@ private fun Dock(top: Screen, tab: (Screen) -> Unit) {
         val colors = NavigationBarItemDefaults.colors(selectedIconColor = Color.White, selectedTextColor = Color.White, indicatorColor = Red, unselectedIconColor = Muted, unselectedTextColor = Muted)
         Store.dock().forEach { id ->
             val (s, icon) = NAV.getValue(id)
-            NavigationBarItem(section(top) == id, { tab(s) }, { Icon(icon(), null, Modifier.size(24.dp)) }, label = { Text(if (id == "schedule") t("scheduleShort") else navLabel(id), fontSize = 11.sp, maxLines = 1) }, colors = colors)
+            NavigationBarItem(section(top) == id, { tab(s) }, { Icon(icon(), null, Modifier.size(24.dp)) }, label = { Text(when (id) { "schedule" -> t("scheduleShort"); "cinema" -> t("cinemaShort"); else -> navLabel(id) }, fontSize = 11.sp, maxLines = 1) }, colors = colors)
         }
     }
 }
@@ -390,6 +401,7 @@ private fun section(s: Screen) = when (s) {
     Screen.Anime, is Screen.Grid, is Screen.Title, is Screen.Play, is Screen.Section, is Screen.Trailer -> "anime" // a trailer: full screen, no dock to light
     Screen.Cinema, is Screen.CinemaBrowse, is Screen.CinemaTitle, is Screen.CinemaPlay -> "cinema"
     Screen.Manga, is Screen.MangaBrowse, is Screen.MangaSeries, is Screen.MangaRead -> "manga"
+    Screen.Novels, is Screen.NovelBrowse, is Screen.NovelTitle, is Screen.NovelRead -> "novels"
     Screen.Schedule -> "schedule"
     Screen.MyList -> "myList"
     is Screen.Downloads, is Screen.Offline -> "downloads"
@@ -559,7 +571,7 @@ fun Empty(title: String, hint: String, action: @Composable () -> Unit = {}) =
     }
 
 // error text without the sources' names or addresses (app.js noNames)
-fun noNames(m: String?) = (m ?: "").replace(Regex("https?://\\S+|\\b[\\w.-]*(wit ?anime|anime ?rco|egy ?dead|my ?seed|arab ?seed|appswat|mesh ?manga|manga ?swat|olympus ?staff|team-?x|anime ?schedule|mega ?max)[\\w.-]*", RegexOption.IGNORE_CASE),
+fun noNames(m: String?) = (m ?: "").replace(Regex("https?://\\S+|\\b[\\w.-]*(wit ?anime|anime ?rco|egy ?dead|my ?seed|arab ?seed|appswat|mesh ?manga|manga ?swat|olympus ?staff|team-?x|anime ?schedule|mega ?max|novl ?time|novel ?time|sea ?novel|kol ?novel|su ?novels)[\\w.-]*", RegexOption.IGNORE_CASE),
     t("theSite"))
 
 fun toast(msg: String) { if (Net.hasWindow()) Toast.makeText(Net.activity, msg, Toast.LENGTH_SHORT).show() } // none from a background check (Alerts)
@@ -581,7 +593,7 @@ fun setHidden(c: Card, on: Boolean, quiet: Boolean = false) {
     Store.persist("hidden")
     if (!quiet) toast(if (on) t("hiddenN", c.title) else t("shown"))
 }
-private fun hideLabel(c: Card) = t(when { c.type == "manga" -> "hideManga"; c.type != "cinema" -> "hideAnime"; Regex("^/cinema/(serie|season|episode)/").containsMatchIn(c.showPath) -> "hideSeries"; else -> "hideMovie" })
+private fun hideLabel(c: Card) = t(when { c.type == "manga" -> "hideManga"; c.type == "novel" -> "hideNovel"; c.type != "cinema" -> "hideAnime"; Regex("^/cinema/(serie|season|episode)/").containsMatchIn(c.showPath) -> "hideSeries"; else -> "hideMovie" })
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -607,13 +619,88 @@ private fun CardMenu(c: Card, done: () -> Unit) = ModalBottomSheet(done, contain
 /** where a card leads (app.js card's href) */
 fun screenFor(c: Card): Screen = c.open?.let { open ->
     if (open is Screen.MangaRead && open.title.isBlank()) open.copy(title = c.title) else open
-} ?: when {
-    c.type == "episode" -> Screen.Play(c.path)
+} ?: if (c.type == "episode") Screen.Play(c.path) else pageOf(c)
+/** a card's title page */
+private fun pageOf(c: Card): Screen = when {
     c.showPath.startsWith("/manga/series/") -> Screen.MangaSeries(c.showPath.substringAfterLast('/'))
-    c.showPath.startsWith("/cinema/") -> Screen.CinemaTitle(c.showPath.removePrefix("/cinema/"))
+    c.showPath.startsWith("/novel/") -> Screen.NovelTitle(c.showPath.substringAfterLast('/'))
+    // an episode's card has its season's page in open: asked for by its own address, an episode plays straight away
+    c.showPath.startsWith("/cinema/") -> c.open as? Screen.CinemaTitle ?: Screen.CinemaTitle(c.showPath.removePrefix("/cinema/"))
     // a schedule card: its title searched (witanime may not list it yet, or under another spelling)
     c.showPath.startsWith("/airing/") -> Screen.Search(c.title, "anime")
     else -> Screen.Title(c.showPath)
+}
+
+// ---------- a card of something already started: carry on, or its page ----------
+var cardAsk by mutableStateOf<Card?>(null)
+/** where a card's title was left and how to say it; null: not started, so nothing to ask */
+internal fun resumeOf(c: Card): Pair<Screen, String>? {
+    val id = c.showPath.substringAfterLast('/')
+    return when {
+        c.showPath.startsWith("/manga/series/") -> Store["manga"].optJSONObject(id)?.takeIf { it.optString("chapterId").isNotEmpty() }?.let { r ->
+            val n = Manga.chNum(r.opt("n"))
+            Screen.MangaRead(r.optString("chapterId"), r.optString("title").ifEmpty { c.title }, n) to t("resumeCh", n)
+        }
+        c.showPath.startsWith("/novel/") -> Novels.resumeOf(id)?.takeIf { it.second.optString("ch").isNotEmpty() }?.let { (to, r) ->
+            Screen.NovelRead(to, r.optString("ch"), r.optString("title").ifEmpty { c.title }, r.optString("n")) to t("resumeCh", r.optString("n"))
+        }
+        // a film has no episode: the player finds its own place
+        c.showPath.startsWith("/cinema/") -> Store["history"].optJSONObject(c.showPath)?.takeIf { it.optString("slug").isNotEmpty() }?.let { h ->
+            Screen.CinemaPlay(h.optString("slug")) to if (h.has("ep")) t("resume", h.optString("ep")) else t("play")
+        }
+        else -> Store["history"].optJSONObject(c.showPath)?.takeIf { it.optString("epPath").isNotEmpty() }?.let { h -> Screen.Play(h.optString("epPath")) to t("resume", h.optString("ep")) }
+    }
+}
+/** a card that goes straight into an episode or chapter (the latest ones) mustn't, unasked: it could be far past where this reader is, a spoiler */
+internal fun asksFirst(c: Card) = resumeOf(c) != null || (c.showPath.isNotEmpty() && screenFor(c).let { it is Screen.Play || it is Screen.CinemaPlay || it is Screen.MangaRead || it is Screen.NovelRead })
+/** what else the card itself leads to (a latest episode's card: that new episode), unless that's where it was left anyway */
+internal fun ownOf(c: Card, resume: Screen?): Pair<Screen, String>? {
+    val own = screenFor(c)
+    val same = own == resume || own == pageOf(c) || (own is Screen.MangaRead && own.cid == (resume as? Screen.MangaRead)?.cid)
+    return if (same) null else own to c.badge.replace(Regex("\\bEP\\b|الحلقة"), t("ep")).ifEmpty { c.ep?.let { "${t("ep")} $it" } ?: t("play") }
+}
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ResumeSheet(c: Card, nav: Nav, done: () -> Unit) {
+    val resume = remember(c) { resumeOf(c) }
+    val own = remember(c) { ownOf(c, resume?.first) }
+    val reading = c.showPath.startsWith("/manga/") || c.showPath.startsWith("/novel/")
+    val chName = remember(c) { if (c.showPath.startsWith("/novel/")) Novels.resumeOf(c.showPath.substringAfterLast('/'))?.second?.optString("chTitle").orEmpty() else "" }
+    val pill = RoundedCornerShape(99.dp)
+    val tonal = ButtonDefaults.filledTonalButtonColors(Color(0x1FFFFFFF), Color.White)
+    val go = { s: Screen -> done(); nav.go(s) }
+    // opens all the way: it's short, and the buttons are what it's for
+    ModalBottomSheet(done, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = CardC, contentColor = Color.White) {
+        Column(Modifier.navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                NetImage(c.poster, Modifier.width(72.dp).aspectRatio(2 / 3f).clip(RoundedCornerShape(8.dp)).background(Color(0x14FFFFFF)), icon = iconOf(c.showPath))
+                Column(Modifier.padding(start = 16.dp)) {
+                    if (resume != null) Text(t(if (reading) "continueReading" else "continueWatching"), Modifier.padding(bottom = 4.dp), color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    Text(c.title, fontWeight = FontWeight.Bold, fontSize = 18.sp, lineHeight = 24.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    if (chName.isNotEmpty()) Text(chName, Modifier.padding(top = 2.dp), color = Muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            Spacer(Modifier.height(20.dp))
+            // the main choice is never the one that could spoil: where it was left, or if it wasn't started, the title's page
+            Button({ go(resume?.first ?: pageOf(c)) }, Modifier.fillMaxWidth().height(52.dp), shape = pill, colors = ButtonDefaults.buttonColors(Red, Color.White)) {
+                Icon(if (resume != null) Ic.play else Ic.info, null, Modifier.size(18.dp)); Text(resume?.second ?: t("details"), Modifier.padding(start = 10.dp), fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            if (own != null || resume != null) {
+                Spacer(Modifier.height(10.dp))
+                // the lesser choices side by side, under the main one; alone, one takes the width
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    own?.let { (s, what) ->
+                        FilledTonalButton({ go(s) }, Modifier.weight(1f).height(48.dp), shape = pill, colors = tonal) {
+                            Icon(Ic.play, null, Modifier.size(16.dp)); Text(what, Modifier.padding(start = 8.dp), fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                    if (resume != null) FilledTonalButton({ go(pageOf(c)) }, Modifier.weight(1f).height(48.dp), shape = pill, colors = tonal) {
+                        Icon(Ic.info, null, Modifier.size(18.dp)); Text(t("details"), Modifier.padding(start = 8.dp), fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    }
+                }
+            }
+        }
+    }
 }
 
 // ---------- builders (app.js card / row / grid / heroPage) ----------
@@ -637,7 +724,7 @@ private fun ImagePlaceholder(icon: ImageVector?, title: String) = BoxWithConstra
     }
 }
 
-fun iconOf(path: String) = when { path.startsWith("/manga") -> Ic.manga; path.startsWith("/cinema") -> Ic.cinema; else -> Ic.series }
+fun iconOf(path: String) = when { path.startsWith("/manga") -> Ic.manga; path.startsWith("/novel") -> Ic.novel; path.startsWith("/cinema") -> Ic.cinema; else -> Ic.series }
 
 private const val IMAGE_PATIENCE = 4000L
 
@@ -666,7 +753,7 @@ fun PosterCard(c: Card, nav: Nav, width: Dp? = 112.dp) {
     val p = LocalPicks.current
     val on = p?.has(c.showPath) == true
     Column((if (width != null) Modifier.width(width) else Modifier.fillMaxWidth())
-        .combinedClickable(onLongClick = { if (p?.on == true) p.toggle(c.showPath) else { cardMenuPicks = p; cardMenu = c } }) { if (p?.on == true) p.toggle(c.showPath) else nav.go(screenFor(c)) }) {
+        .combinedClickable(onLongClick = { if (p?.on == true) p.toggle(c.showPath) else { cardMenuPicks = p; cardMenu = c } }) { if (p?.on == true) p.toggle(c.showPath) else if (asksFirst(c)) cardAsk = c else nav.go(screenFor(c)) }) {
         Box(Modifier.fillMaxWidth().aspectRatio(2 / 3f).picked(on).clip(RoundedCornerShape(4.dp)).background(CardC)) {
             NetImage(c.poster, Modifier.fillMaxSize(), icon = iconOf(c.showPath), title = c.title)
             if (c.badge.isNotEmpty()) Text(c.badge.replace(Regex("\\bEP\\b|الحلقة"), t("ep")), Modifier.padding(4.dp).background(Red, RoundedCornerShape(3.dp)).padding(horizontal = 5.dp, vertical = 1.dp),
@@ -803,7 +890,7 @@ fun HeroPager(hero: List<Slide>, nav: Nav) {
     Box(Modifier.fillMaxWidth().height(480.dp).clipToBounds()) { // the zoomed slide stays inside
         HorizontalPager(pager) { i ->
             Box(Modifier.fillMaxSize()) {
-                NetImage(hero[i].banner, Modifier.fillMaxSize().graphicsLayer { scaleX = zoom; scaleY = zoom }, icon = when (hero[i].info) { is Screen.MangaSeries -> Ic.manga; is Screen.CinemaTitle -> Ic.cinema; else -> Ic.series }) // its title is drawn over it
+                NetImage(hero[i].banner, Modifier.fillMaxSize().graphicsLayer { scaleX = zoom; scaleY = zoom }, icon = when (hero[i].info) { is Screen.MangaSeries -> Ic.manga; is Screen.NovelTitle -> Ic.novel; is Screen.CinemaTitle -> Ic.cinema; else -> Ic.series }) // its title is drawn over it
                 Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Transparent, .45f to Color(0x33000000), 1f to Bg)))
             }
         }
@@ -856,7 +943,7 @@ fun continued(kinds: Set<String>): List<Card> {
     // an entry saved without a cover (older saves, a page that failed): the one in My List or another save of it, by path or
     // by title (an olympus chapter read while its series page failed is saved under the olympus id, not the listed one)
     fun JSONObject.cover(show: String) = optString("poster").ifEmpty {
-        (Store["list"].values() + Store["manga"].values()).find { it.optString("poster").isNotEmpty() && (it.optString("path") == show || it.optString("title") == optString("title")) }
+        (Store["list"].values() + Store["manga"].values() + Store["novels"].values()).find { it.optString("poster").isNotEmpty() && (it.optString("path") == show || it.optString("title") == optString("title")) }
             ?.optString("poster").orEmpty()
     }
     val watch = Store["history"].values().map { h ->
@@ -868,7 +955,11 @@ fun continued(kinds: Set<String>): List<Card> {
         "manga" to Card("/manga/series/${r.optString("id")}", "manga", r.optString("title"), r.cover("/manga/series/${r.optString("id")}"), "", "", "${t("chShort")} ${Manga.chNum(r.opt("n"))}", null,
             "/manga/series/${r.optString("id")}", open = Screen.MangaRead(r.optString("chapterId"), r.optString("title"), Manga.chNum(r.opt("n")))) to r.optLong("at")
     }
-    return (watch + read).filter { it.first.first in kinds }.sortedByDescending { it.second }.map { it.first.second }
+    val novels = Store["novels"].values().filter { !it.has("use") }.map { r -> // use: moved on to another site's copy, that one's listed
+        val show = "/novel/${r.optString("id")}"
+        "novel" to Card(show, "novel", r.optString("title"), r.cover(show), "", "", "${t("chShort")} ${r.optString("n")}", null, show, open = Screen.NovelRead(r.optString("id"), r.optString("ch"), r.optString("title"), r.optString("n"))) to r.optLong("at")
+    }
+    return (watch + read + novels).filter { it.first.first in kinds }.sortedByDescending { it.second }.map { it.first.second }
 }
 fun listed() = Store["list"].values().sortedByDescending { it.optLong("at") }.map {
     Card(it.optString("path"), it.optString("type"), it.optString("title"), it.optString("poster"), "", "", "", null, it.optString("path"))

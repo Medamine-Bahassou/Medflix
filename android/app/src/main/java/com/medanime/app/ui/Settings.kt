@@ -109,7 +109,7 @@ fun SettingsScreen(part: String, nav: Nav) {
         when (part) {
             "" -> {
                 Group(null) {
-                    Part(Ic.home, t("dockTitle"), "\u2066${dock.size}/4\u2069") { nav.go(Screen.Settings("dock")) }
+                    Part(Ic.home, t("dockTitle"), "\u2066${dock.size}/${Store.DOCK_MAX}\u2069") { nav.go(Screen.Settings("dock")) }
                     Part(Ic.folder, t("storage"), "", if (Store.granted()) Red else Muted) { nav.go(Screen.Settings("storage")) }
                     val cache by produceState<Long?>(null) { value = io { cacheParts().sumOf { it.size } } }
                     Part(Ic.pie, t("cacheTitle"), cache?.let(::mb).orEmpty()) { nav.go(Screen.Settings("cache")) }
@@ -145,7 +145,7 @@ fun SettingsScreen(part: String, nav: Nav) {
                 }
             }
             "dock" -> {
-                Group("${t("inDock")}  \u2066${dock.size}/4\u2069", t("dockHint")) {
+                Group("${t("inDock")}  \u2066${dock.size}/${Store.DOCK_MAX}\u2069", t("dockHint")) {
                     dock.forEachIndexed { i, id ->
                         val move = { j: Int -> Store.setDock(dock.toMutableList().apply { add(j, removeAt(i)) }) }
                         Item(NAV.getValue(id).second(), navLabel(id)) {
@@ -160,7 +160,7 @@ fun SettingsScreen(part: String, nav: Nav) {
                 val rest = NAV.keys.filter { it !in dock }
                 if (rest.isNotEmpty()) Group(t("available")) {
                     rest.forEach { id ->
-                        Item(NAV.getValue(id).second(), navLabel(id), tint = Muted, onClick = { if (dock.size >= 4) toast(t("dockFull")) else Store.setDock(dock + id) }) {
+                        Item(NAV.getValue(id).second(), navLabel(id), tint = Muted, onClick = { if (dock.size >= Store.DOCK_MAX) toast(t("dockFull")) else Store.setDock(dock + id) }) {
                             Icon(Ic.plus, t("addDock"), Modifier.size(18.dp))
                         }
                     }

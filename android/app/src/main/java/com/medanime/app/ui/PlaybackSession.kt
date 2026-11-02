@@ -105,6 +105,9 @@ internal fun encodeScreens(stack: List<Screen>): String = JSONArray().apply {
             is Screen.MangaBrowse -> put("query", JSONObject(s.query))
             is Screen.MangaSeries -> put("id", s.id)
             is Screen.MangaRead -> { put("cid", s.cid); put("title", s.title); put("chapter", s.chapter) }
+            is Screen.NovelBrowse -> put("query", JSONObject(s.query))
+            is Screen.NovelTitle -> put("id", s.id)
+            is Screen.NovelRead -> { put("novel", s.novel); put("ch", s.ch); put("title", s.title); put("n", s.n) }
             is Screen.CinemaBrowse -> put("cat", s.cat)
             is Screen.CinemaTitle -> { put("slug", s.slug); put("show", s.show) }
             is Screen.CinemaPlay -> put("slug", s.slug)
@@ -134,6 +137,10 @@ internal fun decodeScreens(text: String): List<Screen> = JSONArray(text).let { a
             "MangaBrowse" -> Screen.MangaBrowse(j.getJSONObject("query").let { q -> q.keys().asSequence().associateWith { q.getString(it) } })
             "MangaSeries" -> Screen.MangaSeries(j.getString("id"))
             "MangaRead" -> Screen.MangaRead(j.getString("cid"), j.optString("title"), j.optString("chapter"))
+            "Novels" -> Screen.Novels
+            "NovelBrowse" -> Screen.NovelBrowse(j.getJSONObject("query").let { q -> q.keys().asSequence().associateWith { q.getString(it) } })
+            "NovelTitle" -> Screen.NovelTitle(j.getString("id"))
+            "NovelRead" -> Screen.NovelRead(j.getString("novel"), j.getString("ch"), j.optString("title"), j.optString("n"))
             "Cinema" -> Screen.Cinema
             "CinemaBrowse" -> Screen.CinemaBrowse(j.getString("cat"))
             "CinemaTitle" -> Screen.CinemaTitle(j.getString("slug"), j.getBoolean("show"))

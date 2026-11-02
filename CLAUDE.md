@@ -37,12 +37,12 @@ The UI only talks to `window.api`. It never calls the network or storage directl
 
 `www/` is generated (`npm run build:web`). Never edit it. On Android, `ui/` is the app: `NativeActivity` (shell, drawer, dock, shared
 builders), `Net.kt` (requests, Cloudflare through a hidden WebView, the page cache `Pages`), `Store.kt` (user data), `Player.kt`,
-`Screens.kt` / `MangaScreens.kt` / `CinemaScreens.kt`, `Settings.kt`, `Updater.kt`. `mobile.js`, `MainActivity` and the Capacitor plugin
+`Screens.kt` / `MangaScreens.kt` / `CinemaScreens.kt`, `Novels.kt` + `NovelSites.kt` + `NovelScreens.kt` + `NovelReader.kt` + `ReadAloud.kt` (the novels section, Android only so far), `Settings.kt`, `Updater.kt`. `mobile.js`, `MainActivity` and the Capacitor plugin
 Java no longer ship, except `DownloadService` (the download notification), which `Downloads.kt` drives; casting is still to be ported from `Cast`. Live check: `./gradlew testDebugUnitTest`.
 
 ## Data
 
-- **Sources**: witanime.site (anime, the main source), eva.animerco.org (backup servers), appswat.com + olympustaff.com (manga),
+- **Sources**: witanime.site (anime, the main source), eva.animerco.org (backup servers), appswat.com + olympustaff.com (manga), novltime.com (novels: its open JSON API), seanovel.org + sunovels.com + kolnovel.com (novels: plain pages, `NovelSites.kt`; seanovel's robots.txt rules out its `/api/`; sunovels' locked chapters are left out),
   myseed/arabseed/egydead (movies, which hop between domains), cima.my-cima.net and wecima.singles (backup servers),
   animeschedule.net (air times), kitsu.io + IMDb suggest (search suggestions).
 - **Adding a host**: update the allowlist in `main.js`, the `fetch` allowlist in `mobile.js` (and its constants at the top),
@@ -65,7 +65,7 @@ Java no longer ship, except `DownloadService` (the download notification), which
   (`.sheet-wrap` / `.sheet`), and toasts (`toast(msg, bad)`).
 - **Arabic first, RTL**: the default language is `ar`. Every user-visible string goes in `STR` in **both** `ar` and `en`, read with `t('key')`.
   Use logical CSS (`inset-inline-start`, `padding-inline`), `[dir=rtl]` flips, and wrap numbers and Latin text in LTR isolates (`⁦…⁩`).
-- **Phones**: `@media (max-width: 760px)`, with a bottom dock of up to 4 sections plus the ☰ drawer, swipe gestures, and pull-to-refresh.
+- **Phones**: `@media (max-width: 760px)`, with a bottom dock of up to 5 sections plus the ☰ drawer, swipe gestures, and pull-to-refresh.
   Touch handlers must not fight horizontal rows (`.track`, `.fchips`, `.hero`).
 - **No site names in the UI**: `noNames()` strips source names from error messages.
 - Reuse existing builders before writing new ones: `card`, `row`, `grid`, `skel`, `storageSheet`/`updateSheet` (sheet pattern), `confirmSheet`, `selectable`.
