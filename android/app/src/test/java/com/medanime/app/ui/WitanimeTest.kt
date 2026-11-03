@@ -50,15 +50,18 @@ class WitanimeTest {
         assertTrue("spellings", e.spelled("Naruto: Shippuuden") == e.spelled("Naruto: Shippūden") && e.spelled("Naruto: Shippuden") == e.spelled("Naruto: Shippūden"))
         assertTrue("season words and arabic", e.spelled("مسلسل Breaking Bad الموسم الاول") == "breaking bad" && e.spelled("المؤسس عثمان") == "")
         val tv = org.json.JSONArray("""[{"season":2,"number":1,"rating":{"average":8}},{"season":1,"number":2,"rating":{"average":7.5}},{"season":1,"number":1,"rating":{"average":9}},{"season":1,"number":null,"rating":{"average":9}},{"season":1,"number":3,"rating":{"average":null}}]""")
-        assertTrue("tvmaze", e.tvmazeRows(tv) == listOf(EpRate(1, 1, 9.0), EpRate(1, 2, 7.5), EpRate(2, 1, 8.0)))
+        assertTrue("tvmaze: specials out, no score yet kept", e.tvmazeRows(tv) == listOf(EpRate(1, 1, 9.0), EpRate(1, 2, 7.5), EpRate(1, 3, null), EpRate(2, 1, 8.0)))
         val edge = { s: String, n: String, r: String -> org.json.JSONObject("""{"node":{"series":{"displayableEpisodeNumber":{"displayableSeason":{"season":"$s"},"episodeNumber":{"episodeNumber":"$n"}}},"ratingsSummary":{"aggregateRating":$r}}}""") }
-        assertTrue("imdb", e.imdbRows(listOf(edge("1", "2", "8.6"), edge("1", "1", "9.1"), edge("unknown", "3", "8"), edge("1", "4", "null"))) == listOf(EpRate(1, 1, 9.1), EpRate(1, 2, 8.6)))
+        assertTrue("imdb", e.imdbRows(listOf(edge("1", "2", "8.6"), edge("1", "1", "9.1"), edge("unknown", "3", "8"), edge("1", "4", "null"))) == listOf(EpRate(1, 1, 9.1), EpRate(1, 2, 8.6), EpRate(1, 4, null)))
         val show = { name: String, type: String -> org.json.JSONObject().put("name", name).put("type", type) }
         val live = show("One Piece", "Scripted"); val anime = show("One Piece", "Animation"); val want = setOf(e.spelled("One Piece"))
         assertTrue("an anime takes the animation", e.pickShow(listOf(live, anime), want, true) === anime)
         assertTrue("two of a name are none", e.pickShow(listOf(live, anime), want, false) == null)
-        val rows = listOf(EpRate(1, 1, 7.4), EpRate(1, 2, 9.0), EpRate(2, 1, 8.0))
-        assertTrue("seasons and axis", e.starts(rows) == listOf(0, 2) && e.floor(rows) == 7 && e.floor(listOf(EpRate(1, 1, 10.0))) == 9)
+        val rows = listOf(EpRate(1, 1, 9.0), EpRate(1, 2, null), EpRate(1, 3, 8.0), EpRate(2, 1, null))
+        assertTrue("rated", e.rated(rows) == 2)
+        assertTrue("a season averages only its scored episodes", e.seasonAvg(rows, 1) == "8.5" && e.seasonAvg(rows, 2) == "–")
+        // the picture asked for: 9.7 the top tier, 9.5 and 9.0 the next, 8.9 the next
+        assertTrue("tiers", listOf(9.7, 9.6, 9.5, 9.0, 8.9, 8.0, 7.9, 7.0, 6.0, 5.0, 4.9, 1.0).map(e::tier) == listOf(0, 0, 1, 1, 2, 2, 3, 3, 4, 5, 6, 6))
     }
 
     @Test

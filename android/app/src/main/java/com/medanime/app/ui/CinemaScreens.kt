@@ -66,6 +66,8 @@ fun CinemaTitleScreen(slug: String, show: Boolean, nav: Nav) {
             Store.version.intValue
             val h = Store["history"].optJSONObject(path)
             val eps = m.episodes
+            var rates by remember { mutableStateOf(false) } // the episode ratings' sheet: a series', a film has no episodes to rate
+            if (rates) EpisodeGraph(listOf(m.title), m.imdbId, false) { rates = false }
             val play = if (!slug.contains('/')) Screen.CinemaPlay(slug) to t("play") // a film
                 else if (h != null) Screen.CinemaPlay(h.optString("slug")) to "${t("play")} · ${t("ep")} ${h.optString("ep")}"
                 else eps.firstOrNull()?.let { Screen.CinemaPlay(it.slug) to t("play") }
@@ -102,8 +104,9 @@ fun CinemaTitleScreen(slug: String, show: Boolean, nav: Nav) {
                         }
                     }
                 },
-                after = { item { CreditsSection(listOf(m.title), false, if (slug.contains('/')) "" else m.year, kind = if (slug.contains('/')) "series" else "cinema", slug = slug, nav = nav) }; if (slug.contains('/')) item { EpisodeGraph(listOf(m.title), m.imdbId, false) }; item { CardRowView(t("moreLike"), m.related, nav) } }, play = play?.let { (s, label) -> label to { nav.go(s) } },
-                menu = listOfNotNull(if (m.trailer.isNotEmpty()) MenuItem(t("trailer"), Ic.play) { nav.go(Screen.Trailer(m.trailer, m.title)) } else null))
+                after = { item { CreditsSection(listOf(m.title), false, if (slug.contains('/')) "" else m.year, kind = if (slug.contains('/')) "series" else "cinema", slug = slug, nav = nav) }; item { CardRowView(t("moreLike"), m.related, nav) } }, play = play?.let { (s, label) -> label to { nav.go(s) } },
+                menu = listOfNotNull(if (slug.contains('/')) MenuItem(t("epRatings"), Ic.star) { rates = true } else null,
+                    if (m.trailer.isNotEmpty()) MenuItem(t("trailer"), Ic.play) { nav.go(Screen.Trailer(m.trailer, m.title)) } else null))
         }
     }
 }

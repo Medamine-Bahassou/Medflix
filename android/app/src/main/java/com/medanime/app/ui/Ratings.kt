@@ -6,8 +6,8 @@ import androidx.compose.material3.*
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.horizontalScroll
@@ -18,9 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.text.drawText
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -39,8 +37,8 @@ import org.json.JSONObject
 import org.jsoup.Jsoup
 import java.net.URLEncoder
 
-/** one episode's point on the show page's graph */
-internal data class EpRate(val season: Int, val ep: Int, val score: Double)
+/** one episode in the show page's grid; score null: listed, no score yet */
+internal data class EpRate(val season: Int, val ep: Int, val score: Double?)
 
 /** each episode's rating, from both sites (ratings.js episodes) */
 internal object EpisodeRatings {
@@ -54,17 +52,17 @@ internal object EpisodeRatings {
     fun spelled(s: String) = latin(java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD).replace(Regex("\\p{M}"), "")).replace(Regex("([ou])u"), "$1")
     private fun asked(names: List<String>) = names.map(::latin).filter { it.isNotEmpty() }.distinct().take(6) // kitsu's list can run to 20 languages: tvmaze allows 20 calls in 10s
     private fun inOrder(rows: List<EpRate>) = rows.sortedWith(compareBy({ it.season }, { it.ep }))
-    /** season and number left out: a special, not on the line. Anime seasons are often years on tvmaze */
+    /** season and number left out: a special, no place in the grid. No score yet stays (null): the grid's "?". Anime seasons are often years on tvmaze */
     fun tvmazeRows(eps: org.json.JSONArray) = inOrder(objects(eps).mapNotNull { e ->
         val score = e.optJSONObject("rating")?.optDouble("average") ?: Double.NaN
-        if (e.optInt("season") > 0 && e.optInt("number") > 0 && score > 0) EpRate(e.optInt("season"), e.optInt("number"), score) else null
+        if (e.optInt("season") > 0 && e.optInt("number") > 0) EpRate(e.optInt("season"), e.optInt("number"), score.takeIf { it > 0 }) else null
     })
     fun imdbRows(edges: List<JSONObject>) = inOrder(edges.mapNotNull { edge ->
         val n = edge.optJSONObject("node"); val d = n?.optJSONObject("series")?.optJSONObject("displayableEpisodeNumber")
         val s = d?.optJSONObject("displayableSeason")?.optString("season")?.toIntOrNull() ?: 0
         val ep = d?.optJSONObject("episodeNumber")?.optString("episodeNumber")?.toIntOrNull() ?: 0
         val score = n?.optJSONObject("ratingsSummary")?.optDouble("aggregateRating") ?: Double.NaN
-        if (s > 0 && ep > 0 && score > 0) EpRate(s, ep, score) else null
+        if (s > 0 && ep > 0) EpRate(s, ep, score.takeIf { it > 0 }) else null
     })
     /** the one show of one of these names (two: none, rather than the wrong one's). An anime's is the animation: One Piece is live action too */
     fun pickShow(shows: List<JSONObject>, want: Set<String>, anime: Boolean) =
@@ -105,7 +103,7 @@ internal object EpisodeRatings {
     }
     /**
      * both sites, each an extra: found by the show's names, else kitsu's (witanime's "Kimetsu no Yaiba" is "Demon Slayer"). tvmaze
-     * names its imdb id, so the two are one show. Fewer than 2 rated: no line to draw
+     * names its imdb id, so the two are one show. Fewer than 2 rated: nothing to compare
      */
     suspend fun get(names: List<String>, id: String, anime: Boolean): Graph? = withContext(Dispatchers.Default) {
         val own = names.filter { spelled(it).isNotEmpty() }
@@ -116,66 +114,100 @@ internal object EpisodeRatings {
         val tv = async { show?.let { s -> Scores.calm { tvmazeRows(org.json.JSONArray(get("https://api.tvmaze.com/shows/${s.optInt("id")}/episodes"))) } }.orEmpty() }
         val im = async { if (tt.isEmpty()) emptyList() else Scores.calm { imdbEps(tt) }.orEmpty() }
         val tvmaze = tv.await(); val imdb = im.await()
-        if (tvmaze.size > 1 || imdb.size > 1) Graph(imdb, tvmaze, show?.optString("url").orEmpty()) else null
+        if (rated(tvmaze) > 1 || rated(imdb) > 1) Graph(imdb, tvmaze, show?.optString("url").orEmpty()) else null
     }
-    /** where a new season starts on the line */
-    fun starts(rows: List<EpRate>) = rows.indices.filter { it == 0 || rows[it - 1].season != rows[it].season }
-    /** the y axis: whole scores, from just under the lowest */
-    fun floor(rows: List<EpRate>) = minOf(9, kotlin.math.floor(rows.minOf { it.score }).toInt())
+    fun rated(rows: List<EpRate>) = rows.count { it.score != null }
+    /** the grid's colours, best first (TIERS), by the score each starts at */
+    fun tier(v: Double) = listOf(9.6, 9.0, 8.0, 7.0, 6.0, 5.0).indexOfFirst { v >= it }.let { if (it < 0) 6 else it }
+    /** a season's average, of its scored episodes */
+    fun seasonAvg(rows: List<EpRate>, s: Int) = rows.filter { it.season == s }.mapNotNull { it.score }.let { v -> if (v.isEmpty()) "–" else String.format(java.util.Locale.US, "%.1f", v.average()) }
     fun seasonName(s: Int) = if (s > 1900) "$s" else "${t("seasonShort")}$s"
 }
 
-/** the show page's graph: a line per season, a tap reads the episode under it; IMDb and TVmaze's, side by side (ratings.js graph) */
+// the scale's own colours, not the app's: a score reads by them. The text on each is what's legible there (style.css .eg-t0...)
+private val TIERS = listOf(Color(0xFF1A8FE0) to Color.White, Color(0xFF186A3B) to Color.White, Color(0xFF28B463) to Color.Black, Color(0xFFF4D03F) to Color.Black,
+    Color(0xFFF39C12) to Color.Black, Color(0xFFE74C3C) to Color.White, Color(0xFF633974) to Color.White)
+
+/** a score in the grid; null: listed, no score yet */
 @Composable
-internal fun EpisodeGraph(names: List<String>, imdbId: String, anime: Boolean) {
-    val g by produceState<EpisodeRatings.Graph?>(null, names, imdbId, anime) { value = EpisodeRatings.get(names, imdbId, anime) }
-    val sources = g?.let { listOf("IMDb" to it.imdb, "TVmaze" to it.tvmaze).filter { s -> s.second.size > 1 } }.orEmpty()
-    if (sources.isEmpty()) return
+private fun Grade(score: Double?, width: androidx.compose.ui.unit.Dp) {
+    val (bg, fg) = score?.let { TIERS[EpisodeRatings.tier(it)] } ?: (Color(0xFFBDBDBD) to Color.Black)
+    Box(Modifier.width(width).height(44.dp).padding(3.dp).background(bg, RoundedCornerShape(6.dp)), Alignment.Center) {
+        Text(score?.let { String.format(java.util.Locale.US, "%.1f", it) } ?: "?", color = fg, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+    }
+}
+
+/** a show's episode ratings, a sheet from its ⋮ menu: the sites are asked only once it's open (app.js ratingsSheet) */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun EpisodeGraph(names: List<String>, imdbId: String, anime: Boolean, onClose: () -> Unit) {
+    var done by remember { mutableStateOf(false) }
+    val g by produceState<EpisodeRatings.Graph?>(null, names, imdbId, anime) { value = EpisodeRatings.get(names, imdbId, anime); done = true }
+    val sources = g?.let { listOf("IMDb" to it.imdb, "TVmaze" to it.tvmaze).filter { s -> EpisodeRatings.rated(s.second) > 1 } }.orEmpty()
+    // full height at once: half a grid says little
+    ModalBottomSheet(onClose, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = CardC, contentColor = Color.White) {
+        Column(Modifier.padding(horizontal = 16.dp).fillMaxWidth()) {
+            Text(t("epRatings"), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            when {
+                !done -> Box(Modifier.fillMaxWidth().padding(32.dp), Alignment.Center) { CircularProgressIndicator(color = Red) }
+                sources.isEmpty() -> Text(t("noEpRatings"), Modifier.padding(vertical = 24.dp), color = Muted)
+                else -> EpisodeGrid(sources, g?.url.orEmpty())
+            }
+            Spacer(Modifier.navigationBarsPadding().height(16.dp))
+        }
+    }
+}
+
+/**
+ * a column a season, a row an episode, each score coloured, each season's average under it; IMDb's and TVmaze's to pick from
+ * (ratings.js graph). Its rows are lazy, scrolling in what height the sheet has: a long show is 1200 of them
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ColumnScope.EpisodeGrid(sources: List<Pair<String, List<EpRate>>>, url: String) {
     var pick by remember { mutableIntStateOf(0) }
     val rows = sources[pick.coerceAtMost(sources.lastIndex)].second
-    var at by remember(rows) { mutableIntStateOf(rows.indices.maxByOrNull { rows[it].score } ?: 0) } // starts on the best one, to say what the line means
-    val r = rows[at.coerceAtMost(rows.lastIndex)]
-    val line = "⁦${EpisodeRatings.seasonName(r.season)} ${t("epShort")} ${r.ep}⁩ · ★ ${String.format(java.util.Locale.US, "%.1f", r.score)}"
-    val measure = androidx.compose.ui.text.rememberTextMeasurer()
-    val labels = androidx.compose.ui.text.TextStyle(color = Muted, fontSize = 11.sp)
+    val seasons = remember(rows) { rows.map { it.season }.distinct() }
+    val eps = remember(rows) { rows.map { it.ep }.distinct().sorted() } // the numbers it has, not 1 to the last: a talk show's can be dates, a million rows
+    val at = remember(rows) { rows.associateBy { it.season to it.ep } }
+    val label = 48.dp; val cell = 58.dp
+    val center = androidx.compose.ui.text.style.TextAlign.Center
     val uri = androidx.compose.ui.platform.LocalUriHandler.current
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()) {
-        Text(t("epRatings"), fontSize = 18.sp)
-        Row(Modifier.padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            sources.forEachIndexed { i, s ->
-                FilterChip(i == pick, { pick = i }, { Text(s.first) }, shape = RoundedCornerShape(99.dp), colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Red, selectedLabelColor = Color.White))
-            }
+    Row(Modifier.padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        sources.forEachIndexed { i, s ->
+            FilterChip(i == pick, { pick = i }, { Text(s.first) }, shape = RoundedCornerShape(99.dp), colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Red, selectedLabelColor = Color.White))
         }
-        androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(200.dp).semantics { contentDescription = "${t("epRatings")}: $line" }
-            .pointerInput(rows) { // a tap only: a drag is the page's to scroll and swipe
-                detectTapGestures { p ->
-                    val left = 26.dp.toPx()
-                    at = (((p.x - left) / (size.width - left - 2.dp.toPx())) * (rows.size - 1)).let { Math.round(it) }.coerceIn(0, rows.lastIndex)
-                }
-            }) {
-            val left = 26.dp.toPx(); val top = 8.dp.toPx(); val bottom = 20.dp.toPx(); val lo = EpisodeRatings.floor(rows)
-            val x = { i: Int -> left + i * (size.width - left - 2.dp.toPx()) / (rows.size - 1) }
-            val y = { v: Double -> top + ((10 - v) * (size.height - top - bottom) / (10 - lo)).toFloat() }
-            val grid = Color(0x1AFFFFFF)
-            for (v in lo..10) {
-                drawLine(grid, androidx.compose.ui.geometry.Offset(left, y(v.toDouble())), androidx.compose.ui.geometry.Offset(size.width, y(v.toDouble())), 1.dp.toPx())
-                drawText(measure, "$v", androidx.compose.ui.geometry.Offset(0f, y(v.toDouble()) - 7.dp.toPx()), labels)
-            }
-            val starts = EpisodeRatings.starts(rows)
-            starts.forEachIndexed { k, n ->
-                val end = starts.getOrElse(k + 1) { rows.size }
-                if (n > 0) drawLine(grid, androidx.compose.ui.geometry.Offset(x(n), top), androidx.compose.ui.geometry.Offset(x(n), size.height - bottom), 1.dp.toPx())
-                // room for it: a thousand episodes of year-long seasons would be a smudge of numbers
-                if (x(minOf(end, rows.lastIndex)) - x(n) > 34.dp.toPx()) drawText(measure, EpisodeRatings.seasonName(rows[n].season), androidx.compose.ui.geometry.Offset(x(n) + 2.dp.toPx(), size.height - 16.dp.toPx()), labels)
-                val path = androidx.compose.ui.graphics.Path()
-                for (i in n until end) if (i == n) path.moveTo(x(i), y(rows[i].score)) else path.lineTo(x(i), y(rows[i].score))
-                drawPath(path, Red, style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx(), join = androidx.compose.ui.graphics.StrokeJoin.Round))
-            }
-            drawCircle(Color.White, 4.dp.toPx(), androidx.compose.ui.geometry.Offset(x(at.coerceAtMost(rows.lastIndex)), y(r.score)))
-        }
-        Text(line, Modifier.padding(top = 8.dp), fontWeight = FontWeight.Bold, fontSize = 14.sp)
-        g?.url?.takeIf { it.isNotEmpty() && sources.any { s -> s.first == "TVmaze" } }?.let { url -> TextButton({ uri.openUri(url) }) { Text("TVmaze · CC BY-SA") } }
     }
+    FlowRow(Modifier.padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        TIERS.forEachIndexed { i, (bg, _) ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.padding(end = 6.dp).size(12.dp).background(bg, RoundedCornerShape(99.dp)))
+                Text(t("tier$i"), fontSize = 12.sp)
+            }
+        }
+    }
+    // sideways for many seasons; weight, not fill: a short grid leaves the sheet short, a long one scrolls in what's left under the legend
+    Box(Modifier.weight(1f, false).horizontalScroll(rememberScrollState())) {
+        Column(Modifier.width(label + cell * seasons.size)) {
+            Row {
+                Spacer(Modifier.width(label))
+                seasons.forEach { s -> Text(EpisodeRatings.seasonName(s), Modifier.width(cell).padding(vertical = 4.dp), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, textAlign = center, maxLines = 1) }
+            }
+            LazyColumn(Modifier.weight(1f, false).fillMaxWidth()) {
+                items(eps, key = { it }) { n ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("${t("epShort")}$n", Modifier.width(label), fontSize = 13.sp, textAlign = center, maxLines = 1)
+                        seasons.forEach { s -> at[s to n]?.let { Grade(it.score, cell) } ?: Spacer(Modifier.width(cell)) }
+                    }
+                }
+            }
+            Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(t("avgShort"), Modifier.width(label), color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = center, maxLines = 1)
+                seasons.forEach { s -> Text(EpisodeRatings.seasonAvg(rows, s), Modifier.width(cell), fontSize = 16.sp, fontWeight = FontWeight.Bold, textAlign = center, maxLines = 1) }
+            }
+        }
+    }
+    if (url.isNotEmpty() && sources.any { it.first == "TVmaze" }) TextButton({ uri.openUri(url) }) { Text("TVmaze · CC BY-SA") }
 }
 
 internal object SourceRatings {

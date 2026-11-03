@@ -677,6 +677,8 @@ fun TitleScreen(path: String, nav: Nav) {
             val filler by produceState(emptyMap<Int, String>(), d.title) { // so are these marks
                 if (type == "anime") value = runCatching { Witanime.filler(listOf(d.title) + d.alt.split(Regex("\\s*[,،]\\s*"))) }.getOrDefault(emptyMap())
             }
+            var rates by remember { mutableStateOf(false) } // the episode ratings' sheet
+            if (rates) EpisodeGraph(listOf(d.title) + d.alt.split(Regex("[,،]")), "", true) { rates = false }
             // its next episode's day and time, from the schedule: a red chip first, when it's in this week's timetable
             val air by produceState<Air?>(null, d.title) {
                 if (type == "anime") value = runCatching { Witanime.nextAir(listOf(d.title) + d.alt.split(Regex("\\s*[,،]\\s*"))) }.getOrNull()
@@ -694,10 +696,11 @@ fun TitleScreen(path: String, nav: Nav) {
                 d.episodes.map { Numbered(it.ep, Store["seen"].has(it.path), it.path == last, Screen.Play(it.path), it.path, com.medanime.app.Downloads.done(it.path),
                     thumb = info[it.ep.toIntOrNull()]?.thumb?.ifEmpty { null } ?: d.banner.ifEmpty { d.poster }, name = info[it.ep.toIntOrNull()]?.name.orEmpty(), filler = filler[it.ep.toIntOrNull()].orEmpty()) },
                 menu = listOfNotNull(
+                    if (type == "anime") MenuItem(t("epRatings"), Ic.star) { rates = true } else null,
                     if (type == "anime") MenuItem(t("autoDlShort"), Ic.download, Alerts.autoDl(path)) { Alerts.toggleDl(path, d.title, d.poster, d.episodes.lastOrNull()?.path ?: "") } else null,
                     if (d.trailer.isNotEmpty()) MenuItem(t("trailer"), Ic.play) { nav.go(Screen.Trailer(d.trailer, d.title)) } else null),
                 play = first?.let { (if (h != null) t("resume", h.optString("ep")) else t("play")) to { nav.go(Screen.Play(it)) } },
-                after = { item { CreditsSection(listOf(d.title) + d.alt.split(Regex("[,،]")), true, nav = nav) }; if (type == "anime") item { EpisodeGraph(listOf(d.title) + d.alt.split(Regex("[,،]")), "", true) }; item { CardRowView(t("moreLike"), d.related, nav) } },
+                after = { item { CreditsSection(listOf(d.title) + d.alt.split(Regex("[,،]")), true, nav = nav) }; item { CardRowView(t("moreLike"), d.related, nav) } },
                 acts = { ids -> listOfNotNull("seen" to t("markWatched"), "unseen" to t("markUnwatched"), if (ids.any { !com.medanime.app.Downloads.done(it) }) "dl" to t("downloadShort") else null,
                     if (ids.any { com.medanime.app.Downloads.done(it) }) "del" to t("delDownloads") else null) },
                 run = { v, ids ->

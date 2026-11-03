@@ -3,9 +3,9 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 function ratings(fetch = async () => { throw Error('offline'); }) {
-  const ctx = { DOMParser: class { parseFromString() { return { querySelectorAll: () => [] }; } }, api: { fetch }, IntersectionObserver: class { observe() {} }, MutationObserver: class { observe() {} }, document: { documentElement: {} }, esc: s => s };
+  const ctx = { DOMParser: class { parseFromString() { return { querySelectorAll: () => [] }; } }, api: { fetch }, IntersectionObserver: class { observe() {} }, MutationObserver: class { observe() {} }, document: { documentElement: {} }, esc: s => s, t: k => ({ seasonShort: 'S', epShort: 'E', avgShort: 'AVG' })[k] || k, scraper: { remember: (k, go) => go(), kitsuShow: async () => null } };
   vm.createContext(ctx);
-  const code = fs.readFileSync('ratings.js', 'utf8').replace('  return {\n    // a supplied', '  this.testing = { lookup, filmPick, filmScore, spelled, tvmazeRows, imdbRows, pickShow, graphFloor };\n  return {\n    // a supplied');
+  const code = fs.readFileSync('ratings.js', 'utf8').replace('  return {\n    // a supplied', '  this.testing = { lookup, filmPick, filmScore, spelled, tvmazeRows, imdbRows, pickShow, rated, tier, seasonAvg, gridHtml };\n  return {\n    // a supplied');
   vm.runInContext(code + '\nthis.ratings = Ratings;', ctx);
   return { ...ctx.testing, ...ctx.ratings };
 }
@@ -27,20 +27,57 @@ test('episode graph: an anime takes the animation, and two of a name are none', 
   assert.equal(pickShow([live], want, true), null);
   assert.equal(pickShow([{ name: 'The One Piece', type: 'Animation' }], want, true), null);
 });
-test('episode graph: tvmaze rows in order, specials and unrated left out', () => {
-  const { tvmazeRows } = ratings();
+test('episode grid: tvmaze rows in order, specials out, no score yet kept as null', () => {
+  const { tvmazeRows, rated } = ratings();
   const e = (season, number, average) => ({ season, number, rating: { average } });
-  assert.deepEqual(JSON.parse(JSON.stringify(tvmazeRows([e(2, 1, 8), e(1, 2, 7.5), e(1, 1, 9), e(1, null, 9), e(1, 3, null)]))), [[1, 1, 9], [1, 2, 7.5], [2, 1, 8]]);
+  const rows = tvmazeRows([e(2, 1, 8), e(1, 2, 7.5), e(1, 1, 9), e(1, null, 9), e(1, 3, null)]);
+  assert.deepEqual(JSON.parse(JSON.stringify(rows)), [[1, 1, 9], [1, 2, 7.5], [1, 3, null], [2, 1, 8]]);
+  assert.equal(rated(rows), 3);
 });
-test('episode graph: imdb rows read its numbers, and skip what it lacks', () => {
+test('episode grid: imdb rows read its numbers, and skip what has none', () => {
   const { imdbRows } = ratings();
   const edge = (season, episodeNumber, aggregateRating) => ({ node: { series: { displayableEpisodeNumber: { displayableSeason: { season }, episodeNumber: { episodeNumber } } }, ratingsSummary: { aggregateRating } } });
-  assert.deepEqual(JSON.parse(JSON.stringify(imdbRows([edge('1', '2', 8.6), edge('1', '1', 9.1), edge('unknown', '3', 8), edge('1', '4', null), { node: {} }]))), [[1, 1, 9.1], [1, 2, 8.6]]);
+  assert.deepEqual(JSON.parse(JSON.stringify(imdbRows([edge('1', '2', 8.6), edge('1', '1', 9.1), edge('unknown', '3', 8), edge('1', '4', null), { node: {} }]))), [[1, 1, 9.1], [1, 2, 8.6], [1, 4, null]]);
 });
-test('episode graph: the axis starts just under the lowest, with room for a line', () => {
-  const { graphFloor } = ratings();
-  assert.equal(graphFloor([[1, 1, 7.4], [1, 2, 9]]), 7);
-  assert.equal(graphFloor([[1, 1, 10], [1, 2, 10]]), 9);
+test('episode grid: a score takes the tier it reaches', () => {
+  const { tier } = ratings();
+  // the picture asked for: 9.7 the top tier, 9.5 and 9.0 the next, 8.9 the next
+  assert.deepEqual([9.7, 9.6, 9.5, 9, 8.9, 8, 7.9, 7, 6, 5, 4.9, 1].map(tier), [0, 0, 1, 1, 2, 2, 3, 3, 4, 5, 6, 6]);
+});
+test('episode grid: a season averages only its scored episodes', () => {
+  const { seasonAvg } = ratings();
+  const rows = [[1, 1, 9], [1, 2, null], [1, 3, 8], [2, 1, null]];
+  assert.equal(seasonAvg(rows, 1), '8.5');
+  assert.equal(seasonAvg(rows, 2), '–');
+});
+test('episode grid: columns by season, rows by episode, "?" for no score, blank for no such episode', () => {
+  const { gridHtml } = ratings();
+  const html = gridHtml([[1, 1, 8.9], [1, 2, 9.7], [2, 1, 9], [2, 2, null], [2, 3, null]]);
+  const rows = html.split('<tbody>')[1].split('</tbody>')[0].split('</tr>').filter(r => r.includes('<td')).map(r => [...r.matchAll(/<td[^>]*>([^<]*)<\/td>/g)].map(m => m[1]));
+  assert.deepEqual(rows, [['8.9', '9.0'], ['9.7', '?'], ['', '?']]);
+  assert.match(html, /<th>S1<\/th><th>S2<\/th>/);
+  assert.match(html, /eg-t2[^>]*>8\.9/);
+  assert.match(html, /eg-t0[^>]*>9\.7/);
+  assert.match(html, /<th>AVG<\/th><th>9\.3<\/th><th>9\.0<\/th>/);
+});
+test('episode grid sheet: spins, then says so when no site has the show', async () => {
+  const { graph } = ratings();
+  const el = { isConnected: true, innerHTML: '' }, asked = graph(el, ['Nothing Known'], '', false);
+  assert.match(el.innerHTML, /spin/);
+  await asked;
+  assert.match(el.innerHTML, /noEpRatings/);
+});
+test('episode grid sheet: closed before the answer, nothing is drawn', async () => {
+  const { graph } = ratings();
+  const el = { isConnected: false, innerHTML: '' };
+  await graph(el, ['Nothing Known'], '', false);
+  assert.match(el.innerHTML, /spin/);
+});
+test('episode grid: a year-long season shows as its year, and date-like numbers make no empty rows', () => {
+  const { gridHtml } = ratings();
+  const html = gridHtml([[2004, 1, 8], [2004, 20210101, 7]]);
+  assert.match(html, /<th>2004<\/th>/);
+  assert.equal((html.match(/<tr>/g) || []).length, 4); // head, the 2 it has, foot
 });
 test('film ratings distinguish remakes, TV and ambiguous names', () => {
   const { filmPick } = ratings();

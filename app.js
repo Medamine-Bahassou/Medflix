@@ -21,7 +21,7 @@ const STR = {
     f_sort: 'الترتيب', f_type: 'النوع', f_status: 'الحالة', f_year: 'السنة', f_season: 'الموسم', seasons: 'المواسم', f_version: 'الترجمة',
     f_country: 'البلد', f_source: 'المصدر', f_genres: 'التصنيفات',
     added: n => `تمت إضافة «\u2068${n}\u2069» إلى قائمتي`, hiddenN: n => `أُخفي «\u2068${n}\u2069»`, hiddenTitle: 'العناصر المخفية', hiddenHint: 'اضغط مطولاً على أي بطاقة لإخفائها من كل الصفحات. اضغط ✕ على العنصر هنا لإظهاره مجددًا.', unhide: 'إظهار مجددًا', noHidden: 'لا توجد عناصر مخفية', shown: 'سيظهر مجددًا',
-    hideAnime: 'إخفاء هذا الأنمي', hideManga: 'إخفاء هذه المانجا', hideMovie: 'إخفاء هذا الفيلم', hideSeries: 'إخفاء هذا المسلسل', listAdd: 'إضافة إلى قائمتي', listRemove: 'إزالة من قائمتي', openHidden: n => `العناصر المخفية (${n})`, removed: 'تمت الإزالة من قائمتي', ep: 'الحلقة', epShort: 'ح', episode: 'الحلقة', filler: 'حشو', mixed: 'حشو جزئي', hideFiller: 'إخفاء حلقات الحشو', epRatings: 'تقييمات الحلقات', seasonShort: 'م',
+    hideAnime: 'إخفاء هذا الأنمي', hideManga: 'إخفاء هذه المانجا', hideMovie: 'إخفاء هذا الفيلم', hideSeries: 'إخفاء هذا المسلسل', listAdd: 'إضافة إلى قائمتي', listRemove: 'إزالة من قائمتي', openHidden: n => `العناصر المخفية (${n})`, removed: 'تمت الإزالة من قائمتي', ep: 'الحلقة', epShort: 'ح', episode: 'الحلقة', filler: 'حشو', mixed: 'حشو جزئي', hideFiller: 'إخفاء حلقات الحشو', epRatings: 'تقييمات الحلقات', noEpRatings: 'لا تتوفر تقييمات حلقات لهذا العنوان.', seasonShort: 'م', avgShort: 'المعدل', tier0: 'تحفة فنية', tier1: 'مذهل', tier2: 'رائع', tier3: 'جيد', tier4: 'متوسط', tier5: 'سيئ', tier6: 'رديء',
     nothing: 'لا يوجد شيء هنا', tryElse: 'جرّب شيئًا آخر.', unreachable: 'تعذّر الوصول إلى الموقع', retry: 'إعادة المحاولة',
     continueWatching: 'تابع المشاهدة', refreshSite: 'تحديث من الموقع', refresh: 'تحديث', updated: 'تم التحديث', updateTitle: 'تحديث متوفر', updateText: 'يوجد إصدار أحدث من التطبيق. حدّثه الآن، ستبقى بياناتك كما هي.', updateGo: 'تحديث الآن', updateGetting: 'جارٍ التنزيل', updateAllow: 'اسمح للتطبيق بتثبيت التحديثات، ثم اضغط تحديث الآن مرة أخرى', updateFailed: 'تعذّر التحديث، يتم التنزيل من المتصفح',
     feedback: 'ملاحظات وبلاغات', feedbackHint: 'اقتراح أو مشكلة واجهتك؟ اكتبها هنا وستصلنا مباشرة.', feedbackEmail: 'بريدك الإلكتروني (اختياري، لنرد عليك)', feedbackMsg: 'اكتب رسالتك…', feedbackSend: 'إرسال', feedbackSending: 'جارٍ الإرسال…', feedbackSent: 'تم إرسال رسالتك، شكرًا لك', feedbackFailed: 'تعذّر الإرسال، حاول مرة أخرى',
@@ -65,7 +65,7 @@ homeHotManga: 'المانجا الرائجة', homeLatestManga: 'أحدث فصو
     f_sort: 'Sort', f_type: 'Type', f_status: 'Status', f_year: 'Year', f_season: 'Season', seasons: 'Seasons', f_version: 'Language',
     f_country: 'Country', f_source: 'Source', f_genres: 'Genres',
     added: n => `Added “\u2068${n}\u2069” to My List`, hiddenN: n => `Hid “\u2068${n}\u2069”`, hiddenTitle: 'Hidden items', hiddenHint: 'Long-press any card to hide it from every page. Press ✕ on an item here to show it again.', unhide: 'Show again', noHidden: 'Nothing hidden', shown: 'It will show again',
-    hideAnime: 'Hide this anime', hideManga: 'Hide this manga', hideMovie: 'Hide this movie', hideSeries: 'Hide this series', listAdd: 'Add to My List', listRemove: 'Remove from My List', openHidden: n => `Hidden items (${n})`, removed: 'Removed from My List', ep: 'EP', epShort: 'Ep', episode: 'Episode', filler: 'Filler', mixed: 'Part filler', hideFiller: 'Hide filler', epRatings: 'Episode ratings', seasonShort: 'S',
+    hideAnime: 'Hide this anime', hideManga: 'Hide this manga', hideMovie: 'Hide this movie', hideSeries: 'Hide this series', listAdd: 'Add to My List', listRemove: 'Remove from My List', openHidden: n => `Hidden items (${n})`, removed: 'Removed from My List', ep: 'EP', epShort: 'Ep', episode: 'Episode', filler: 'Filler', mixed: 'Part filler', hideFiller: 'Hide filler', epRatings: 'Episode ratings', noEpRatings: 'No episode ratings for this title.', seasonShort: 'S', avgShort: 'AVG', tier0: 'Absolute Cinema', tier1: 'Awesome', tier2: 'Great', tier3: 'Good', tier4: 'Average', tier5: 'Bad', tier6: 'Garbage',
     nothing: 'Nothing here', tryElse: 'Try something else.', unreachable: "Couldn't reach the site", retry: 'Retry',
     continueWatching: 'Continue Watching', refreshSite: 'Refresh from site', refresh: 'Refresh', updated: 'Updated', updateTitle: 'Update available', updateText: 'A newer version of the app is out. Update now; your data stays.', updateGo: 'Update now', updateGetting: 'Downloading', updateAllow: 'Allow the app to install updates, then tap Update now again', updateFailed: 'Update failed, downloading in the browser instead',
     feedback: 'Feedback & issues', feedbackHint: 'An idea, or something not working? Write it here and it reaches us directly.', feedbackEmail: 'Your email (optional, for a reply)', feedbackMsg: 'Write your message…', feedbackSend: 'Send', feedbackSending: 'Sending…', feedbackSent: 'Message sent, thank you', feedbackFailed: 'Could not send, try again',
@@ -153,7 +153,7 @@ document.addEventListener('click', e => {
 // while the drawer or a sheet is open, a drag anywhere but its own list doesn't scroll the page behind
 // (Android ignores overflow: hidden for touch scrolling)
 document.addEventListener('touchmove', e => {
-  if (document.body.classList.contains('drawer-open') ? !e.target.closest('#drawer') : $('.sheet-wrap') && !e.target.closest('.sheet-list, .sheet .genres')) e.preventDefault();
+  if (document.body.classList.contains('drawer-open') ? !e.target.closest('#drawer') : $('.sheet-wrap') && !e.target.closest('.sheet-list, .sheet .genres, .sheet .eg-scroll')) e.preventDefault();
 }, { passive: false });
 // phones: a sideways swipe drags the drawer open (from the half of the screen on its side) or closed; it follows the finger
 {
@@ -233,6 +233,16 @@ function storageSheet() {
     if (a === 'allow') api.requestStorage();
     if (a || e.target === w || e.target.closest('.sheet-x')) { store.prefs.storageAsked = 1; persist('prefs'); closeSheet(); }
   };
+}
+// a show's episode ratings (Ratings.graph), a grid to open: the sites are asked only then
+function ratingsSheet(names, id, anime) {
+  const w = document.createElement('div');
+  w.className = 'sheet-wrap';
+  w.innerHTML = `<div class="sheet eg-sheet"><div class="sheet-head"><b>${t('epRatings')}</b><button class="sheet-x" type="button" aria-label="${t('close')}">${ICON.x}</button></div><div class="eg-body"></div></div>`;
+  document.body.append(w);
+  requestAnimationFrame(() => w.classList.add('open'));
+  w.onclick = e => { if (e.target === w || e.target.closest('.sheet-x')) closeSheet(); };
+  Ratings.graph(w.querySelector('.eg-body'), names, id, anime);
 }
 // phones: a newer APK on GitHub (api.checkUpdate) — the system browser downloads it, tapping it installs over this one
 function updateSheet(u) {
@@ -1263,13 +1273,13 @@ async function title(path, force) {
             ${first ? `<a class="btn red" href="${playHash(first)}">${ICON.play} ${h ? esc(t('resume', h.ep)) : t('play')}</a>` : ''}
             <button class="btn ghost" id="fav">${inList(path) ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList')}</button>
             ${d.trailer ? `<button class="btn ghost" id="trl">${ICON.play} ${t('trailer')}</button>` : ''}
+            ${type === 'anime' ? `<button class="btn ghost" id="grf">${ICON.star} ${t('epRatings')}</button>` : ''}
             <button class="btn ghost" id="rf">${ICON.refresh} ${t('refresh')}</button>
           </div>
         </div>
       </div>
     </div>
     <section class="section" id="title-cast" hidden></section>
-    <section class="section" id="title-graph" hidden></section>
     ${d.info.length ? `<div class="infos">${d.info.map(([k, v]) => `<div><span>${esc(k)}</span>${esc(v)}</div>`).join('')}</div>` : ''}
     ${d.episodes.length > 1 || type === 'anime' ? `<div class="section"><h2>${t('episodes')} <small>${d.episodes.length}</small>
       <div class="ep-tools"><input id="epf" placeholder="${t('jump')}" type="number"><button class="btn ghost small ${store.prefs.hideFiller ? 'on' : ''}" id="hfl" aria-label="${t('hideFiller')}" title="${t('hideFiller')}" aria-pressed="${!!store.prefs.hideFiller}" hidden>${ICON.eyeSlash}</button><button class="btn ghost small" id="rev" aria-label="${t('reverse')}" title="${t('reverse')}">${ICON.sort}</button>
@@ -1278,7 +1288,7 @@ async function title(path, force) {
     ${d.related.length ? row(t('moreLike'), d.related) : ''}`;
 
   CastInfo.mount($('#title-cast'), [d.title, ...(d.alt || '').split(/[,،]/)], 'anime');
-  if (type === 'anime') Ratings.graph($('#title-graph'), [d.title, ...(d.alt || '').split(/[,،]/)], '', true);
+  if (type === 'anime') $('#grf').onclick = () => ratingsSheet([d.title, ...(d.alt || '').split(/[,،]/)], '', true);
   const eps = $('#eps');
   let rev = false, info = {}, kinds = {};
   const shown = (f = $('#epf')?.value) => (rev ? [...d.episodes].reverse() : d.episodes)

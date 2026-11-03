@@ -28,7 +28,7 @@ app.once('browser-window-created', (_, win) => win.webContents.once('did-finish-
       ok(Object.values(fl).filter(k => k === 'filler').length > 50 && !fl['1'], 'filler episodes');
       const gr = document.createElement('section'); document.body.append(gr);
       await Ratings.graph(gr, ['Naruto'], '', true);
-      ok(gr.querySelectorAll('.fchip').length === 2 && gr.querySelector('.eg polyline'), 'episode ratings graph');
+      ok(gr.querySelectorAll('.fchip').length === 2 && gr.querySelector('.eg td'), 'episode ratings grid');
       gr.remove();
       const mv = await scraper.details('/movie/chao', true);
       ok(mv.title && mv.episodes.some(e => e.path === '/watch/movie/chao'), 'movie details');

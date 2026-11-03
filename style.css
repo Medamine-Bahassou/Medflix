@@ -168,15 +168,29 @@ input:focus-visible, select:focus-visible { outline: none; }
 .eps.list .ep small { color: var(--muted); font-weight: 400; font-size: 13px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .ep-kind { margin-inline-start: 8px; padding: 1px 6px; border-radius: 3px; background: var(--red); color: #fff; font-size: 11px; font-style: normal; }
 .ep-kind.mixed { background: #ffffff26; }
-.eg { margin-top: 12px; }
-.eg svg { display: block; width: 100%; height: auto; touch-action: pan-y; cursor: crosshair; }
-.eg polyline { fill: none; stroke: var(--red); stroke-width: 2; stroke-linejoin: round; }
-.eg .eg-grid { stroke: #ffffff1a; }
-.eg text { fill: var(--muted); font-size: 11px; }
-.eg circle { fill: #fff; }
-.eg p { margin: 8px 0 0; font-weight: 700; }
-#title-graph small a { color: var(--muted); }
-#title-graph[hidden] { display: none; }
+.eg-body { display: flex; flex-direction: column; min-height: 0; } /* the sheet's height, for .eg-scroll to scroll within */
+.eg-body .spin { margin: 32px auto; }
+.eg-body small { margin-top: 8px; }
+.eg { display: flex; flex-direction: column; min-height: 0; margin-top: 12px; }
+.eg-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-bottom: 12px; font-size: 13px; }
+.eg-legend i { display: inline-block; width: 12px; height: 12px; margin-inline-end: 6px; border-radius: 50%; vertical-align: -1px; }
+.eg-scroll { overflow: auto; min-height: 0; overscroll-behavior: contain; width: fit-content; max-width: 100%; } /* long shows: 1200 rows or 30 seasons scroll in here, the headers staying */
+.eg table { border-collapse: separate; border-spacing: 6px; }
+.eg th { position: sticky; background: var(--card); color: #fff; font-weight: 600; font-size: 13px; white-space: nowrap; }
+.eg thead th { top: 0; z-index: 2; padding-block: 4px; }
+.eg tfoot th { bottom: 0; z-index: 2; padding-block: 4px; font-size: 16px; font-weight: 700; }
+.eg tbody th, .eg tfoot th:first-child, .eg thead th:first-child { inset-inline-start: 0; z-index: 3; padding-inline: 4px; font-size: 13px; }
+.eg td { min-width: 58px; height: 38px; border-radius: 6px; text-align: center; font-size: 16px; font-weight: 700; }
+/* the scale's own colours, not the app's tokens: a score reads by them. The text on each is what's legible there */
+.eg-t0 { background: #1a8fe0; color: #fff; }
+.eg-t1 { background: #186a3b; color: #fff; }
+.eg-t2 { background: #28b463; color: #000; }
+.eg-t3 { background: #f4d03f; color: #000; }
+.eg-t4 { background: #f39c12; color: #000; }
+.eg-t5 { background: #e74c3c; color: #fff; }
+.eg-t6 { background: #633974; color: #fff; }
+.eg-q { background: #bdbdbd; color: #000; }
+.eg-body small a { color: var(--muted); }
 #hfl[hidden] { display: none; }
 #hfl.on { background: var(--red); border-color: var(--red); }
 .eps.list .ep.seen img { opacity: .45; }
@@ -500,6 +514,7 @@ html, body { overscroll-behavior-y: none; } /* no WebView stretch / glow (or bro
   .sheet { inset: 50% auto auto 50%; width: 480px; max-height: 70vh; padding-bottom: 16px; border-radius: 18px; transform: translate(-50%, -46%) scale(.97); opacity: 0; transition: transform .25s var(--ease), opacity .2s; }
   .sheet::before { display: none; }
   .sheet-wrap.open .sheet { transform: translate(-50%, -50%); opacity: 1; }
+  .sheet.eg-sheet { width: min(760px, 92vw); max-height: 86vh; } /* wider: the seasons sit side by side */
 }
 @media (max-width: 760px) {
   body.searching .search .search-flt { width: 44px; height: 44px; border-radius: 12px; background: #ffffff12; border: 1px solid #ffffff1a; }
