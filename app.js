@@ -21,7 +21,7 @@ const STR = {
     f_sort: 'الترتيب', f_type: 'النوع', f_status: 'الحالة', f_year: 'السنة', f_season: 'الموسم', seasons: 'المواسم', f_version: 'الترجمة',
     f_country: 'البلد', f_source: 'المصدر', f_genres: 'التصنيفات',
     added: n => `تمت إضافة «\u2068${n}\u2069» إلى قائمتي`, hiddenN: n => `أُخفي «\u2068${n}\u2069»`, hiddenTitle: 'العناصر المخفية', hiddenHint: 'اضغط مطولاً على أي بطاقة لإخفائها من كل الصفحات. اضغط ✕ على العنصر هنا لإظهاره مجددًا.', unhide: 'إظهار مجددًا', noHidden: 'لا توجد عناصر مخفية', shown: 'سيظهر مجددًا',
-    hideAnime: 'إخفاء هذا الأنمي', hideManga: 'إخفاء هذه المانجا', hideMovie: 'إخفاء هذا الفيلم', hideSeries: 'إخفاء هذا المسلسل', listAdd: 'إضافة إلى قائمتي', listRemove: 'إزالة من قائمتي', openHidden: n => `العناصر المخفية (${n})`, removed: 'تمت الإزالة من قائمتي', ep: 'الحلقة', epShort: 'ح', episode: 'الحلقة',
+    hideAnime: 'إخفاء هذا الأنمي', hideManga: 'إخفاء هذه المانجا', hideMovie: 'إخفاء هذا الفيلم', hideSeries: 'إخفاء هذا المسلسل', listAdd: 'إضافة إلى قائمتي', listRemove: 'إزالة من قائمتي', openHidden: n => `العناصر المخفية (${n})`, removed: 'تمت الإزالة من قائمتي', ep: 'الحلقة', epShort: 'ح', episode: 'الحلقة', filler: 'حشو', mixed: 'حشو جزئي', hideFiller: 'إخفاء حلقات الحشو', epRatings: 'تقييمات الحلقات', seasonShort: 'م',
     nothing: 'لا يوجد شيء هنا', tryElse: 'جرّب شيئًا آخر.', unreachable: 'تعذّر الوصول إلى الموقع', retry: 'إعادة المحاولة',
     continueWatching: 'تابع المشاهدة', refreshSite: 'تحديث من الموقع', refresh: 'تحديث', updated: 'تم التحديث', updateTitle: 'تحديث متوفر', updateText: 'يوجد إصدار أحدث من التطبيق. حدّثه الآن، ستبقى بياناتك كما هي.', updateGo: 'تحديث الآن', updateGetting: 'جارٍ التنزيل', updateAllow: 'اسمح للتطبيق بتثبيت التحديثات، ثم اضغط تحديث الآن مرة أخرى', updateFailed: 'تعذّر التحديث، يتم التنزيل من المتصفح',
     feedback: 'ملاحظات وبلاغات', feedbackHint: 'اقتراح أو مشكلة واجهتك؟ اكتبها هنا وستصلنا مباشرة.', feedbackEmail: 'بريدك الإلكتروني (اختياري، لنرد عليك)', feedbackMsg: 'اكتب رسالتك…', feedbackSend: 'إرسال', feedbackSending: 'جارٍ الإرسال…', feedbackSent: 'تم إرسال رسالتك، شكرًا لك', feedbackFailed: 'تعذّر الإرسال، حاول مرة أخرى',
@@ -65,7 +65,7 @@ homeHotManga: 'المانجا الرائجة', homeLatestManga: 'أحدث فصو
     f_sort: 'Sort', f_type: 'Type', f_status: 'Status', f_year: 'Year', f_season: 'Season', seasons: 'Seasons', f_version: 'Language',
     f_country: 'Country', f_source: 'Source', f_genres: 'Genres',
     added: n => `Added “\u2068${n}\u2069” to My List`, hiddenN: n => `Hid “\u2068${n}\u2069”`, hiddenTitle: 'Hidden items', hiddenHint: 'Long-press any card to hide it from every page. Press ✕ on an item here to show it again.', unhide: 'Show again', noHidden: 'Nothing hidden', shown: 'It will show again',
-    hideAnime: 'Hide this anime', hideManga: 'Hide this manga', hideMovie: 'Hide this movie', hideSeries: 'Hide this series', listAdd: 'Add to My List', listRemove: 'Remove from My List', openHidden: n => `Hidden items (${n})`, removed: 'Removed from My List', ep: 'EP', epShort: 'Ep', episode: 'Episode',
+    hideAnime: 'Hide this anime', hideManga: 'Hide this manga', hideMovie: 'Hide this movie', hideSeries: 'Hide this series', listAdd: 'Add to My List', listRemove: 'Remove from My List', openHidden: n => `Hidden items (${n})`, removed: 'Removed from My List', ep: 'EP', epShort: 'Ep', episode: 'Episode', filler: 'Filler', mixed: 'Part filler', hideFiller: 'Hide filler', epRatings: 'Episode ratings', seasonShort: 'S',
     nothing: 'Nothing here', tryElse: 'Try something else.', unreachable: "Couldn't reach the site", retry: 'Retry',
     continueWatching: 'Continue Watching', refreshSite: 'Refresh from site', refresh: 'Refresh', updated: 'Updated', updateTitle: 'Update available', updateText: 'A newer version of the app is out. Update now; your data stays.', updateGo: 'Update now', updateGetting: 'Downloading', updateAllow: 'Allow the app to install updates, then tap Update now again', updateFailed: 'Update failed, downloading in the browser instead',
     feedback: 'Feedback & issues', feedbackHint: 'An idea, or something not working? Write it here and it reaches us directly.', feedbackEmail: 'Your email (optional, for a reply)', feedbackMsg: 'Write your message…', feedbackSend: 'Send', feedbackSending: 'Sending…', feedbackSent: 'Message sent, thank you', feedbackFailed: 'Could not send, try again',
@@ -1228,7 +1228,7 @@ function offline(epPath) {
     ${playBar(true)}
   </div>`;
   $('#back').onclick = () => (history.length > 1 ? history.back() : (location.hash = '#/downloads'));
-  if (epPath.startsWith('/watch/')) { const v = $('.player video'); skipIntro(d.title, '', d.ep, () => v.currentTime, at => { v.currentTime = at; }); } // not a film or a series: they aren't on AniSkip
+  if (epPath.startsWith('/watch/')) { const v = $('.player video'); skipIntro(d.title, '', d.ep, () => v.currentTime, at => { v.currentTime = at; }); if (!epPath.startsWith('/watch/movie/')) markFiller(d.title, '', d.ep); } // not a film or a series: they aren't on AniSkip
 }
 
 function myList() {
@@ -1269,23 +1269,29 @@ async function title(path, force) {
       </div>
     </div>
     <section class="section" id="title-cast" hidden></section>
+    <section class="section" id="title-graph" hidden></section>
     ${d.info.length ? `<div class="infos">${d.info.map(([k, v]) => `<div><span>${esc(k)}</span>${esc(v)}</div>`).join('')}</div>` : ''}
     ${d.episodes.length > 1 || type === 'anime' ? `<div class="section"><h2>${t('episodes')} <small>${d.episodes.length}</small>
-      <div class="ep-tools"><input id="epf" placeholder="${t('jump')}" type="number"><button class="btn ghost small" id="rev" aria-label="${t('reverse')}" title="${t('reverse')}">${ICON.sort}</button>
+      <div class="ep-tools"><input id="epf" placeholder="${t('jump')}" type="number"><button class="btn ghost small ${store.prefs.hideFiller ? 'on' : ''}" id="hfl" aria-label="${t('hideFiller')}" title="${t('hideFiller')}" aria-pressed="${!!store.prefs.hideFiller}" hidden>${ICON.eyeSlash}</button><button class="btn ghost small" id="rev" aria-label="${t('reverse')}" title="${t('reverse')}">${ICON.sort}</button>
         ${selBtn('btn ghost small')}</div></h2>
       ${selBar()}<div class="eps list" id="eps"></div></div>` : ''}
     ${d.related.length ? row(t('moreLike'), d.related) : ''}`;
 
   CastInfo.mount($('#title-cast'), [d.title, ...(d.alt || '').split(/[,،]/)], 'anime');
+  if (type === 'anime') Ratings.graph($('#title-graph'), [d.title, ...(d.alt || '').split(/[,،]/)], '', true);
   const eps = $('#eps');
-  let rev = false, info = {};
+  let rev = false, info = {}, kinds = {};
   const shown = (f = $('#epf')?.value) => (rev ? [...d.episodes].reverse() : d.episodes)
-    .filter(e => !f || parseFloat(e.ep) === +f); // the number itself: 1 is episode 1, not 10-19
+    .filter(e => f ? parseFloat(e.ep) === +f // the number itself: 1 is episode 1, not 10-19. Typed, it shows even if hidden
+      : !store.prefs.hideFiller || kinds[+e.ep] !== 'filler' || h?.epPath === e.path); // the one left off at stays: mixed ones too, they hold canon
   const drawEps = () => eps && (eps.innerHTML = shown()
-    .map(e => epRow(e.ep, info[+e.ep], d.banner || d.poster, playHash(e.path), store.seen[e.path], h?.epPath === e.path, e.path)).join(''));
+    .map(e => epRow(e.ep, { ...info[+e.ep], kind: kinds[+e.ep] }, d.banner || d.poster, playHash(e.path), store.seen[e.path], h?.epPath === e.path, e.path)).join(''));
   drawEps();
   if (eps) {
     scraper.episodeInfo([d.title, ...(d.alt || '').split(/\s*[,،]\s*/)]).then(i => { info = i; drawEps(); }).catch(() => {}); // names are extras: the numbers stand without them
+    const hfl = $('#hfl');
+    if (type === 'anime') scraper.filler([d.title, ...(d.alt || '').split(/\s*[,،]\s*/)]).then(k => { kinds = k; hfl.hidden = !Object.values(k).includes('filler'); drawEps(); }).catch(() => {}); // so are these marks
+    hfl.onclick = () => { const on = store.prefs.hideFiller = !store.prefs.hideFiller; persist('prefs'); hfl.classList.toggle('on', on); hfl.setAttribute('aria-pressed', on); drawEps(); };
     $('#epf').oninput = drawEps;
     $('#rev').onclick = () => { rev = !rev; drawEps(); };
     epActions(eps, d.episodes.map(e => ({ id: e.path, ep: e.ep })), () => shown().map(e => e.path), drawEps,
@@ -1310,9 +1316,10 @@ async function nextAir(names) {
   return `${t('nextEp')} · ${ep ? `${t('epShort')} ${ep} · ` : ''}${d.toDateString() === new Date().toDateString() ? t('today') : fmt({ weekday: 'long', day: 'numeric', month: 'short' })} · ${fmt({ hour: 'numeric', minute: '2-digit' })}`;
 }
 // an episode's row (anime, series): its still (else the show's picture), its number and, when known, its name
+const epKind = k => (k ? `<em class="ep-kind ${k}">${t(k)}</em>` : ''); // "filler" or "mixed" (scraper.filler)
 const epRow = (n, i, pic, href, seen, last, pick) => `<a class="ep ${seen ? 'seen' : ''} ${last ? 'last' : ''} ${store.downloads[pick]?.state === 'done' ? 'dld' : ''} ${picks?.has(pick) ? 'sel' : ''}"
   href="${href}"${pick ? ` data-pick="${esc(pick)}"` : ''}>
-  <img src="${esc(img(i?.thumb || pic))}" alt="" loading="lazy"><span><b>${/^\d/.test(n) ? t('ep') + ' ' : ''}${esc(n)}</b>${i?.name ? `<small dir="auto">${esc(i.name)}</small>` : ''}</span></a>`;
+  <img src="${esc(img(i?.thumb || pic))}" alt="" loading="lazy"><span><b>${/^\d/.test(n) ? t('ep') + ' ' : ''}${esc(n)}${epKind(i?.kind)}</b>${i?.name ? `<small dir="auto">${esc(i.name)}</small>` : ''}</span></a>`;
 // an episode list's actions (anime, series), on one (long-press) or several picked: mark them watched or not, download them or
 // delete their copies (manga.js's). eps [{id: its seen and download key, ep}], ids() those shown, job(e) its download record
 function epActions(list, eps, ids, redraw, job, title) {
@@ -1416,6 +1423,7 @@ async function play(epPath) {
   $('#back').onclick = () => (history.length > 1 ? history.back() : (location.hash = '#/title' + show));
   $('#ext').onclick = () => api.openExternal(scraper.SITE + epPath);
   skipIntro(d.title, d.alt, ep, () => api.playerTime?.(), at => api.playerSeek?.(at));
+  if (!epPath.startsWith('/watch/movie/')) markFiller(d.title, d.alt, ep);
   if (prev) $('#prev').onclick = () => location.replace(playHash(prev.path));
   if (next) $('#next').onclick = () => location.replace(playHash(next.path));
 
@@ -1562,6 +1570,12 @@ const skipIntro = async (title, alt, ep, now, seek) => {
     const at = await now();
     b.hidden = !(at >= from && at < to);
   }, 1000);
+};
+// the episode's filler mark, beside its number in the player's header. An extra: nothing if it can't tell
+const markFiller = async (title, alt, ep) => {
+  if (!title || !/^\d+$/.test(ep)) return;
+  const small = $('.player .ttl small'), k = (await scraper.filler([title, ...(alt || '').split(/\s*[,،]\s*/)]).catch(() => ({})))[ep]; // left for another episode meanwhile: this one's header is gone, the mark lands nowhere
+  if (k) small.insertAdjacentHTML('beforeend', epKind(k));
 };
 // the native video view would cover the menus, so while one is open the view is swapped for a still frame of itself
 const openMenu = async dd => {

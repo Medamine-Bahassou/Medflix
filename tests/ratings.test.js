@@ -5,11 +5,43 @@ const vm = require('node:vm');
 function ratings(fetch = async () => { throw Error('offline'); }) {
   const ctx = { DOMParser: class { parseFromString() { return { querySelectorAll: () => [] }; } }, api: { fetch }, IntersectionObserver: class { observe() {} }, MutationObserver: class { observe() {} }, document: { documentElement: {} }, esc: s => s };
   vm.createContext(ctx);
-  const code = fs.readFileSync('ratings.js', 'utf8').replace('  return {\n    // a supplied', '  this.testing = { lookup, filmPick, filmScore };\n  return {\n    // a supplied');
+  const code = fs.readFileSync('ratings.js', 'utf8').replace('  return {\n    // a supplied', '  this.testing = { lookup, filmPick, filmScore, spelled, tvmazeRows, imdbRows, pickShow, graphFloor };\n  return {\n    // a supplied');
   vm.runInContext(code + '\nthis.ratings = Ratings;', ctx);
   return { ...ctx.testing, ...ctx.ratings };
 }
 const film = (title, year = '') => ({ type: 'cinema', title, year, path: '/cinema/movie' });
+test('episode graph: the sites\' spellings of a show are one name', () => {
+  const { spelled } = ratings();
+  assert.equal(spelled('Naruto: Shippuuden'), spelled('Naruto: Shippūden'));
+  assert.equal(spelled('Naruto: Shippuden'), spelled('Naruto: Shippūden'));
+  assert.equal(spelled('مسلسل Breaking Bad الموسم الاول'), 'breaking bad');
+  assert.equal(spelled('Breaking Bad Season 2'), 'breaking bad');
+  assert.equal(spelled('المؤسس عثمان'), '');
+});
+test('episode graph: an anime takes the animation, and two of a name are none', () => {
+  const { pickShow, spelled } = ratings();
+  const live = { name: 'One Piece', type: 'Scripted' }, anime = { name: 'One Piece', type: 'Animation' };
+  const want = new Set([spelled('One Piece')]);
+  assert.equal(pickShow([live, anime], want, true), anime);
+  assert.equal(pickShow([live, anime], want, false), null);
+  assert.equal(pickShow([live], want, true), null);
+  assert.equal(pickShow([{ name: 'The One Piece', type: 'Animation' }], want, true), null);
+});
+test('episode graph: tvmaze rows in order, specials and unrated left out', () => {
+  const { tvmazeRows } = ratings();
+  const e = (season, number, average) => ({ season, number, rating: { average } });
+  assert.deepEqual(JSON.parse(JSON.stringify(tvmazeRows([e(2, 1, 8), e(1, 2, 7.5), e(1, 1, 9), e(1, null, 9), e(1, 3, null)]))), [[1, 1, 9], [1, 2, 7.5], [2, 1, 8]]);
+});
+test('episode graph: imdb rows read its numbers, and skip what it lacks', () => {
+  const { imdbRows } = ratings();
+  const edge = (season, episodeNumber, aggregateRating) => ({ node: { series: { displayableEpisodeNumber: { displayableSeason: { season }, episodeNumber: { episodeNumber } } }, ratingsSummary: { aggregateRating } } });
+  assert.deepEqual(JSON.parse(JSON.stringify(imdbRows([edge('1', '2', 8.6), edge('1', '1', 9.1), edge('unknown', '3', 8), edge('1', '4', null), { node: {} }]))), [[1, 1, 9.1], [1, 2, 8.6]]);
+});
+test('episode graph: the axis starts just under the lowest, with room for a line', () => {
+  const { graphFloor } = ratings();
+  assert.equal(graphFloor([[1, 1, 7.4], [1, 2, 9]]), 7);
+  assert.equal(graphFloor([[1, 1, 10], [1, 2, 10]]), 9);
+});
 test('film ratings distinguish remakes, TV and ambiguous names', () => {
   const { filmPick } = ratings();
   const old = { names: ['Dune'], year: 1984, series: false }, remake = { names: ['Dune'], year: 2021, series: false }, tv = { names: ['Dune'], year: 2000, series: true };

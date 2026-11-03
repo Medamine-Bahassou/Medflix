@@ -148,16 +148,21 @@ object Witanime {
     // ---------- kitsu: episodes' names and stills, witanime lists numbers only (scraper.js episodeInfo) ----------
     private const val KITSU = "https://kitsu.io/api/edge"
     private fun fold(s: String) = s.lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
-    /** episode number -> its name and still, for a show found on kitsu by one of its names (only an exact one: a near miss is often another season) */
-    suspend fun episodeInfo(names: List<String>): Map<Int, EpInfo> = kotlinx.coroutines.coroutineScope {
+    private fun enc(v: String) = URLEncoder.encode(v, "UTF-8").replace("+", "%20")
+    /** a show on kitsu by one of its names (only an exact one: a near miss is often another season): its id and all its titles */
+    internal suspend fun kitsuShow(names: List<String>): Pair<String, List<String>>? {
         val want = names.map(::fold).filter { it.isNotEmpty() }
-        if (want.isEmpty()) return@coroutineScope emptyMap()
-        val enc = { v: String -> URLEncoder.encode(v, "UTF-8").replace("+", "%20") }
+        if (want.isEmpty()) return null
         val found = JSONObject(Pages.load("$KITSU/anime?${enc("filter[text]")}=${enc(names[0])}&${enc("page[limit]")}=5&${enc("fields[anime]")}=canonicalTitle,titles")).optJSONArray("data")
-        val id = (0 until (found?.length() ?: 0)).map { found!!.getJSONObject(it) }.firstOrNull { a ->
+        return (0 until (found?.length() ?: 0)).map { found!!.getJSONObject(it) }.firstNotNullOfOrNull { a ->
             val at = a.getJSONObject("attributes"); val ts = at.optJSONObject("titles")
-            (listOf(at.optString("canonicalTitle")) + (ts?.keys()?.asSequence()?.map { ts.optString(it) }?.toList() ?: emptyList())).any { fold(it) in want }
-        }?.optString("id") ?: return@coroutineScope emptyMap()
+            val all = listOf(at.optString("canonicalTitle")) + (ts?.keys()?.asSequence()?.map { ts.optString(it) }?.toList() ?: emptyList())
+            if (all.any { fold(it) in want }) a.optString("id") to all else null
+        }
+    }
+    /** episode number -> its name and still, for a show */
+    suspend fun episodeInfo(names: List<String>): Map<Int, EpInfo> = kotlinx.coroutines.coroutineScope {
+        val id = kitsuShow(names)?.first ?: return@coroutineScope emptyMap()
         val page = { o: Int -> async { runCatching { JSONObject(Pages.load("$KITSU/anime/$id/episodes?sort=number&${enc("page[limit]")}=20&${enc("page[offset]")}=$o&${enc("fields[episodes]")}=number,canonicalTitle,titles,thumbnail")) }.getOrNull() } }
         val first = page(0).await() ?: return@coroutineScope emptyMap()
         val count = first.optJSONObject("meta")?.optInt("count") ?: 0
@@ -170,6 +175,39 @@ object Witanime {
                     ?: listOf("en_us", "en", "en_jp").firstNotNullOfOrNull { ts?.optString(it)?.takeIf { s -> s.isNotEmpty() && s != "null" } } ?: "",
                     a.optJSONObject("thumbnail")?.optString("original").orEmpty())
             }
+    }
+
+    // ---------- animefillerlist.com: which episodes are filler, it has no api: its pages (scraper.js filler) ----------
+    private const val AFL = "https://www.animefillerlist.com"
+    internal fun aflName(s: String) = fold(s.replace('×', 'x')).replace(Regex("([ou])u"), "$1") // its "Hunter × Hunter" and "Shippuden" are the sites' "x" and "Shippuuden"
+    /**
+     * name -> slug: its slugs can't be guessed ("blue-lock" is Black Clover's films). "Bleach: TYBW (Bleach: Sennen Kessen-hen)" goes by
+     * either name, but an exact name wins ("One Pace (One Piece)" isn't One Piece) and a year is part of it ("Hunter × Hunter (2011)" isn't the 1999 one)
+     */
+    internal fun fillerShows(html: String): Map<String, String> {
+        val aka = HashMap<String, String>(); val exact = HashMap<String, String>()
+        Jsoup.parse(html).select("#ShowList a[href^=/shows/]").forEach { a ->
+            val slug = a.attr("href").substringAfterLast('/')
+            exact[aflName(a.text())] = slug
+            Regex("^(.+?)\\s*\\((?!\\d{4}\\))(.+)\\)\\s*$").find(a.text())?.groupValues?.drop(1)?.forEach { aka.putIfAbsent(aflName(it), slug) }
+        }
+        return aka + exact
+    }
+    /** episode number -> "filler" or "mixed", canon episodes left out. mixed first: its class is "mixed_canon/filler" */
+    internal fun fillerEps(html: String): Map<Int, String> = Jsoup.parse(html).select("tr[id^=eps-]").mapNotNull { tr ->
+        val n = tr.selectFirst(".Number")?.text()?.toIntOrNull() ?: return@mapNotNull null
+        val kind = tr.className().let { if ("mixed" in it) "mixed" else if ("filler" in it) "filler" else return@mapNotNull null }
+        n to kind
+    }.toMap()
+    /**
+     * found by the show's own names, else kitsu's (witanime's "Kimetsu no Yaiba" is its "Demon Slayer"). Exact ones only: a near miss
+     * is often another season, numbered differently. Asked once a day: a small site, and these hardly change
+     */
+    suspend fun filler(names: List<String>): Map<Int, String> = withContext(Dispatchers.Default) { // whole pages to parse: One Piece's has 1100 rows
+        val shows = fillerShows(Pages.load("$AFL/shows", every = Pages.DAY, interactive = false))
+        val slug = { list: List<String> -> list.firstNotNullOfOrNull { shows[aflName(it)] } }
+        val hit = slug(names) ?: kitsuShow(names)?.let { slug(it.second) } ?: return@withContext emptyMap()
+        fillerEps(Pages.load("$AFL/shows/$hit", every = Pages.DAY, interactive = false))
     }
 
     // home rows the site has a full listing for (app.js SECTIONS); the latest episodes row pages on its own (newEpisodes)

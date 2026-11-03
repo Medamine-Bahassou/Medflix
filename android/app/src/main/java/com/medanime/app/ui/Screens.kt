@@ -461,9 +461,17 @@ private fun CatNameDialog(title: String, start: String, id: String?, done: () ->
         })
 }
 
+/** an episode's filler mark: "filler" or "mixed" (app.js epKind) */
+@Composable
+fun FillerBadge(kind: String) = Text(t(kind), Modifier.padding(start = 8.dp).background(if (kind == "filler") Red else Color(0x26FFFFFF), RoundedCornerShape(3.dp)).padding(horizontal = 6.dp, vertical = 1.dp), color = Color.White, fontSize = 11.sp, maxLines = 1)
+
+/** the rows a title's page lists. A number typed shows even if hidden; the one left off at stays; mixed ones too, they hold canon */
+internal fun shownRows(list: List<Numbered>, rev: Boolean, filter: String, hide: Boolean) = (if (rev) list.reversed() else list)
+    .filter { if (filter.isEmpty()) !hide || it.filler != "filler" || it.last else it.label.startsWith(filter) }
+
 // ---------- the details page shared by anime, manga and films (app.js det-hero) ----------
 class Numbered(val label: String, val seen: Boolean, val last: Boolean, val open: Screen, val id: String = label, val saved: Boolean = false, val read: Boolean = seen,
-               val thumb: String = "", val name: String = "", val lateName: (suspend () -> String)? = null) // lateName: fetched as the row shows, when it came with no name; id: what picking it hands the actions; read: the ✓ (manga: to the last page, not just opened); thumb: drawn as rows (anime, series)
+               val thumb: String = "", val name: String = "", val lateName: (suspend () -> String)? = null, val filler: String = "") // filler: "filler" or "mixed", its mark; lateName: fetched as the row shows, when it came with no name; id: what picking it hands the actions; read: the ✓ (manga: to the last page, not just opened); thumb: drawn as rows (anime, series)
 
 /**
  * a title's page, laid out as the reading apps do: a bar with its name, then two tabs swiped between. details: poster and
@@ -486,7 +494,8 @@ fun DetailPage(banner: String, poster: String, title: String, alt: String, icon:
     if (big) androidx.compose.ui.window.Dialog({ big = false }, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize().background(Color.Black).clickable { big = false }) { NetImage(fullPoster, Modifier.fillMaxSize(), ContentScale.Fit, title, icon, title) }
     }
-    val shown = remember(list, rev, filter) { (if (rev) list.reversed() else list).filter { filter.isEmpty() || it.label.startsWith(filter) } }
+    var hide by remember { mutableStateOf(Store["prefs"].optBoolean("hideFiller")) } // every show's, kept
+    val shown = remember(list, rev, filter, hide) { shownRows(list, rev, filter, hide) }
     val pager = androidx.compose.foundation.pager.rememberPagerState { if (listTitle != null) 2 else 1 }
     val scope = rememberCoroutineScope()
     val details = androidx.compose.foundation.lazy.rememberLazyListState()
@@ -500,10 +509,13 @@ fun DetailPage(banner: String, poster: String, title: String, alt: String, icon:
     val items = (if (listTitle == null || list.size < 2) emptyList() else listOfNotNull(
         MenuItem(jump, Ic.search) { searching = true; toList() },
         MenuItem(t("reverse"), Ic.sort, rev) { rev = !rev; toList() },
+        if (list.any { it.filler == "filler" }) MenuItem(t("hideFiller"), Ic.eyeSlash, hide) { hide = !hide; Store["prefs"].put("hideFiller", hide); Store.persist("prefs"); toList() } else null,
         if (acts != null) MenuItem(t("select"), Ic.check) { picks.set = emptySet(); toList() } else null,
     )) + menu
     // a new order or a number typed: from its top (not on opening: that's at the one watched last)
     LaunchedEffect(Unit) { snapshotFlow { filter to rev }.drop(1).collect { rows.scrollToItem(0) } }
+    // rows hidden or back (the marks arrive after the list): the same index is another episode now, so back to the one watched last
+    LaunchedEffect(if (hide) list.count { it.filler == "filler" } else 0) { if (list.any { it.filler.isNotEmpty() }) rows.scrollToItem(shown.indexOfFirst { it.last }.coerceAtLeast(0)) }
     androidx.activity.compose.BackHandler(searching) { searching = false; filter = "" }
     Box(Modifier.fillMaxSize()) {
         Column {
@@ -584,7 +596,10 @@ fun DetailPage(banner: String, poster: String, title: String, alt: String, icon:
                                 if (e.thumb.isNotEmpty()) NetImage(e.thumb, Modifier.padding(end = 12.dp, top = 6.dp, bottom = 6.dp).width(104.dp).aspectRatio(16 / 9f).clip(RoundedCornerShape(4.dp))
                                     .background(CardC).graphicsLayer { alpha = if (e.seen) .45f else 1f }, icon = Ic.play)
                                 Column(Modifier.weight(1f)) {
-                                    Text(label(e), color = if (e.last) Red else if (e.seen) Muted else Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(label(e), Modifier.weight(1f, false), color = if (e.last) Red else if (e.seen) Muted else Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                        if (e.filler.isNotEmpty()) FillerBadge(e.filler)
+                                    }
                                     val name = if (e.lateName == null || e.name.isNotEmpty()) e.name else produceState("", e.id) { value = e.lateName.invoke() }.value
                                     if (name.isNotEmpty()) Text(name, color = Muted, fontSize = 12.sp, lineHeight = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 }
@@ -659,6 +674,9 @@ fun TitleScreen(path: String, nav: Nav) {
             val last = h?.optString("epPath")
             val first = last ?: d.episodes.firstOrNull()?.path
             val type = if (path.startsWith("/movie")) "movie" else "anime"
+            val filler by produceState(emptyMap<Int, String>(), d.title) { // so are these marks
+                if (type == "anime") value = runCatching { Witanime.filler(listOf(d.title) + d.alt.split(Regex("\\s*[,،]\\s*"))) }.getOrDefault(emptyMap())
+            }
             // its next episode's day and time, from the schedule: a red chip first, when it's in this week's timetable
             val air by produceState<Air?>(null, d.title) {
                 if (type == "anime") value = runCatching { Witanime.nextAir(listOf(d.title) + d.alt.split(Regex("\\s*[,،]\\s*"))) }.getOrNull()
@@ -674,12 +692,12 @@ fun TitleScreen(path: String, nav: Nav) {
                 if (type == "anime") NotifyButton(path, d.title, d.poster, d.episodes.lastOrNull()?.path ?: "")
             }, d.info, nav, if (d.episodes.size > 1 || type == "anime") t("episodes") else null,
                 d.episodes.map { Numbered(it.ep, Store["seen"].has(it.path), it.path == last, Screen.Play(it.path), it.path, com.medanime.app.Downloads.done(it.path),
-                    thumb = info[it.ep.toIntOrNull()]?.thumb?.ifEmpty { null } ?: d.banner.ifEmpty { d.poster }, name = info[it.ep.toIntOrNull()]?.name.orEmpty()) },
+                    thumb = info[it.ep.toIntOrNull()]?.thumb?.ifEmpty { null } ?: d.banner.ifEmpty { d.poster }, name = info[it.ep.toIntOrNull()]?.name.orEmpty(), filler = filler[it.ep.toIntOrNull()].orEmpty()) },
                 menu = listOfNotNull(
                     if (type == "anime") MenuItem(t("autoDlShort"), Ic.download, Alerts.autoDl(path)) { Alerts.toggleDl(path, d.title, d.poster, d.episodes.lastOrNull()?.path ?: "") } else null,
                     if (d.trailer.isNotEmpty()) MenuItem(t("trailer"), Ic.play) { nav.go(Screen.Trailer(d.trailer, d.title)) } else null),
                 play = first?.let { (if (h != null) t("resume", h.optString("ep")) else t("play")) to { nav.go(Screen.Play(it)) } },
-                after = { item { CreditsSection(listOf(d.title) + d.alt.split(Regex("[,،]")), true, nav = nav) }; item { CardRowView(t("moreLike"), d.related, nav) } },
+                after = { item { CreditsSection(listOf(d.title) + d.alt.split(Regex("[,،]")), true, nav = nav) }; if (type == "anime") item { EpisodeGraph(listOf(d.title) + d.alt.split(Regex("[,،]")), "", true) }; item { CardRowView(t("moreLike"), d.related, nav) } },
                 acts = { ids -> listOfNotNull("seen" to t("markWatched"), "unseen" to t("markUnwatched"), if (ids.any { !com.medanime.app.Downloads.done(it) }) "dl" to t("downloadShort") else null,
                     if (ids.any { com.medanime.app.Downloads.done(it) }) "del" to t("delDownloads") else null) },
                 run = { v, ids ->

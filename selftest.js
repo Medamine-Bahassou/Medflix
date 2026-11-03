@@ -24,6 +24,12 @@ app.once('browser-window-created', (_, win) => win.webContents.once('did-finish-
       ok(s.items.some(i => i.path === '/anime/naruto'), 'search');
       const d = await scraper.details('/anime/one-piece', true);
       ok(d.title === 'One Piece' && d.desc.length > 50 && d.poster && d.episodes.length > 1000 && d.episodes[0].ep === '1', 'details');
+      const fl = await scraper.filler([d.title]);
+      ok(Object.values(fl).filter(k => k === 'filler').length > 50 && !fl['1'], 'filler episodes');
+      const gr = document.createElement('section'); document.body.append(gr);
+      await Ratings.graph(gr, ['Naruto'], '', true);
+      ok(gr.querySelectorAll('.fchip').length === 2 && gr.querySelector('.eg polyline'), 'episode ratings graph');
+      gr.remove();
       const mv = await scraper.details('/movie/chao', true);
       ok(mv.title && mv.episodes.some(e => e.path === '/watch/movie/chao'), 'movie details');
       const ec = await edList('all', 1, true);

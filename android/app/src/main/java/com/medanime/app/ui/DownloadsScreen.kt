@@ -348,7 +348,7 @@ fun OfflineScreen(epPath: String, nav: Nav) {
     var failed by remember(epPath) { mutableStateOf(false) }
     PlayerChrome(d.optString("title"), sub, nav, null, -1, false, {}, prev?.let { { nav.replace(Screen.Offline(it)) } }, next?.let { { nav.replace(Screen.Offline(it)) } },
         { nav.go(showScreen(d, d.optString("show"))) }, { _, close -> DropdownMenuItem({ Text(t("openWith")) }, { close(); openWith(file, true) }, leadingIcon = { Icon(Ic.external, null, Modifier.size(18.dp)) }) },
-        { castTo("${d.optString("title")} · $sub", file, null) }, fullButton = false) { full ->
+        { castTo("${d.optString("title")} · $sub", file, null) }, fullButton = false, badge = if (epPath.startsWith("/watch/") && !epPath.startsWith("/watch/movie/")) fillerMark(d.optString("title"), "", ep) else "") { full ->
         if (failed) Empty(t("playFailed"), t("playFailedHint")) { OutlinedButton({ openWith(file, true) }) { Text(t("openWith"), color = Color.White) } }
         else NativeVideo(android.net.Uri.fromFile(java.io.File(file)), epPath, full,
             onError = { failed = true },

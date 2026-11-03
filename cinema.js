@@ -374,11 +374,13 @@ async function cinemaTitle(slug, force) {
       </div>
     </div>
     <section class="section" id="title-cast" hidden></section>
+    <section class="section" id="title-graph" hidden></section>
     ${m.seasons.length > 1 ? `<div class="section"><h2>${t('seasons')}</h2><div class="fchips">${m.seasons.map(s => `<a class="fchip ${s.path === path ? 'on' : ''}" href="#${s.path}" dir="auto">${esc(s.title.match(/(الموسم|الجزء)\s+\S+/)?.[0] || s.title)}</a>`).join('')}</div></div>` : ''}
     ${eps.length ? `<div class="section"><h2>${t('episodes')} <small>${eps.length}</small><div class="ep-tools">${selBtn('btn ghost small')}</div></h2>
       ${selBar()}<div class="eps list" id="eps"></div></div>` : ''}
     ${row(t('moreLike'), dubbed(m.related))}`;
   CastInfo.mount($('#title-cast'), [m.title], slug.includes('/') ? 'series' : 'cinema', slug.includes('/') ? '' : m.year, slug);
+  if (slug.includes('/')) Ratings.graph($('#title-graph'), [m.title], m.imdbId, false); // a series: a film has no episodes to plot
   $('#fav').onclick = e => { const on = toggleList({ path, title: m.title, poster: m.poster, type: 'cinema' }); e.currentTarget.innerHTML = on ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList'); };
   if (eps.length) {
     const drawEps = () => $('#eps').innerHTML = eps.map(e => // the site gives no episode names or stills

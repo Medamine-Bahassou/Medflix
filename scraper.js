@@ -264,12 +264,16 @@ const fold = s => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ')
 parsers.kitsuFind = j => (j.data || []).map(a => ({ id: a.id, names: [a.attributes.canonicalTitle, ...Object.values(a.attributes.titles || {})].filter(Boolean).map(fold) }));
 parsers.kitsuEps = j => ({ count: j.meta?.count || 0, eps: (j.data || []).map(({ attributes: a }) =>
   ({ n: String(a.number), name: a.canonicalTitle || a.titles?.en_us || a.titles?.en || a.titles?.en_jp || '', thumb: a.thumbnail?.original || '' })) });
-// { "1": { name, thumb } } for a show, found on kitsu by one of its names (only an exact one: a near miss is often another season)
-async function episodeInfo(names) {
+// a show on kitsu by one of its names (only an exact one: a near miss is often another season)
+async function kitsuShow(names) {
   const want = names.map(fold).filter(Boolean);
-  if (!want.length) return {};
-  const hit = (await load('kitsuFind', `${KITSU}/anime?filter[text]=${encodeURIComponent(names[0])}&page[limit]=5&fields[anime]=canonicalTitle,titles`, false, true))
+  if (!want.length) return null;
+  return (await load('kitsuFind', `${KITSU}/anime?filter[text]=${encodeURIComponent(names[0])}&page[limit]=5&fields[anime]=canonicalTitle,titles`, false, true))
     .find(a => a.names.some(n => want.includes(n)));
+}
+// { "1": { name, thumb } } for a show
+async function episodeInfo(names) {
+  const hit = await kitsuShow(names);
   if (!hit) return {};
   const page = o => load('kitsuEps', `${KITSU}/anime/${hit.id}/episodes?sort=number&page[limit]=20&page[offset]=${o}&fields[episodes]=number,canonicalTitle,titles,thumbnail`, false, true);
   const pages = [await page(0)];
@@ -278,6 +282,32 @@ async function episodeInfo(names) {
     pages.push(...await Promise.all([0, 20, 40, 60, 80].filter(d => o + d < pages[0].count).map(d => page(o + d).catch(() => ({ eps: [] })))));
   return Object.fromEntries(pages.flatMap(p => p.eps).map(e => [e.n, e]));
 }
+
+// ---------- animefillerlist.com: which episodes are filler (it has no api: its pages) ----------
+const AFL = 'https://www.animefillerlist.com';
+const aflName = s => fold(String(s || '').replace(/×/g, 'x')).replace(/([ou])u/g, '$1'); // its "Hunter × Hunter" and "Shippuden" are the sites' "x" and "Shippuuden"
+// { name: slug }: its slugs can't be guessed ("blue-lock" is Black Clover's films). "Bleach: TYBW (Bleach: Sennen Kessen-hen)" goes by
+// either name, but an exact name wins ("One Pace (One Piece)" isn't One Piece) and a year is part of it ("Hunter × Hunter (2011)" isn't the 1999 one)
+parsers.fillerShows = doc => {
+  const aka = {}, exact = {};
+  doc.querySelectorAll('#ShowList a[href^="/shows/"]').forEach(a => {
+    const name = a.textContent, slug = a.getAttribute('href').split('/').pop();
+    exact[aflName(name)] = slug;
+    name.match(/^(.+?)\s*\((?!\d{4}\))(.+)\)\s*$/)?.slice(1).forEach(n => { aka[aflName(n)] ??= slug; });
+  });
+  return { ...aka, ...exact };
+};
+// { "26": "filler", "27": "mixed" }, canon episodes left out. mixed first: its class is "mixed_canon/filler"
+parsers.fillerEps = doc => Object.fromEntries([...doc.querySelectorAll('tr[id^="eps-"]')]
+  .map(tr => [txt(tr.querySelector('.Number')), /mixed/.test(tr.className) ? 'mixed' : /filler/.test(tr.className) ? 'filler' : ''])
+  .filter(([n, kind]) => n && kind));
+// found by the show's own names, else kitsu's (witanime's "Kimetsu no Yaiba" is its "Demon Slayer"). Exact ones only: a near miss
+// is often another season, numbered differently. Asked once a day: a small site, and these hardly change
+const filler = names => remember('filler:' + names.map(fold).join(), async () => { // all the names: a downloaded episode's has only its title, and its miss mustn't stand for the show's
+  const shows = await load('fillerShows', AFL + '/shows', false, true), slug = list => list.map(n => shows[aflName(n)]).find(Boolean);
+  const hit = slug(names) || slug((await kitsuShow(names))?.names || []);
+  return hit ? load('fillerEps', `${AFL}/shows/${hit}`, false, true) : {};
+});
 
 // Everything scraped is kept for 90 days and shown straight from the cache, but the site is asked again on
 // every visit (at most once a minute per page); a changed page is saved and the current view redrawn.
@@ -321,13 +351,13 @@ async function load(kind, url, force = false, keep = false) {
   if (kind === 'edList' && cache[url] && cache[url].parser !== 1) delete cache[url]; // old cards included software downloads
   const hit = cache[url];
   if (!hit || force) {
-    try { return fresh(await fetchPage(kind, url, keep && /^(oly|slayer)/.test(kind))); }
+    try { return fresh(await fetchPage(kind, url, keep && /^(oly|slayer|filler)/.test(kind))); }
     catch (e) { if (!keep && g !== gen) return never; if (hit) return hit.data; throw e; } // offline / site down: serve the saved copy
   }
   if (!checking.has(url) && Date.now() - (hit.checked || hit.at) > RECHECK) {
     checking.add(url);
     hit.checked = Date.now();
-    fetchPage(kind, url, keep && /^(oly|slayer)/.test(kind))
+    fetchPage(kind, url, keep && /^(oly|slayer|filler)/.test(kind))
       .then(data => JSON.stringify(data) !== JSON.stringify(hit.data) && used.has(url) && onChange?.())
       .catch(() => {}) // offline: keep the saved copy
       .finally(() => checking.delete(url));
@@ -389,6 +419,8 @@ window.scraper = {
   search: q => load('list', `/search?q=${encodeURIComponent(q)}`),
   details: (path, force) => load('details', path, force),
   episodeInfo,
+  kitsuShow,
+  filler,
   intro,
   animerco,
   ristoanime,

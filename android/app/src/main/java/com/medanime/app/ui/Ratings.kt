@@ -6,6 +6,7 @@ import androidx.compose.material3.*
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -17,7 +18,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -35,6 +38,145 @@ import kotlinx.coroutines.sync.withPermit
 import org.json.JSONObject
 import org.jsoup.Jsoup
 import java.net.URLEncoder
+
+/** one episode's point on the show page's graph */
+internal data class EpRate(val season: Int, val ep: Int, val score: Double)
+
+/** each episode's rating, from both sites (ratings.js episodes) */
+internal object EpisodeRatings {
+    class Graph(val imdb: List<EpRate>, val tvmaze: List<EpRate>, val url: String)
+    private val AR = Regex("[\\u0600-\\u06FF\\u0750-\\u077F\\uFB50-\\uFDFF\\uFE70-\\uFEFF]+") // spelled out: \p{IsArabic} isn't on every Android
+    private fun objects(a: org.json.JSONArray?) = (0 until (a?.length() ?: 0)).mapNotNull { a?.optJSONObject(it) }
+    // what's asked: the name without its season words or arabic (ratings.js filmName)
+    private fun latin(s: String) = s.replace(Regex("(?:الموسم|الجزء|الحلقة)\\s+.*|\\bseason\\s+\\d+.*", RegexOption.IGNORE_CASE), " ").replace(AR, " ")
+        .lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
+    /** for comparing, not asking ("Tokyo Ghoul" isn't "tokyo ghol" to a search): the sites spell a name their own way, "Shippuuden", "Shippūden", "Shippuden" */
+    fun spelled(s: String) = latin(java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD).replace(Regex("\\p{M}"), "")).replace(Regex("([ou])u"), "$1")
+    private fun asked(names: List<String>) = names.map(::latin).filter { it.isNotEmpty() }.distinct().take(6) // kitsu's list can run to 20 languages: tvmaze allows 20 calls in 10s
+    private fun inOrder(rows: List<EpRate>) = rows.sortedWith(compareBy({ it.season }, { it.ep }))
+    /** season and number left out: a special, not on the line. Anime seasons are often years on tvmaze */
+    fun tvmazeRows(eps: org.json.JSONArray) = inOrder(objects(eps).mapNotNull { e ->
+        val score = e.optJSONObject("rating")?.optDouble("average") ?: Double.NaN
+        if (e.optInt("season") > 0 && e.optInt("number") > 0 && score > 0) EpRate(e.optInt("season"), e.optInt("number"), score) else null
+    })
+    fun imdbRows(edges: List<JSONObject>) = inOrder(edges.mapNotNull { edge ->
+        val n = edge.optJSONObject("node"); val d = n?.optJSONObject("series")?.optJSONObject("displayableEpisodeNumber")
+        val s = d?.optJSONObject("displayableSeason")?.optString("season")?.toIntOrNull() ?: 0
+        val ep = d?.optJSONObject("episodeNumber")?.optString("episodeNumber")?.toIntOrNull() ?: 0
+        val score = n?.optJSONObject("ratingsSummary")?.optDouble("aggregateRating") ?: Double.NaN
+        if (s > 0 && ep > 0 && score > 0) EpRate(s, ep, score) else null
+    })
+    /** the one show of one of these names (two: none, rather than the wrong one's). An anime's is the animation: One Piece is live action too */
+    fun pickShow(shows: List<JSONObject>, want: Set<String>, anime: Boolean) =
+        shows.filter { spelled(it.optString("name")) in want && (!anime || it.optString("type") == "Animation") }.singleOrNull()
+    private fun enc(s: String) = URLEncoder.encode(s, "UTF-8").replace("+", "%20")
+    private suspend fun get(url: String) = Pages.load(url, every = Pages.DAY, interactive = false)
+    private suspend fun findShow(names: List<String>, anime: Boolean): JSONObject? {
+        val want = names.map(::spelled).filter { it.isNotEmpty() }.toSet()
+        for (q in asked(names)) {
+            val hit = pickShow(objects(org.json.JSONArray(get("https://api.tvmaze.com/search/shows?q=${enc(q)}"))).mapNotNull { it.optJSONObject("show") }, want, anime)
+            if (hit != null) return hit
+        }
+        return null
+    }
+    private suspend fun imdbId(names: List<String>): String {
+        val want = names.map(::spelled).toSet()
+        for (q in asked(names)) {
+            val hits = objects(JSONObject(get("https://v3.sg.media-imdb.com/suggestion/x/${enc(q)}.json")).optJSONArray("d"))
+                .filter { it.optString("id").matches(Regex("tt\\d+")) && it.optString("qid").matches(Regex("tv(Series|MiniSeries)")) && spelled(it.optString("l")) in want }
+            hits.singleOrNull()?.let { return it.optString("id") }
+        }
+        return ""
+    }
+    private suspend fun imdbEps(tt: String): List<EpRate> {
+        val edges = ArrayList<JSONObject>()
+        var after = ""
+        for (page in 0 until 10) { // 250 a page, what it allows: One Piece's 1200 is 5
+            val query = "query{title(id:${JSONObject.quote(tt)}){episodes{episodes(first:250${if (after.isEmpty()) "" else ",after:${JSONObject.quote(after)}"}){pageInfo{hasNextPage endCursor} edges{node{series{displayableEpisodeNumber{displayableSeason{season} episodeNumber{episodeNumber}}} ratingsSummary{aggregateRating}}}}}}}"
+            // json only, and answered only to a client naming itself as IMDb's site (Credits.imdb)
+            val e = JSONObject(Pages.load("https://caching.graphql.imdb.com/", body = JSONObject().put("query", query).toString(), headers = mapOf("x-imdb-client-name" to "imdb-web-next-localized"), every = Pages.DAY, interactive = false))
+                .optJSONObject("data")?.optJSONObject("title")?.optJSONObject("episodes")?.optJSONObject("episodes") ?: break
+            edges += objects(e.optJSONArray("edges"))
+            val info = e.optJSONObject("pageInfo")
+            if (info?.optBoolean("hasNextPage") != true) break
+            after = info.optString("endCursor")
+        }
+        return imdbRows(edges)
+    }
+    /**
+     * both sites, each an extra: found by the show's names, else kitsu's (witanime's "Kimetsu no Yaiba" is "Demon Slayer"). tvmaze
+     * names its imdb id, so the two are one show. Fewer than 2 rated: no line to draw
+     */
+    suspend fun get(names: List<String>, id: String, anime: Boolean): Graph? = withContext(Dispatchers.Default) {
+        val own = names.filter { spelled(it).isNotEmpty() }
+        var show = Scores.calm { findShow(own, anime) }
+        val kitsu = if (show == null && anime) Scores.calm { Witanime.kitsuShow(own)?.second }.orEmpty() else emptyList()
+        if (show == null && kitsu.isNotEmpty()) show = Scores.calm { findShow(kitsu, true) }
+        val tt = id.ifEmpty { show?.optJSONObject("externals")?.optString("imdb")?.takeIf { it.matches(Regex("tt\\d+")) } ?: Scores.calm { imdbId(own + kitsu) }.orEmpty() }
+        val tv = async { show?.let { s -> Scores.calm { tvmazeRows(org.json.JSONArray(get("https://api.tvmaze.com/shows/${s.optInt("id")}/episodes"))) } }.orEmpty() }
+        val im = async { if (tt.isEmpty()) emptyList() else Scores.calm { imdbEps(tt) }.orEmpty() }
+        val tvmaze = tv.await(); val imdb = im.await()
+        if (tvmaze.size > 1 || imdb.size > 1) Graph(imdb, tvmaze, show?.optString("url").orEmpty()) else null
+    }
+    /** where a new season starts on the line */
+    fun starts(rows: List<EpRate>) = rows.indices.filter { it == 0 || rows[it - 1].season != rows[it].season }
+    /** the y axis: whole scores, from just under the lowest */
+    fun floor(rows: List<EpRate>) = minOf(9, kotlin.math.floor(rows.minOf { it.score }).toInt())
+    fun seasonName(s: Int) = if (s > 1900) "$s" else "${t("seasonShort")}$s"
+}
+
+/** the show page's graph: a line per season, a tap reads the episode under it; IMDb and TVmaze's, side by side (ratings.js graph) */
+@Composable
+internal fun EpisodeGraph(names: List<String>, imdbId: String, anime: Boolean) {
+    val g by produceState<EpisodeRatings.Graph?>(null, names, imdbId, anime) { value = EpisodeRatings.get(names, imdbId, anime) }
+    val sources = g?.let { listOf("IMDb" to it.imdb, "TVmaze" to it.tvmaze).filter { s -> s.second.size > 1 } }.orEmpty()
+    if (sources.isEmpty()) return
+    var pick by remember { mutableIntStateOf(0) }
+    val rows = sources[pick.coerceAtMost(sources.lastIndex)].second
+    var at by remember(rows) { mutableIntStateOf(rows.indices.maxByOrNull { rows[it].score } ?: 0) } // starts on the best one, to say what the line means
+    val r = rows[at.coerceAtMost(rows.lastIndex)]
+    val line = "⁦${EpisodeRatings.seasonName(r.season)} ${t("epShort")} ${r.ep}⁩ · ★ ${String.format(java.util.Locale.US, "%.1f", r.score)}"
+    val measure = androidx.compose.ui.text.rememberTextMeasurer()
+    val labels = androidx.compose.ui.text.TextStyle(color = Muted, fontSize = 11.sp)
+    val uri = androidx.compose.ui.platform.LocalUriHandler.current
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()) {
+        Text(t("epRatings"), fontSize = 18.sp)
+        Row(Modifier.padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            sources.forEachIndexed { i, s ->
+                FilterChip(i == pick, { pick = i }, { Text(s.first) }, shape = RoundedCornerShape(99.dp), colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Red, selectedLabelColor = Color.White))
+            }
+        }
+        androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(200.dp).semantics { contentDescription = "${t("epRatings")}: $line" }
+            .pointerInput(rows) { // a tap only: a drag is the page's to scroll and swipe
+                detectTapGestures { p ->
+                    val left = 26.dp.toPx()
+                    at = (((p.x - left) / (size.width - left - 2.dp.toPx())) * (rows.size - 1)).let { Math.round(it) }.coerceIn(0, rows.lastIndex)
+                }
+            }) {
+            val left = 26.dp.toPx(); val top = 8.dp.toPx(); val bottom = 20.dp.toPx(); val lo = EpisodeRatings.floor(rows)
+            val x = { i: Int -> left + i * (size.width - left - 2.dp.toPx()) / (rows.size - 1) }
+            val y = { v: Double -> top + ((10 - v) * (size.height - top - bottom) / (10 - lo)).toFloat() }
+            val grid = Color(0x1AFFFFFF)
+            for (v in lo..10) {
+                drawLine(grid, androidx.compose.ui.geometry.Offset(left, y(v.toDouble())), androidx.compose.ui.geometry.Offset(size.width, y(v.toDouble())), 1.dp.toPx())
+                drawText(measure, "$v", androidx.compose.ui.geometry.Offset(0f, y(v.toDouble()) - 7.dp.toPx()), labels)
+            }
+            val starts = EpisodeRatings.starts(rows)
+            starts.forEachIndexed { k, n ->
+                val end = starts.getOrElse(k + 1) { rows.size }
+                if (n > 0) drawLine(grid, androidx.compose.ui.geometry.Offset(x(n), top), androidx.compose.ui.geometry.Offset(x(n), size.height - bottom), 1.dp.toPx())
+                // room for it: a thousand episodes of year-long seasons would be a smudge of numbers
+                if (x(minOf(end, rows.lastIndex)) - x(n) > 34.dp.toPx()) drawText(measure, EpisodeRatings.seasonName(rows[n].season), androidx.compose.ui.geometry.Offset(x(n) + 2.dp.toPx(), size.height - 16.dp.toPx()), labels)
+                val path = androidx.compose.ui.graphics.Path()
+                for (i in n until end) if (i == n) path.moveTo(x(i), y(rows[i].score)) else path.lineTo(x(i), y(rows[i].score))
+                drawPath(path, Red, style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx(), join = androidx.compose.ui.graphics.StrokeJoin.Round))
+            }
+            drawCircle(Color.White, 4.dp.toPx(), androidx.compose.ui.geometry.Offset(x(at.coerceAtMost(rows.lastIndex)), y(r.score)))
+        }
+        Text(line, Modifier.padding(top = 8.dp), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+        g?.url?.takeIf { it.isNotEmpty() && sources.any { s -> s.first == "TVmaze" } }?.let { url -> TextButton({ uri.openUri(url) }) { Text("TVmaze · CC BY-SA") } }
+    }
+}
 
 internal object SourceRatings {
     private val cache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()

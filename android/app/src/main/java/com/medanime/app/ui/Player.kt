@@ -150,7 +150,7 @@ fun PlayerScreen(epPath: String, nav: Nav) {
     PlayerChrome(d?.title ?: "", if (ep.firstOrNull()?.isDigit() == true) "${t("episode")} $ep" else ep, nav,
         all().takeIf { servers != null || extra.isNotEmpty() }?.map { it.label to it.quality }, all().indexOf(cur), url == null && cur != null, { chosen = true; tryFrom(it) },
         prev?.let { { nav.replace(Screen.Play(it.path)) } }, next?.let { { nav.replace(Screen.Play(it.path)) } }, { nav.go(Screen.Title(show)) }, { page, close -> DownloadItems(page, close, dlLinks, scope, epPath, show, ep, d, nav) }, { castTo("${d?.title ?: ""} · ${t("episode")} $ep", null, url) }, fullButton = cur?.token?.startsWith("aw:") != true,
-        searching = !mainDone || (!extraDone && (d != null || !detailsDone))) { full ->
+        searching = !mainDone || (!extraDone && (d != null || !detailsDone)), badge = if (epPath.startsWith("/watch/movie/")) "" else fillerMark(d?.title.orEmpty(), d?.alt.orEmpty(), ep)) { full ->
         val u = url
         when {
             u != null && cur?.token?.startsWith("aw:") == true -> NativeVideo(Uri.parse(u), epPath, full,
@@ -165,6 +165,14 @@ fun PlayerScreen(epPath: String, nav: Nav) {
         if (u != null && d != null) SkipIntro(d!!.title, d!!.alt, ep, epPath)
     }
 }
+
+/** the episode's filler mark for the player's header (app.js markFiller). An extra: nothing if it can't tell */
+@Composable
+fun fillerMark(title: String, alt: String, ep: String): String = produceState("", title, alt, ep) {
+    value = ""
+    val n = ep.toIntOrNull()
+    if (title.isNotEmpty() && n != null) value = runCatching { Witanime.filler(listOf(title) + alt.split(Regex("\\s*[,،]\\s*")))[n] }.getOrNull().orEmpty()
+}.value
 
 /**
  * "skip intro" over the video while the opening plays (Witanime.intro). A window of its own, so it stays above a host's fullscreen
@@ -207,7 +215,7 @@ var carryFull = false // the next player page opens in fullscreen (a downloaded 
 @Composable
 fun PlayerChrome(title: String, sub: String, nav: Nav, servers: List<Pair<String, String>>?, cur: Int, busy: Boolean, pick: (Int) -> Unit,
                  prev: (() -> Unit)?, next: (() -> Unit)?, onTitle: (() -> Unit)? = null, actions: @Composable ColumnScope.(page: MutableState<String>, close: () -> Unit) -> Unit = { _, _ -> },
-                 cast: (() -> Unit)? = null, fullButton: Boolean = true, searching: Boolean = false, stage: @Composable BoxScope.(full: MutableState<Boolean>) -> Unit) {
+                 cast: (() -> Unit)? = null, fullButton: Boolean = true, searching: Boolean = false, badge: String = "", stage: @Composable BoxScope.(full: MutableState<Boolean>) -> Unit) {
     val act = Net.activity
     val fullState = rememberSaveable { mutableStateOf(((act as? NativeActivity)?.takeRestoredFullscreen() ?: false) or carryFull.also { carryFull = false }) }
     var full by fullState
@@ -233,7 +241,10 @@ fun PlayerChrome(title: String, sub: String, nav: Nav, servers: List<Pair<String
             IconButton(nav.back) { Icon(Ic.back, t("back"), Modifier.size(22.dp)) }
             Column(Modifier.weight(1f).then(if (onTitle != null) Modifier.clickable(onClick = onTitle) else Modifier)) {
                 Text(title, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (sub.isNotEmpty()) Text(sub, color = Muted, fontSize = 12.sp, maxLines = 1)
+                if (sub.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(sub, Modifier.weight(1f, false), color = Muted, fontSize = 12.sp, maxLines = 1)
+                    if (badge.isNotEmpty()) FillerBadge(badge)
+                }
             }
             // a choice with options (download) opens them in the menu's place, as the manga reader's ⋮ does
             Box {

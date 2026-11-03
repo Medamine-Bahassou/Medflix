@@ -20,7 +20,7 @@ const MC = 'https://cima.my-cima.net'; // the movies section's backup servers (M
 // pages (pop-up ads and all) are never opened in a window for the check (see refused below)
 const WC = 'https://wecima.singles';
 const RA = 'https://ristoanime.me'; // anime backup servers
-const SUGGEST = ['https://graphql.anilist.co', 'https://api.tvmaze.com', 'https://api.jikan.moe', 'https://www.wikidata.org', 'https://kitsu.io', 'https://v3.sg.media-imdb.com', 'https://www.imdb.com', 'https://caching.graphql.imdb.com', 'https://api.aniskip.com', 'https://myanimelist.net', 'https://www.rottentomatoes.com', 'https://backend.metacritic.com']; // the search's typo-tolerant title suggestions (app.js)
+const SUGGEST = ['https://graphql.anilist.co', 'https://api.tvmaze.com', 'https://api.jikan.moe', 'https://www.wikidata.org', 'https://kitsu.io', 'https://v3.sg.media-imdb.com', 'https://www.imdb.com', 'https://caching.graphql.imdb.com', 'https://api.aniskip.com', 'https://myanimelist.net', 'https://www.rottentomatoes.com', 'https://backend.metacritic.com', 'https://www.animefillerlist.com']; // the search's typo-tolerant title suggestions (app.js)
 const EGYDEAD = /^https:\/\/([a-z0-9-]+\.)*(egydead|myseed|arabseed)\.[a-z]+$/; // the movies section: the site hops between domains
 // plain Chrome of the version Electron really runs: Cloudflare's check fails a user agent that disagrees with the
 // browser's client hints (they name the real version)

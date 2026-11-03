@@ -166,6 +166,19 @@ input:focus-visible, select:focus-visible { outline: none; }
 .eps.list .ep img { flex: none; width: 128px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 8px; background: var(--card); }
 .eps.list .ep span { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .eps.list .ep small { color: var(--muted); font-weight: 400; font-size: 13px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ep-kind { margin-inline-start: 8px; padding: 1px 6px; border-radius: 3px; background: var(--red); color: #fff; font-size: 11px; font-style: normal; }
+.ep-kind.mixed { background: #ffffff26; }
+.eg { margin-top: 12px; }
+.eg svg { display: block; width: 100%; height: auto; touch-action: pan-y; cursor: crosshair; }
+.eg polyline { fill: none; stroke: var(--red); stroke-width: 2; stroke-linejoin: round; }
+.eg .eg-grid { stroke: #ffffff1a; }
+.eg text { fill: var(--muted); font-size: 11px; }
+.eg circle { fill: #fff; }
+.eg p { margin: 8px 0 0; font-weight: 700; }
+#title-graph small a { color: var(--muted); }
+#title-graph[hidden] { display: none; }
+#hfl[hidden] { display: none; }
+#hfl.on { background: var(--red); border-color: var(--red); }
 .eps.list .ep.seen img { opacity: .45; }
 .eps.list .ep.seen::after { order: 1; margin-inline-start: auto; } /* the check after the name, not before the still */
 .ep-tools { display: flex; align-items: center; gap: 8px; margin-inline-start: auto; }

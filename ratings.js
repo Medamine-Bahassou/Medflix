@@ -93,6 +93,97 @@ const Ratings = (() => {
   }
   const logo = source => source === 'MyAnimeList' ? '<svg viewBox="0 0 64 30" aria-label="MyAnimeList" role="img"><rect width="64" height="30" rx="4" fill="#2e51a2"/><text x="32" y="22" text-anchor="middle" font-family="Arial" font-weight="900" font-size="20" fill="#fff">MAL</text></svg>' : source === 'IMDb' ? '<svg viewBox="0 0 64 30" aria-label="IMDb" role="img"><rect width="64" height="30" rx="4" fill="#f5c518"/><text x="5" y="22" font-family="Arial" font-weight="900" font-size="22" fill="#000">IMDb</text></svg>' : '<svg viewBox="0 0 40 30" aria-label="AniList" role="img"><path fill="#02a9ff" d="M0 30 9 0h8l9 30h-8l-2-7H9l-2 7zm11-14h3l-1.5-6z"/><path fill="#9fcdff" d="M25 0h7v23h8v7H25z"/></svg>';
   const badge = (source, value) => ['Rotten Tomatoes', 'Metacritic'].includes(source) ? `<b>${source === 'Metacritic' ? 'MC' : 'RT'} ${esc(value)}%</b>` : `${logo(source)}<b>★ ${esc(value)}</b><small>/10</small>`;
+  // ---------- the show page's graph: each episode's rating, as [season, episode, score] ----------
+  // the sites spell a name their own way: "Shippuuden", "Shippūden", "Shippuden"
+  const spelled = s => filmName(String(s || '').normalize('NFD').replace(/\p{M}/gu, '')).replace(/([ou])u/g, '$1');
+  const inOrder = rows => rows.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  // season and number left out: a special, not on the line. Anime seasons are often years on tvmaze
+  const tvmazeRows = eps => inOrder(eps.filter(e => e.season > 0 && e.number > 0 && e.rating?.average > 0).map(e => [e.season, e.number, e.rating.average]));
+  const imdbRows = edges => inOrder(edges.flatMap(({ node: n }) => {
+    const d = n.series?.displayableEpisodeNumber, s = +d?.displayableSeason?.season, ep = +d?.episodeNumber?.episodeNumber, score = n.ratingsSummary?.aggregateRating;
+    return s > 0 && ep > 0 && score > 0 ? [[s, ep, score]] : [];
+  }));
+  // the one show of one of these names (two: none, rather than the wrong one's). An anime's is the animation: One Piece is live action too
+  const pickShow = (shows, want, anime) => {
+    const same = shows.filter(s => want.has(spelled(s.name)) && (!anime || s.type === 'Animation'));
+    return same.length === 1 ? same[0] : null;
+  };
+  const getJson = url => api.fetch(url, null, false, true).then(JSON.parse);
+  const asked = names => [...new Set(names.map(filmName).filter(Boolean))].slice(0, 6); // kitsu's list can run to 20 languages: tvmaze allows 20 calls in 10s
+  const findShow = async (names, anime) => {
+    const want = new Set(names.map(spelled).filter(Boolean));
+    for (const q of asked(names)) { // spelled is for comparing, not asking: "Tokyo Ghoul" isn't "tokyo ghol" to a search
+      const hit = pickShow((await getJson('https://api.tvmaze.com/search/shows?q=' + encodeURIComponent(q))).map(x => x.show), want, anime);
+      if (hit) return hit;
+    }
+    return null;
+  };
+  const imdbId = async names => {
+    const want = new Set(names.map(spelled));
+    for (const q of asked(names)) {
+      const hits = ((await getJson(`https://v3.sg.media-imdb.com/suggestion/x/${encodeURIComponent(q)}.json`)).d || []).filter(h => /^tt\d+$/.test(h.id) && /^tv(Series|MiniSeries)$/.test(h.qid) && want.has(spelled(h.l)));
+      if (hits.length === 1) return hits[0].id;
+    }
+    return '';
+  };
+  async function imdbEps(tt) {
+    const edges = [];
+    for (let after = '', page = 0; page < 10; page++) { // 250 a page, what it allows: One Piece's 1200 is 5
+      const query = `query{title(id:${JSON.stringify(tt)}){episodes{episodes(first:250${after && `,after:${JSON.stringify(after)}`}){pageInfo{hasNextPage endCursor} edges{node{series{displayableEpisodeNumber{displayableSeason{season} episodeNumber{episodeNumber}}} ratingsSummary{aggregateRating}}}}}}}`;
+      const e = JSON.parse(await api.fetch('https://caching.graphql.imdb.com/', { query }, false, true)).data?.title?.episodes?.episodes;
+      edges.push(...(e?.edges || []));
+      if (!e?.pageInfo?.hasNextPage) break;
+      after = e.pageInfo.endCursor;
+    }
+    return imdbRows(edges);
+  }
+  // both sites, each an extra: found by the show's names, else kitsu's (witanime's "Kimetsu no Yaiba" is "Demon Slayer"). tvmaze
+  // names its imdb id, so the two are one show. Fewer than 2 rated: no line to draw
+  const episodes = (names, id, anime) => scraper.remember('epRatings:' + [id, ...names.map(spelled)].join(), async () => {
+    let all = names.filter(spelled), show = await findShow(all, anime).catch(() => null);
+    if (!show && anime) {
+      const kitsu = (await scraper.kitsuShow(all).catch(() => null))?.names || [];
+      all = [...all, ...kitsu];
+      show = await findShow(kitsu, true).catch(() => null);
+    }
+    const tt = id || show?.externals?.imdb || await imdbId(all).catch(() => '');
+    const [tvmaze, imdb] = await Promise.all([show ? getJson(`https://api.tvmaze.com/shows/${show.id}/episodes`).then(tvmazeRows).catch(() => []) : [], tt ? imdbEps(tt).catch(() => []) : []]);
+    return tvmaze.length > 1 || imdb.length > 1 ? { imdb, tvmaze, url: show?.url || '' } : null; // none isn't kept: it may be a blip
+  });
+  // the y axis: whole scores, from just under the lowest
+  const graphFloor = rows => Math.min(9, Math.floor(Math.min(...rows.map(r => r[2]))));
+  const seasonName = s => (s > 1900 ? String(s) : t('seasonShort') + s);
+  const epLine = r => `⁦${seasonName(r[0])} ${t('epShort')} ${r[1]}⁩ · ★ ${r[2].toFixed(1)}`;
+  function drawGraph(box, rows) {
+    const W = Math.max(box.clientWidth, 280), H = 200, L = 26, T = 8, B = 20, lo = graphFloor(rows);
+    const x = i => L + i * (W - L - 2) / (rows.length - 1), y = v => T + (10 - v) * (H - T - B) / (10 - lo);
+    let i = rows.reduce((best, r, n) => (r[2] > rows[best][2] ? n : best), 0); // starts on the best one, to say what the line means
+    const starts = rows.flatMap((r, n) => (!n || rows[n - 1][0] !== r[0] ? [n] : []));
+    const lines = starts.map((n, k) => `<polyline points="${rows.slice(n, starts[k + 1]).map((r, m) => `${x(n + m).toFixed(1)},${y(r[2]).toFixed(1)}`).join(' ')}"/>`).join('');
+    const grid = Array.from({ length: 10 - lo + 1 }, (_, k) => lo + k).map(v => `<line class="eg-grid" x1="${L}" x2="${W}" y1="${y(v)}" y2="${y(v)}"/><text x="0" y="${y(v) + 4}">${v}</text>`).join('');
+    // room for it: a thousand episodes of year-long seasons would be a smudge of numbers
+    const seasons = starts.map((n, k) => `${n ? `<line class="eg-grid" x1="${x(n)}" x2="${x(n)}" y1="${T}" y2="${H - B}"/>` : ''}${x(starts[k + 1] ?? rows.length - 1) - x(n) > 34 ? `<text x="${x(n) + 2}" y="${H - 6}">${esc(seasonName(rows[n][0]))}</text>` : ''}`).join('');
+    box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" dir="ltr" role="img" aria-label="${esc(t('epRatings'))}">${grid}${seasons}${lines}<circle r="4"/></svg><p dir="auto"></p>`;
+    const svg = box.firstChild, dot = svg.querySelector('circle'), read = box.lastChild;
+    const show = () => { dot.setAttribute('cx', x(i)); dot.setAttribute('cy', y(rows[i][2])); read.textContent = epLine(rows[i]); };
+    svg.onpointerdown = svg.onpointermove = e => { const b = svg.getBoundingClientRect(); i = Math.max(0, Math.min(rows.length - 1, Math.round(((e.clientX - b.left) / b.width * W - L) / (W - L - 2) * (rows.length - 1)))); show(); };
+    show();
+  }
+  async function graph(el, names, id, anime) {
+    const g = await episodes(names, id, anime).catch(() => null);
+    if (!g || !el.isConnected) return; // left the page meanwhile: this section's gone with it
+    const sources = [['IMDb', g.imdb], ['TVmaze', g.tvmaze]].filter(([, rows]) => rows.length > 1);
+    el.hidden = false;
+    el.innerHTML = `<h2>${t('epRatings')}</h2><div class="fchips">${sources.map(([name], k) => `<button class="fchip ${k ? '' : 'on'}" data-k="${k}">${name}</button>`).join('')}</div><div class="eg"></div>${g.url && sources.some(([name]) => name === 'TVmaze') ? `<small><a href="${esc(g.url)}" target="_blank" rel="noopener">TVmaze · CC BY-SA</a></small>` : ''}`;
+    const box = el.querySelector('.eg');
+    el.querySelector('.fchips').onclick = e => {
+      const b = e.target.closest('[data-k]');
+      if (!b) return;
+      el.querySelectorAll('.fchip').forEach(c => c.classList.toggle('on', c === b));
+      drawGraph(box, sources[b.dataset.k][1]);
+    };
+    drawGraph(box, sources[0][1]);
+  }
   const observer = new IntersectionObserver(entries => entries.forEach(async ({target, isIntersecting}) => {
     if (!isIntersecting) return;
     observer.unobserve(target);
@@ -105,5 +196,6 @@ const Ratings = (() => {
   return {
     // a supplied IMDb score is shown immediately; the other sources are still looked up
     slot: c => `<span class="source-rating" data-rating="${esc(JSON.stringify({title:c.title, alt:c.alt || '', type:c.type, path:c.path || '', year:c.year || '', imdb:c.imdb || ''}))}">${c.imdb ? badge('IMDb', c.imdb) : ''}</span>`,
+    graph,
   };
 })();

@@ -102,7 +102,7 @@ fun CinemaTitleScreen(slug: String, show: Boolean, nav: Nav) {
                         }
                     }
                 },
-                after = { item { CreditsSection(listOf(m.title), false, if (slug.contains('/')) "" else m.year, kind = if (slug.contains('/')) "series" else "cinema", slug = slug, nav = nav) }; item { CardRowView(t("moreLike"), m.related, nav) } }, play = play?.let { (s, label) -> label to { nav.go(s) } },
+                after = { item { CreditsSection(listOf(m.title), false, if (slug.contains('/')) "" else m.year, kind = if (slug.contains('/')) "series" else "cinema", slug = slug, nav = nav) }; if (slug.contains('/')) item { EpisodeGraph(listOf(m.title), m.imdbId, false) }; item { CardRowView(t("moreLike"), m.related, nav) } }, play = play?.let { (s, label) -> label to { nav.go(s) } },
                 menu = listOfNotNull(if (m.trailer.isNotEmpty()) MenuItem(t("trailer"), Ic.play) { nav.go(Screen.Trailer(m.trailer, m.title)) } else null))
         }
     }
