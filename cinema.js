@@ -115,7 +115,8 @@ Object.assign(parsers, {
       origin: new URL(doc.querySelector('.bread__crumbs a[href^="http"], .breadcrumbs-single a[href^="http"]')?.getAttribute('href') || ED).origin, // the site's current domain
       poster,
       banner: imgSrc(doc.querySelector('.lcp-cover-img, .aseed-lcp-img, .single__cover img')) || doc.querySelector('.singleCover')?.style.backgroundImage.match(/url\(["']?([^"')]+)/)?.[1] || poster,
-      desc: txt(doc.querySelector('.post__story p, .post__content, .extra-content p, .singleStory')),
+      // the plot is .post__story's ("قصة العرض"); .post__content, earlier in the page, is the site's "watch and download" line
+      desc: txt(doc.querySelector('.post__story p')) || txt(doc.querySelector('.post__content, .extra-content p, .singleStory')),
       cat: vals('القسم', 'تصنيف'), genres: vals('النوع', 'نوع'),
       tags: [...vals('السنه', 'سنة'), ...vals('الجوده', 'جودة'), ...vals('البلد', 'بلد'), ...vals('اللغه', 'لغة'), ...vals('مده العرض', 'مدة')].filter(Boolean),
       trailer: doc.querySelector('.show__trailer[data-iframe]')?.getAttribute('data-iframe') || doc.querySelector('#trailerPopup iframe[src*="youtube"]')?.getAttribute('src') || '',
@@ -356,20 +357,28 @@ async function cinemaTitle(slug, force) {
   if (target) edWatchSoon(m, target).catch(() => {});
   const play = !slug.includes('/') ? { href: edHref(slug) + '/watch', label: t('play') } // a film
     : h ? { href: edHref(h.slug), label: `${t('play')} · ${t('ep')} ${h.ep}` } : eps.length && { href: edHref(eps[0].slug), label: t('play') };
+  // one quiet line for the facts (category, year, running time, quality) instead of a chip each; the countries and language
+  // are left out. "2 ساعة و 53 دقيقة" / "ساعة و 52 دقيقة" (one hour) read as hours and minutes
+  const runtime = s => { const h = +(s.match(/(\d+)\s*ساع/)?.[1] || /ساع/.test(s)), min = +(s.match(/(\d+)\s*دقيق/)?.[1] || 0); return h || min ? t('runtime', h, min) : s; };
+  const meta = [...m.cat, ...m.tags.filter(x => /^(19|20)\d\d$/.test(x)), ...m.tags.filter(x => /ساع|دقيق/.test(x)).map(runtime),
+    ...m.tags.filter(x => /^(blu-?ray|web-?dl|web-?rip|hd-?rip|hdtv|hd-?cam|cam|dvd\w*|hd|4k|\d{3,4}p)$/i.test(x))];
+  const desc = /^مشاهدة\s+(و\s*)?تحميل/.test(m.desc) ? '' : m.desc; // pages saved before the plot was read: the site's line, not shown
   view.innerHTML = `
     <div class="det-hero"><div class="bg" style="background-image:url('${esc(img(m.banner))}')"></div>
       <div class="det">
         ${m.poster ? `<img class="poster" src="${esc(img(m.poster))}" alt="">` : ''}
         <div>
           <h1 dir="auto">${esc(m.title)}</h1>
-          <div class="chips">${m.cat.map(c => `<span class="chip red">${esc(c)}</span>`).join('')}${[...m.tags, ...m.genres].map(g => `<span class="chip">${esc(g)}</span>`).join('')}</div>
-          <p class="desc" dir="auto">${esc(m.desc)}</p>
-          <div class="actions">${Ratings.slot({title:m.title, type:"cinema", path, year:m.year, imdb:m.imdb})}
+          ${meta.length ? `<div class="det-meta">${meta.map(x => `<span><bdi>${esc(x)}</bdi></span>`).join('')}</div>` : ''}
+          ${m.genres.length ? `<div class="chips">${m.genres.map(g => `<span class="chip">${esc(g)}</span>`).join('')}</div>` : ''}
+          ${Ratings.slot({title:m.title, type:"cinema", path, year:m.year, imdb:m.imdb})}
+          ${desc ? `<p class="desc" dir="auto">${esc(desc)}</p>` : ''}
+          <div class="actions">
             ${play ? `<a class="btn red" href="${play.href}">${ICON.play} ${esc(play.label)}</a>` : ''}
             <button class="btn ghost" id="fav">${inList(path) ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList')}</button>
             ${m.trailer ? `<button class="btn ghost" id="trl">${ICON.play} ${t('trailer')}</button>` : ''}
             ${slug.includes('/') ? `<button class="btn ghost" id="grf">${ICON.star} ${t('epRatings')}</button>` : ''}
-            <button class="btn ghost" id="rf">${ICON.refresh} ${t('refresh')}</button>
+            <button class="icon-btn det-rf" id="rf" title="${t('refresh')}" aria-label="${t('refresh')}">${ICON.refresh}</button>
           </div>
         </div>
       </div>

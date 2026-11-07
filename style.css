@@ -139,7 +139,7 @@ input:focus-visible, select:focus-visible { outline: none; }
 .chip svg { width: 13px; height: 13px; }
 .chip.red svg { color: #ffc93c; }
 .chip.red { border-color: var(--red); color: #fff; background: #e5091422; }
-.det .desc { max-width: 760px; color: #ddd; margin-bottom: 18px; }
+.det .desc { max-width: 760px; color: #ddd; margin-bottom: 18px; text-align: match-parent; } /* an Arabic plot on the English page: aligned with the page, not its own right edge */
 .infos { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; margin: 0 var(--gutter) 40px; padding: 20px; background: #141414; border-radius: 8px; border: 1px solid #ffffff0d; }
 .infos div span { display: block; color: var(--muted); font-size: 12px; }
 .section { padding: 0 var(--gutter) 40px; }
@@ -360,7 +360,7 @@ input:focus-visible, select:focus-visible { outline: none; }
   .det-hero { min-height: 0; padding: calc(env(safe-area-inset-top, 0px) + 80px) var(--gutter) 24px; }
   .det { flex-direction: column; align-items: center; gap: 18px; text-align: center; }
   .det .poster { width: 150px; }
-  .chips, .det .actions { justify-content: center; }
+  .chips, .det .actions, .det .source-rating, .det-meta { justify-content: center; }
   .infos { grid-template-columns: repeat(2, 1fr); margin: 0 var(--gutter) 24px; padding: 14px; }
   .section h2 { flex-wrap: wrap; font-size: 19px; }
   .ep-tools input { width: 110px; }
@@ -838,8 +838,24 @@ img.broken:not(.rd-pages img) { content: url("data:image/gif;base64,R0lGODlhAQAB
 
 .cast-search[hidden] { display:none; }
 
-.source-rating { display: inline-flex; align-items: center; align-self: center; gap: 6px; padding: 3px 12px 3px 4px; border: 1px solid #f5c51855; border-radius: 30px; background: #f5c51814; font-size: 13px; white-space: nowrap; direction: ltr; } /* logo, then the score: same order in both languages */
+.source-rating { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 18px; }
 .source-rating:empty { display: none; }
-.source-rating svg { height: 18px; width: auto; border-radius: 4px; }
-.source-rating b { color: #f5c518; }
-.source-rating small { color: var(--muted); font-size: 11px; margin-inline-start: -4px; }
+/* a source's badge (ratings.js badge): its logo or coloured mark, the score, "/10"; read left to right in either language */
+.rb { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding-inline: 5px 12px; border-radius: 9px; background: #ffffff10; border: 1px solid #ffffff1f; font-size: 15px; white-space: nowrap; direction: ltr; backdrop-filter: blur(6px); }
+.rb svg { height: 22px; width: auto; border-radius: 4px; }
+.rb b { color: #fff; font-weight: 800; }
+.rb small { margin-inline-start: -5px; color: var(--muted); font-size: 12px; }
+.rb i { display: grid; place-items: center; height: 22px; padding-inline: 6px; border-radius: 4px; font-style: normal; font-size: 11px; font-weight: 900; letter-spacing: .02em; color: #fff; }
+.rb-rt i { background: #fa320a; }
+.rb-rt.low i { background: #0ac855; }
+.rb-mc i { background: #66cc33; color: #000; }
+.rb-mc.mixed i { background: #ffcc33; color: #000; }
+.rb-mc.bad i { background: #ff0000; }
+/* the facts line under a title (cinema.js): "category · year · running time · quality" */
+.det-meta { display: flex; flex-wrap: wrap; align-items: center; margin: 12px 0 14px; color: #cfcfcf; font-size: 15px; font-weight: 500; }
+.det-meta span + span::before { content: "·"; margin-inline: 10px; color: var(--muted); }
+.det-meta span:first-child { color: #fff; font-weight: 700; }
+.det .actions { align-items: center; }
+.det-rf { width: 46px; height: 46px; background: #ffffff14; border: 1px solid #ffffff22; }
+.det-rf:hover { background: #ffffff24; }
+.det-rf svg { width: 20px; height: 20px; }

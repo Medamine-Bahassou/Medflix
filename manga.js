@@ -317,11 +317,12 @@ async function mangaSeries(id, force) {
             ${s.genres.map(g => `<span class="chip">${esc(g)}</span>`).join('')}
           </div>
           <p class="desc" dir="auto">${esc(s.story)}</p>
-          <div class="actions">${Ratings.slot({title:s.title, alt:s.alt, type:"manga"})}
+          ${Ratings.slot({title:s.title, alt:s.alt, type:"manga"})}
+          <div class="actions">
             ${start ? `<a class="btn red" href="#/manga/read/${start.id}">${ICON.play} ${esc(start.label)}</a>` : ''}
             <button class="btn ghost" id="fav">${inList(path) ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList')}</button>
             <button class="btn ghost" id="grf">${ICON.star} ${t('titleRatings')}</button>
-            <button class="btn ghost" id="rf">${ICON.refresh} ${t('refresh')}</button>
+            <button class="icon-btn det-rf" id="rf" title="${t('refresh')}" aria-label="${t('refresh')}">${ICON.refresh}</button>
           </div>
         </div>
       </div>
