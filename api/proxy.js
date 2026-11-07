@@ -9,7 +9,8 @@ const { fetch: exitFetch, ProxyAgent } = require('undici');
 // same sites as main.js's fetch allowlist, plus the download hosts (MediaHosts) and egydead's MegaMax player pages (mirrors)
 const SITES = ['witanime.site', 'eva.animerco.org', 'ristoanime.me', 'appswat.com', 'animeschedule.net', 'cima.my-cima.net', 'wecima.singles', 'olympustaff.com',
   'sparkmanga.net', 'manga-starz.net', 'graphql.anilist.co', 'api.tvmaze.com', 'api.jikan.moe', 'www.wikidata.org', 'kitsu.io', 'v3.sg.media-imdb.com', 'www.imdb.com',
-  'caching.graphql.imdb.com', 'api.aniskip.com', 'myanimelist.net', 'www.rottentomatoes.com', 'backend.metacritic.com', 'www.animefillerlist.com'];
+  'caching.graphql.imdb.com', 'api.aniskip.com', 'myanimelist.net', 'www.rottentomatoes.com', 'backend.metacritic.com', 'www.animefillerlist.com',
+  'vidara.to']; // vidara: a film's embed asked whether it's still queued for encoding (cinema.js seedWatch)
 const allowed = u => u.protocol === 'https:' && (SITES.includes(u.hostname) || /(^|\.)(egydead|myseed|arabseed)\.[a-z]+$/.test(u.hostname)
   || MediaHosts.host(u.href) || /^\/iframe\/[A-Za-z0-9]+$/.test(u.pathname));
 // desktop Chrome, as on desktop and Android: the sites serve the markup the scraper expects

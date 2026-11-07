@@ -146,6 +146,9 @@ const b64Url = s => { try { return atob(s.replace(/-/g, '+').replace(/_/g, '/'))
 const myseedUrl = (tok, origin) => `https://d.myseed.tv/player-gateway.php?src=myseed&front=${new URL(origin).hostname}&t=${tok}`;
 async function unwrapServer(s, origin) {
   if (s.url.startsWith('/vids.php')) {
+    // the website can't play myseed's: its gateway plays only framed from myseed's own site (Android's WebView poses as it,
+    // Player.kt), else it shows a "visit the official site" banner, and its video file refuses any other referrer. Not offered
+    if (api.web) return [];
     const tok = new URL(s.url, origin).searchParams.get('t');
     return tok ? [{ ...s, label: 'myseed', url: myseedUrl(tok, origin) }] : [];
   }
@@ -208,8 +211,13 @@ async function seedWatch(m, slug) {
     quality: li.dataset.qu || li.closest('[data-quality]')?.dataset.quality || li.dataset.quality || '',
     url: li.dataset.link || '',
   })), ...await otherQualities(m.origin, wHtml, doc)].filter(s => s.url && !DEAD_HOSTS.test(new URL(s.url, m.origin).hostname)); // gone hosts: not offered, nor unwrapped (MegaMax's lookup of one hangs till it times out)
-  const servers = (await Promise.all(raw.map(s => unwrapServer(s, m.origin)))).flat()
+  let servers = (await Promise.all(raw.map(s => unwrapServer(s, m.origin)))).flat()
     .sort((a, b) => hostRank(a.label) - hostRank(b.label) || (parseInt(b.quality) || 0) - (parseInt(a.quality) || 0)); // each host's best quality first
+  // vidara gets new films before it has encoded them: its page then says "Waiting in queue" (.queue-card) or "Encoding your
+  // video" (.processing-card), both with a .stage-badge, and plays nothing.
+  // the website starts on the first server (it can't tell a player that plays from one that doesn't, unlike the desktop's
+  // playerHealth): such a vidara is left out there, so the next host plays
+  if (api.web) servers = (await Promise.all(servers.map(async s => s.label === 'vidara' && /stage-badge|queue-card|processing-card/.test(await api.fetch(s.url).catch(() => '')) ? null : s))).filter(Boolean);
   const downloads = [
     ...[...doc.querySelectorAll('.donwload-servers-list li')].map(li => ({ label: txt(li.querySelector('.ser-name')), quality: txt(li.querySelector('.server-info')), url: li.querySelector('a.ser-link')?.getAttribute('href') || '' })),
     ...[...dDoc.querySelectorAll('a.download__item[href]')].map(a => {
@@ -300,7 +308,7 @@ const edWatchSoon = (m, slug) => {
     watches.set(slug, { at: Date.now(), promise, early });
     promise.catch(() => watches.get(slug)?.promise === promise && watches.delete(slug));
   }
-  return saved ? Promise.resolve(saved.w) : watches.get(slug).promise;
+  return saved ? Promise.resolve(api.web ? { ...saved.w, servers: saved.w.servers.filter(s => s.label !== 'myseed') } : saved.w) : watches.get(slug).promise; // saved before the website left myseed's out (unwrapServer)
 };
 
 const edList = (id, page = 1, force) => load('edList', ED + eCat(id)[1] + (page > 1 ? `page/${page}/` : ''), force)
