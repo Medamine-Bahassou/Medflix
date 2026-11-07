@@ -329,7 +329,9 @@ function settingsView(root = view) {
     { id: 'play', icon: ICON.play, title: t('playback'), hint: t('skipIntroHint'),
       body: `<div class="set-list"><label class="set-row"><i class="set-tile">${ICON.skipForward}</i><span>${t('skipIntroSet')}</span><input type="checkbox" id="intro-on" ${store.prefs.skipIntro === false ? '' : 'checked'}></label></div>` },
     { id: 'hidden', icon: ICON.eyeSlash, title: t('hiddenTitle'), hint: t('hiddenHint'),
-      body: `<div class="set-list"><a class="set-row set-link" href="#/hidden"><i class="set-tile">${ICON.eyeSlash}</i><span>${t('openHidden', hidden)}</span>${ICON.caretRight}</a></div>` },
+      // the modal shows them in its tab (their ✕ brings one back); the page links to #/hidden
+      body: modal ? `<div class="set-hidden">${hiddenGrid('h3')}</div>`
+        : `<div class="set-list"><a class="set-row set-link" href="#/hidden"><i class="set-tile">${ICON.eyeSlash}</i><span>${t('openHidden', hidden)}</span>${ICON.caretRight}</a></div>` },
     api.web && { id: 'data', icon: ICON.folder, title: t('dataTitle'), hint: t('dataHint'), body: `<div class="set-list">
       <button class="set-row set-link" id="bk"><i class="set-tile">${ICON.download}</i><span>${t('backup')}</span></button>
       <label class="set-row set-link"><i class="set-tile">${ICON.folder}</i><span>${t('restore')}</span><input type="file" id="rs" accept=".json,application/json" hidden></label>
@@ -1332,13 +1334,16 @@ function myList() {
 }
 
 // #/hidden: what was long-pressed away, by kind; ✕ (the card's remove button) brings one back
-function unhidden() { toast(t('shown')); hiddenView(); }
+function unhidden() { toast(t('shown')); settingsModal() ? settingsView(settingsModal()) : hiddenView(); } // shown in the desktop's settings modal, or the page
+// the hidden cards by kind: the page's, and the settings modal's hidden-items tab (h: its smaller heading there)
+function hiddenGrid(h = 'h2') {
+  const all = Object.values(store.hidden).sort((a, b) => b.at - a.at).map(x => ({ ...x, rm: 'hidden:' + x.path }));
+  const kinds = [['anime', x => x.type !== 'manga' && x.type !== 'cinema'], ['manga', x => x.type === 'manga'], ['cinema', x => x.type === 'cinema']];
+  return all.length ? kinds.map(([k, f]) => (l => l.length ? `<${h}>${t(k)} <small>${l.length}</small></${h}>${grid(l)}` : '')(all.filter(f))).join('')
+    : `<div class="empty"><b>${t('noHidden')}</b></div>`;
+}
 function hiddenView() {
-  const all = Object.values(store.hidden).sort((a, b) => b.at - a.at).map(h => ({ ...h, rm: 'hidden:' + h.path }));
-  const kinds = [['anime', h => h.type !== 'manga' && h.type !== 'cinema'], ['manga', h => h.type === 'manga'], ['cinema', h => h.type === 'cinema']];
-  view.innerHTML = `<div class="page hidden-page"><h1>${t('hiddenTitle')}</h1><p class="hint">${t('hiddenHint')}</p>
-    ${all.length ? kinds.map(([k, f]) => (l => l.length ? `<h2>${t(k)} <small>${l.length}</small></h2>${grid(l)}` : '')(all.filter(f))).join('')
-      : `<div class="empty"><b>${t('noHidden')}</b></div>`}</div>`;
+  view.innerHTML = `<div class="page hidden-page"><h1>${t('hiddenTitle')}</h1><p class="hint">${t('hiddenHint')}</p>${hiddenGrid()}</div>`;
 }
 
 async function title(path, force) {
