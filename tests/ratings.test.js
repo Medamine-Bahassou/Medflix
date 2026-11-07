@@ -5,7 +5,7 @@ const vm = require('node:vm');
 function ratings(fetch = async () => { throw Error('offline'); }) {
   const ctx = { DOMParser: class { parseFromString() { return { querySelectorAll: () => [] }; } }, api: { fetch }, IntersectionObserver: class { observe() {} }, MutationObserver: class { observe() {} }, document: { documentElement: {} }, esc: s => s, t: k => ({ seasonShort: 'S', epShort: 'E', avgShort: 'AVG' })[k] || k, scraper: { remember: (k, go) => go(), kitsuShow: async () => null } };
   vm.createContext(ctx);
-  const code = fs.readFileSync('ratings.js', 'utf8').replace('  return {\n    // a supplied', '  this.testing = { lookup, filmPick, filmScore, spelled, tvmazeRows, imdbRows, pickShow, rated, tier, seasonAvg, gridHtml };\n  return {\n    // a supplied');
+  const code = fs.readFileSync('ratings.js', 'utf8').replace('  return {\n    // a supplied', '  this.testing = { lookup, filmPick, filmScore, spelled, tvmazeRows, imdbRows, pickShow, rated, tier, seasonAvg, gridHtml, aniPick, aniNext, aniVotes, malEpisodes, malVotes, votesHtml };\n  return {\n    // a supplied');
   vm.runInContext(code + '\nthis.ratings = Ratings;', ctx);
   return { ...ctx.testing, ...ctx.ratings };
 }
@@ -78,6 +78,49 @@ test('episode grid: a year-long season shows as its year, and date-like numbers 
   const html = gridHtml([[2004, 1, 8], [2004, 20210101, 7]]);
   assert.match(html, /<th>2004<\/th>/);
   assert.equal((html.match(/<tr>/g) || []).length, 4); // head, the 2 it has, foot
+});
+test('myanimelist: its polls read out of 10, an unvoted episode is null', () => {
+  const { malEpisodes } = ratings();
+  const row = (n, raw) => `<tr class="episode-list-data"><td class="episode-number nowrap" data-raw="${n}">${n}</td><td class="episode-aired nowrap">x</td><td  class="episode-poll ac nowrap scored" style="background-size: 85.8% 3px;" data-raw="${raw}" ></td></tr>`;
+  const head = '<td class="episode-poll" data-sort-key="episode-poll">';
+  assert.deepEqual(JSON.parse(JSON.stringify(malEpisodes(head + row(1, '4.25') + row(2, '0') + '<tr class="episode-list-data"><td class="episode-number nowrap" data-raw="3">3</td></tr>' + row(4, '4')))), [[1, 8.5], [2, null], [3, null], [4, 8]]);
+});
+test('votes: both sites read 10 down to 1', () => {
+  const { malVotes, aniVotes } = ratings();
+  const stat = (s, n) => `<tr><td width="20" class="score-label score-${s}">${s}</td><td><span>&nbsp;67.9% <small>(${n} votes)</small></span></td></tr>`;
+  assert.deepEqual(Array.from(malVotes('<div class="score-label score-9">9.47</div><table class="score-stats">' + stat(10, 276544) + stat(9, 77856) + stat(1, 3))), [276544, 77856, 0, 0, 0, 0, 0, 0, 0, 3]);
+  assert.deepEqual(Array.from(aniVotes({ stats: { scoreDistribution: [{ score: 10, amount: 7 }, { score: 100, amount: 5 }] } })), [5, 0, 0, 0, 0, 0, 0, 0, 0, 7]);
+});
+test('anilist: one title of the name, a manga is not its novel, an anime is the show', () => {
+  const { aniPick } = ratings();
+  const media = (romaji, format) => ({ format, title: { romaji }, synonyms: [] });
+  const manga = media('Solo Leveling', 'MANGA'), novel = media('Solo Leveling', 'NOVEL'), show = media('Frieren', 'TV');
+  assert.equal(aniPick([novel, manga], ['Solo Leveling'], false), manga);
+  assert.equal(aniPick([manga, media('Solo Leveling', 'MANGA')], ['Solo Leveling'], false), null);
+  assert.equal(aniPick([media('Solo Leveling', 'ONE_SHOT'), manga], ['Solo Leveling'], false), manga);
+  const other = { ...media('Wan Piece', 'MANGA'), synonyms: ['One Piece'] }, onePiece = media('ONE PIECE', 'MANGA');
+  assert.equal(aniPick([other, onePiece], ['One Piece'], false), onePiece);
+  assert.equal(aniPick([other], ['One Piece'], false), other);
+  assert.equal(aniPick([{ ...media('One Piece Party', 'MANGA'), title: { romaji: 'One Piece Party', native: 'ONE PIECE パーティー' } }, onePiece], ['One Piece'], false), onePiece);
+  assert.equal(aniPick([media('Frieren', 'MOVIE'), show, media('Frieren 2nd Season', 'TV')], ['Frieren'], true), show);
+});
+test('anilist: the next season is the show, a film only when nothing else follows', () => {
+  const { aniNext } = ratings();
+  const edge = (id, format, type = 'ANIME', relationType = 'SEQUEL') => ({ relationType, node: { id, format, type } });
+  assert.equal(aniNext({ relations: { edges: [edge(1, 'MANGA', 'MANGA'), edge(2, 'MOVIE'), edge(3, 'TV'), edge(4, 'TV', 'ANIME', 'PREQUEL')] } }, 'SEQUEL').id, 3);
+  assert.equal(aniNext({ relations: { edges: [edge(2, 'MOVIE')] } }, 'SEQUEL').id, 2);
+  assert.equal(aniNext({ relations: { edges: [edge(4, 'TV', 'ANIME', 'PREQUEL')] } }, 'SEQUEL'), undefined);
+});
+test('manga sheet: shows the votes of a site that has them, and says so when none has', async () => {
+  const anilist = { id: 1, idMal: 2, format: 'MANGA', title: { romaji: 'Berserk' }, synonyms: [], stats: { scoreDistribution: [{ score: 100, amount: 3 }, { score: 50, amount: 1 }] } };
+  const r = ratings(async url => { if (url.includes('anilist')) return JSON.stringify({ data: { Page: { media: [anilist] } } }); throw Error('offline'); });
+  const box = { querySelector: () => ({}), querySelectorAll: () => [] }, el = { isConnected: true, innerHTML: '', querySelector: s => (s === '.eg' ? box : {}), querySelectorAll: () => [] };
+  await r.graph(el, ['Berserk'], '', false, true);
+  assert.match(box.innerHTML, /eg-votes/);
+  assert.match(box.innerHTML, /75\.0%/);
+  const none = { isConnected: true, innerHTML: '' };
+  await ratings().graph(none, ['Nothing Known'], '', false, true);
+  assert.match(none.innerHTML, /noRatings/);
 });
 test('film ratings distinguish remakes, TV and ambiguous names', () => {
   const { filmPick } = ratings();

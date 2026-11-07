@@ -64,7 +64,7 @@ Features marked 📱 are on Android only, and 🖥️ on desktop only. The rest 
 - Weekly anime schedule with air times, searchable by show
 - Ratings from AniList and IMDb
 - Filler and part-filler anime episodes marked in the episode list and the player, with an option to hide filler, from [Anime Filler List](https://www.animefillerlist.com)
-- Episode rating grid, opened from the show page (a column per season, each score coloured), from IMDb and [TVmaze](https://www.tvmaze.com/api) (CC BY-SA)
+- Episode rating grid, opened from the show page (a column per season, each score coloured), from IMDb and [TVmaze](https://www.tvmaze.com/api) (CC BY-SA), and for anime MyAnimeList's episode polls (out of 5 there, doubled) across every season. Votes by score from AniList and, for manga, MyAnimeList: neither rates chapters
 - Characters and cast, with portraits and voice actors ([sources](#character-and-cast-metadata))
 
 ### Downloads

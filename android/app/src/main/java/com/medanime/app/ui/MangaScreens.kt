@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.asImageBitmap
 import coil3.request.allowHardware
+import coil3.request.bitmapConfig
 import coil3.request.maxBitmapSize
 import coil3.toBitmap
 import kotlinx.coroutines.FlowPreview
@@ -173,6 +174,8 @@ fun MangaSeriesScreen(id: String, nav: Nav) {
             // a series can have a thousand: not built again on every redraw, nor their downloads looked up one by one
             val saved = remember(Store.version.intValue) { com.medanime.app.ChapterDownloads.doneIds(com.medanime.app.Downloads.all()) }
             val chapters = remember(full, saved, Store.version.intValue) { full.chs.map { Numbered(it.n, seen.has(it.id), r?.optString("chapterId") == it.id, Screen.MangaRead(it.id, s.title, it.n), it.id, it.id in saved, seen.optInt(it.id) == 2) } }
+            var rates by remember { mutableStateOf(false) } // the ratings' sheet
+            if (rates) EpisodeGraph(listOf(s.title) + s.alt.split(Regex("[,،]")), "", false, manga = true) { rates = false }
             DetailPage(s.cover, s.poster, s.title, s.alt, Ic.manga,
                 // type and status under the title; AniList's rating and the views lead the actions row
                 listOfNotNull(s.type.takeIf { it.isNotEmpty() }?.let { Manga.typeName(it) to true }, s.status.takeIf { it.isNotEmpty() }?.let { Manga.label(Manga.STATUS, it) to true }) + s.genres.map { it to false },
@@ -197,7 +200,7 @@ fun MangaSeriesScreen(id: String, nav: Nav) {
                     }
                     Store.persist("mangaSeen")
                 }, unit = t("chapter"),
-                menu = listOf(MenuItem(t("autoDlShort"), Ic.download, Alerts.autoDl("/manga/series/$id")) { Alerts.toggleDl("/manga/series/$id", s.title, s.poster, full.chs.firstOrNull()?.id ?: "") }), play = start?.let { (cid, label) -> label to { nav.go(Screen.MangaRead(cid, s.title, full.chs.find { it.id == cid }?.n.orEmpty())) } })
+                menu = listOf(MenuItem(t("titleRatings"), Ic.star) { rates = true }, MenuItem(t("autoDlShort"), Ic.download, Alerts.autoDl("/manga/series/$id")) { Alerts.toggleDl("/manga/series/$id", s.title, s.poster, full.chs.firstOrNull()?.id ?: "") }), play = start?.let { (cid, label) -> label to { nav.go(Screen.MangaRead(cid, s.title, full.chs.find { it.id == cid }?.n.orEmpty())) } })
         }
     }
 }
@@ -614,9 +617,11 @@ private fun MangaPage(src: String, modifier: Modifier, known: Int? = null, onSiz
     var failed by remember(src, attempt) { mutableStateOf(false) }
     LaunchedEffect(ctx, src, attempt) {
         try {
+            // old phones (a 128-256MB heap: Galaxy J5): a 1440x12000 page at full size is 69MB, and its strips copy it again.
+            // at the screen's width (only ever shrunk) and 16-bit colour it's a sixth of that
             val req = coil3.request.ImageRequest.Builder(ctx).data(pageData(src)).memoryCachePolicy(coil3.request.CachePolicy.DISABLED)
-                .size(coil3.size.Size.ORIGINAL).allowHardware(false)
-                .maxBitmapSize(coil3.size.Size.ORIGINAL).build()
+                .apply { if (lowMem) size(coil3.size.Size(coil3.size.Dimension(ctx.resources.displayMetrics.widthPixels), coil3.size.Dimension.Undefined)).precision(coil3.size.Precision.INEXACT).bitmapConfig(android.graphics.Bitmap.Config.RGB_565) else size(coil3.size.Size.ORIGINAL) }
+                .allowHardware(false).maxBitmapSize(coil3.size.Size.ORIGINAL).build()
             val result = coil3.SingletonImageLoader.get(ctx).execute(req)
             if (result !is coil3.request.SuccessResult) {
                 failed = true
@@ -625,9 +630,10 @@ private fun MangaPage(src: String, modifier: Modifier, known: Int? = null, onSiz
             val bmp = result.image.toBitmap()
             ratios[src] = bmp.width.toFloat() / bmp.height
             strips = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                (0 until bmp.height step 2048).map { y -> android.graphics.Bitmap.createBitmap(bmp, 0, y, bmp.width, minOf(2048, bmp.height - y)).asImageBitmap() }
+                if (bmp.height <= 2048) listOf(bmp.asImageBitmap()) // createBitmap would hand the same one back
+                else (0 until bmp.height step 2048).map { y -> android.graphics.Bitmap.createBitmap(bmp, 0, y, bmp.width, minOf(2048, bmp.height - y)).asImageBitmap() }.also { bmp.recycle() } // the strips are copies: its memory back now, not at the next GC
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) { // OutOfMemoryError too: a page that doesn't fit gets the retry button, not a crash
             if (e is kotlinx.coroutines.CancellationException) throw e
             failed = true
         }
@@ -658,6 +664,9 @@ private fun MangaPage(src: String, modifier: Modifier, known: Int? = null, onSiz
 // each page's width / height once decoded: a page that isn't drawn yet takes its shape, not 480dp. Above the page being
 // read that matters: a placeholder growing there pushed the page down as it loaded
 private val ratios = java.util.concurrent.ConcurrentHashMap<String, Float>()
+
+// a small heap (memoryClass, largeHeap aside): pages decoded at the screen's width in 16-bit colour, not at full size
+private val lowMem by lazy { (Net.app.getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager).memoryClass <= 192 }
 
 /** pages measured ahead, decoded small (their download stays in Coil's disk cache for the page itself) */
 private suspend fun measure(srcs: List<String>) = coroutineScope {

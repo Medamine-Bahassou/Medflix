@@ -42,7 +42,7 @@ internal data class EpRate(val season: Int, val ep: Int, val score: Double?)
 
 /** each episode's rating, from both sites (ratings.js episodes) */
 internal object EpisodeRatings {
-    class Graph(val imdb: List<EpRate>, val tvmaze: List<EpRate>, val url: String)
+    class Graph(val imdb: List<EpRate>, val tvmaze: List<EpRate>, val url: String, val mal: List<EpRate> = emptyList(), val votes: List<Pair<String, List<Int>>> = emptyList())
     private val AR = Regex("[\\u0600-\\u06FF\\u0750-\\u077F\\uFB50-\\uFDFF\\uFE70-\\uFEFF]+") // spelled out: \p{IsArabic} isn't on every Android
     private fun objects(a: org.json.JSONArray?) = (0 until (a?.length() ?: 0)).mapNotNull { a?.optJSONObject(it) }
     // what's asked: the name without its season words or arabic (ratings.js filmName)
@@ -103,19 +103,108 @@ internal object EpisodeRatings {
     }
     /**
      * both sites, each an extra: found by the show's names, else kitsu's (witanime's "Kimetsu no Yaiba" is "Demon Slayer"). tvmaze
-     * names its imdb id, so the two are one show. Fewer than 2 rated: nothing to compare
+     * names its imdb id, so the two are one show. Fewer than 2 rated: nothing to compare. An anime has myanimelist's too, its seasons
+     * by AniList, which rates none of its episodes: its own part is the title's votes
      */
     suspend fun get(names: List<String>, id: String, anime: Boolean): Graph? = withContext(Dispatchers.Default) {
         val own = names.filter { spelled(it).isNotEmpty() }
+        val ani = async { if (anime) Scores.calm { aniFind(own, true) } else null }
+        val ml = async { ani.await()?.let { malSeasons(seasonIds(it)) }.orEmpty() }
         var show = Scores.calm { findShow(own, anime) }
         val kitsu = if (show == null && anime) Scores.calm { Witanime.kitsuShow(own)?.second }.orEmpty() else emptyList()
         if (show == null && kitsu.isNotEmpty()) show = Scores.calm { findShow(kitsu, true) }
         val tt = id.ifEmpty { show?.optJSONObject("externals")?.optString("imdb")?.takeIf { it.matches(Regex("tt\\d+")) } ?: Scores.calm { imdbId(own + kitsu) }.orEmpty() }
         val tv = async { show?.let { s -> Scores.calm { tvmazeRows(org.json.JSONArray(get("https://api.tvmaze.com/shows/${s.optInt("id")}/episodes"))) } }.orEmpty() }
         val im = async { if (tt.isEmpty()) emptyList() else Scores.calm { imdbEps(tt) }.orEmpty() }
-        val tvmaze = tv.await(); val imdb = im.await()
-        if (rated(tvmaze) > 1 || rated(imdb) > 1) Graph(imdb, tvmaze, show?.optString("url").orEmpty()) else null
+        val tvmaze = tv.await(); val imdb = im.await(); val mal = ml.await()
+        val votes = listOf("AniList" to ani.await()?.let(::aniVotes).orEmpty()).filter { it.second.sum() > 0 }
+        if (rated(tvmaze) > 1 || rated(imdb) > 1 || rated(mal) > 1 || votes.isNotEmpty()) Graph(imdb, tvmaze, show?.optString("url").orEmpty(), mal, votes) else null
     }
+    /** a manga's: neither site rates its chapters, so how many gave it each score */
+    suspend fun manga(names: List<String>): Graph? = withContext(Dispatchers.Default) {
+        val hit = Scores.calm { aniFind(names, false) } ?: return@withContext null
+        val mal = hit.optInt("idMal").takeIf { it > 0 }?.let { id -> Scores.calm { malVoteCounts("manga", id) } }.orEmpty()
+        val votes = listOf("AniList" to aniVotes(hit), "MyAnimeList" to mal).filter { it.second.sum() > 0 }
+        if (votes.isEmpty()) null else Graph(emptyList(), emptyList(), "", votes = votes)
+    }
+
+    // ---------- AniList and myanimelist ----------
+    private val SHOWS = setOf("TV", "TV_SHORT", "ONA")
+    private const val ANI_LINKS = "id idMal format relations{edges{relationType node{id format type}}}"
+    /**
+     * the one title of one of these names (two: none, rather than the wrong one's): its own name before another's synonym, as "Wan Piece" goes by
+     * "One Piece" too. A manga's isn't its light novel or its pilot, often of that very name
+     */
+    fun aniPick(rows: List<JSONObject>, names: List<String>, anime: Boolean): JSONObject? {
+        val want = names.map(Manga::norm).filter { it.isNotEmpty() }.toSet()
+        val kept = rows.filter { if (anime) it.optString("format") in SHOWS else it.optString("format") !in setOf("NOVEL", "ONE_SHOT") }
+        val own = kept.filter { m -> listOf("romaji", "english").any { Manga.norm(m.optJSONObject("title")?.optString(it)) in want } } // not its native: latin letters alone, "ONE PIECE パーティー" would read "one piece"
+        return own.ifEmpty { kept.filter { m -> m.optJSONArray("synonyms").let { syn -> (0 until (syn?.length() ?: 0)).any { Manga.norm(syn?.optString(it)) in want } } } }.singleOrNull()
+    }
+    private suspend fun aniAsk(query: String) = JSONObject(Pages.load("https://graphql.anilist.co", body = JSONObject().put("query", query).toString(), every = Pages.DAY, interactive = false)).optJSONObject("data")
+    private suspend fun aniFind(names: List<String>, anime: Boolean): JSONObject? {
+        val latin = names.map { Witanime.courName(it.trim()) }.filter { Manga.norm(it).isNotEmpty() }.distinct() // an exact name: a near one is often another season
+        for (q in latin.take(3)) {
+            val rows = aniAsk("{Page(perPage:10){media(search:${JSONObject.quote(q)},type:${if (anime) "ANIME" else "MANGA"}){$ANI_LINKS title{romaji english} synonyms stats{scoreDistribution{score amount}}}}}")?.optJSONObject("Page")?.optJSONArray("media")
+            aniPick(objects(rows), latin, anime)?.let { return it }
+        }
+        return null
+    }
+    /** its next season that way; a show before a film, when both follow it */
+    fun aniNext(m: JSONObject, way: String) = objects(m.optJSONObject("relations")?.optJSONArray("edges")).filter { it.optString("relationType") == way }.mapNotNull { it.optJSONObject("node") }
+        .filter { it.optString("type") == "ANIME" }.sortedByDescending { it.optString("format") in SHOWS }.firstOrNull()
+    /** every season's myanimelist id, first to last: it lists each as its own title. Films are walked through, not kept: Demon Slayer's seasons have Mugen Train between them */
+    private suspend fun seasonIds(hit: JSONObject): List<Int> {
+        val seen = mutableSetOf(hit.optInt("id"))
+        suspend fun walk(way: String): List<JSONObject> {
+            val out = ArrayList<JSONObject>()
+            var m = hit
+            repeat(12) {
+                val next = aniNext(m, way)?.optInt("id")?.takeIf(seen::add) ?: return out
+                m = Scores.calm { aniAsk("{Media(id:$next){$ANI_LINKS}}") }?.optJSONObject("Media") ?: return out
+                out += m
+            }
+            return out
+        }
+        return (walk("PREQUEL").reversed() + hit + walk("SEQUEL")).filter { it.optString("format") in SHOWS }.map { it.optInt("idMal") }
+    }
+    /** a page of its episode list: each one's number and its poll's score, out of 5 there, out of 10 like the grid's others. No votes yet: null */
+    fun malEpisodes(html: String) = Jsoup.parse(html).select("tr.episode-list-data").mapNotNull { r ->
+        r.selectFirst("td.episode-number")?.attr("data-raw")?.toIntOrNull()?.let { n -> n to r.selectFirst("td.episode-poll")?.attr("data-raw")?.toDoubleOrNull()?.takeIf { it > 0 }?.times(2) }
+    }
+    /** how many gave each score, 10 down to 1 */
+    fun malVotes(html: String): List<Int> {
+        val rows = Jsoup.parse(html).select("table.score-stats tr")
+        return (10 downTo 1).map { s -> rows.firstOrNull { it.selectFirst("td.score-label")?.text() == "$s" }?.selectFirst("small")?.text()?.filter(Char::isDigit)?.toIntOrNull() ?: 0 }
+    }
+    fun aniVotes(m: JSONObject): List<Int> {
+        val all = objects(m.optJSONObject("stats")?.optJSONArray("scoreDistribution"))
+        return (10 downTo 1).map { s -> all.firstOrNull { it.optInt("score") == s * 10 }?.optInt("amount") ?: 0 }
+    }
+    private suspend fun malPage(url: String): String {
+        val r = Net.fetch(url, interactive = false)
+        if (r.status >= 400) throw java.io.IOException("HTTP ${r.status}")
+        return r.body
+    }
+    /** its pages are 200KB: only what's read off them is kept, and served offline (Scores.mal) */
+    private suspend fun kept(key: String, read: suspend () -> String): String {
+        val saved = Pages.saved(key)
+        if (saved != null && !Pages.due(key, Pages.DAY)) return saved
+        return try { read().also { Pages.put(key, it) } } catch (e: java.io.IOException) { saved ?: throw e }
+    }
+    private suspend fun malEps(id: Int) = kept("malEps|$id") {
+        val rows = ArrayList<Pair<Int, Double?>>()
+        for (offset in 0 until 2000 step 100) { // 100 a page: One Piece's 1200 is 12
+            val page = malEpisodes(malPage("https://myanimelist.net/anime/$id/x/episode?offset=$offset"))
+            rows += page
+            if (page.size < 100) break
+        }
+        rows.joinToString(",") { "${it.first}:${it.second ?: 0}" }
+    }.split(",").filter { it.isNotEmpty() }.map { it.substringBefore(':').toInt() to it.substringAfter(':').toDouble().takeIf { v -> v > 0 } }
+    private suspend fun malVoteCounts(kind: String, id: Int) = kept("malVotes|$kind|$id") { malVotes(malPage("https://myanimelist.net/$kind/$id/x/stats")).joinToString(",") }.split(",").map { it.toInt() }
+    private suspend fun malSeasons(ids: List<Int>) = inOrder(ids.flatMapIndexed { i, id ->
+        if (id <= 0) emptyList() else Scores.calm { malEps(id) }.orEmpty().map { (n, v) -> EpRate(i + 1, n, v) }
+    })
     fun rated(rows: List<EpRate>) = rows.count { it.score != null }
     /** the grid's colours, best first (TIERS), by the score each starts at */
     fun tier(v: Double) = listOf(9.6, 9.0, 8.0, 7.0, 6.0, 5.0).indexOfFirst { v >= it }.let { if (it < 0) 6 else it }
@@ -140,18 +229,19 @@ private fun Grade(score: Double?, width: androidx.compose.ui.unit.Dp) {
 /** a show's episode ratings, a sheet from its ⋮ menu: the sites are asked only once it's open (app.js ratingsSheet) */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun EpisodeGraph(names: List<String>, imdbId: String, anime: Boolean, onClose: () -> Unit) {
+internal fun EpisodeGraph(names: List<String>, imdbId: String, anime: Boolean, manga: Boolean = false, onClose: () -> Unit) {
     var done by remember { mutableStateOf(false) }
-    val g by produceState<EpisodeRatings.Graph?>(null, names, imdbId, anime) { value = EpisodeRatings.get(names, imdbId, anime); done = true }
-    val sources = g?.let { listOf("IMDb" to it.imdb, "TVmaze" to it.tvmaze).filter { s -> EpisodeRatings.rated(s.second) > 1 } }.orEmpty()
+    val g by produceState<EpisodeRatings.Graph?>(null, names, imdbId, anime, manga) { value = if (manga) EpisodeRatings.manga(names) else EpisodeRatings.get(names, imdbId, anime); done = true }
+    val sources = g?.let { listOf("MyAnimeList" to it.mal, "IMDb" to it.imdb, "TVmaze" to it.tvmaze).filter { s -> EpisodeRatings.rated(s.second) > 1 } }.orEmpty()
+    val votes = g?.votes.orEmpty()
     // full height at once: half a grid says little
     ModalBottomSheet(onClose, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = CardC, contentColor = Color.White) {
         Column(Modifier.padding(horizontal = 16.dp).fillMaxWidth()) {
-            Text(t("epRatings"), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text(t(if (manga) "titleRatings" else "epRatings"), fontSize = 18.sp, fontWeight = FontWeight.Bold)
             when {
                 !done -> Box(Modifier.fillMaxWidth().padding(32.dp), Alignment.Center) { CircularProgressIndicator(color = Red) }
-                sources.isEmpty() -> Text(t("noEpRatings"), Modifier.padding(vertical = 24.dp), color = Muted)
-                else -> EpisodeGrid(sources, g?.url.orEmpty())
+                sources.isEmpty() && votes.isEmpty() -> Text(t(if (manga) "noRatings" else "noEpRatings"), Modifier.padding(vertical = 24.dp), color = Muted)
+                else -> EpisodeGrid(sources, votes, g?.url.orEmpty())
             }
             Spacer(Modifier.navigationBarsPadding().height(16.dp))
         }
@@ -164,20 +254,21 @@ internal fun EpisodeGraph(names: List<String>, imdbId: String, anime: Boolean, o
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ColumnScope.EpisodeGrid(sources: List<Pair<String, List<EpRate>>>, url: String) {
+private fun ColumnScope.EpisodeGrid(sources: List<Pair<String, List<EpRate>>>, votes: List<Pair<String, List<Int>>>, url: String) {
     var pick by remember { mutableIntStateOf(0) }
-    val rows = sources[pick.coerceAtMost(sources.lastIndex)].second
+    val rows = sources.getOrNull(pick)?.second.orEmpty()
     val seasons = remember(rows) { rows.map { it.season }.distinct() }
     val eps = remember(rows) { rows.map { it.ep }.distinct().sorted() } // the numbers it has, not 1 to the last: a talk show's can be dates, a million rows
     val at = remember(rows) { rows.associateBy { it.season to it.ep } }
     val label = 48.dp; val cell = 58.dp
     val center = androidx.compose.ui.text.style.TextAlign.Center
     val uri = androidx.compose.ui.platform.LocalUriHandler.current
-    Row(Modifier.padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        sources.forEachIndexed { i, s ->
-            FilterChip(i == pick, { pick = i }, { Text(s.first) }, shape = RoundedCornerShape(99.dp), colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Red, selectedLabelColor = Color.White))
+    Row(Modifier.padding(vertical = 4.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        (sources.map { it.first } + votes.map { it.first }).forEachIndexed { i, name ->
+            FilterChip(i == pick, { pick = i }, { Text(name) }, shape = RoundedCornerShape(99.dp), colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Red, selectedLabelColor = Color.White))
         }
     }
+    if (pick >= sources.size) return VoteBars(votes[pick - sources.size].second)
     FlowRow(Modifier.padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         TIERS.forEachIndexed { i, (bg, _) ->
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -208,6 +299,23 @@ private fun ColumnScope.EpisodeGrid(sources: List<Pair<String, List<EpRate>>>, u
         }
     }
     if (url.isNotEmpty() && sources.any { it.first == "TVmaze" }) TextButton({ uri.openUri(url) }) { Text("TVmaze · CC BY-SA") }
+}
+
+/** how many gave the title each score, 10 down to 1, in the grid's colours (ratings.js votesHtml) */
+@Composable
+private fun VoteBars(votes: List<Int>) {
+    val top = votes.max().coerceAtLeast(1); val all = votes.sum().coerceAtLeast(1)
+    Text("${t("voteShare")} \u00b7 ${"%,d".format(votes.sum())}", Modifier.padding(vertical = 8.dp), color = Muted, fontSize = 13.sp)
+    votes.forEachIndexed { i, n ->
+        val score = 10 - i
+        Row(Modifier.padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("$score", Modifier.width(28.dp), fontSize = 14.sp, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Box(Modifier.weight(1f).height(24.dp)) {
+                Box(Modifier.fillMaxWidth(n.toFloat() / top).fillMaxHeight().background(TIERS[EpisodeRatings.tier(score.toDouble())].first, RoundedCornerShape(6.dp)))
+            }
+            Text("\u2066${String.format(java.util.Locale.US, "%.1f", n * 100.0 / all)}%\u2069", Modifier.width(56.dp), color = Muted, fontSize = 12.sp, textAlign = androidx.compose.ui.text.style.TextAlign.End, maxLines = 1)
+        }
+    }
 }
 
 internal object SourceRatings {

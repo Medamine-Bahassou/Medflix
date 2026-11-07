@@ -65,10 +65,41 @@ class WitanimeTest {
     }
 
     @Test
+    fun animeGraphRows() {
+        val e = EpisodeRatings
+        val poll = { n: Int, raw: String -> """<tr class="episode-list-data"><td class="episode-number nowrap" data-raw="$n">$n</td><td class="episode-poll ac nowrap scored" data-raw="$raw"></td></tr>""" }
+        val eps = e.malEpisodes("<table><thead><tr><td class=\"episode-poll\"></td></tr></thead>${poll(1, "4.25")}${poll(2, "0")}<tr class=\"episode-list-data\"><td class=\"episode-number nowrap\" data-raw=\"3\">3</td></tr></table>")
+        assertTrue("polls out of 5 read out of 10, unvoted null", eps == listOf(1 to 8.5, 2 to null, 3 to null))
+        val stat = { s: Int, n: Int -> """<tr><td class="score-label score-$s">$s</td><td><small>($n votes)</small></td></tr>""" }
+        assertTrue("votes, 10 first", e.malVotes("<table class=\"score-stats\">${stat(10, 276544)}${stat(9, 77856)}${stat(1, 3)}</table>") == listOf(276544, 77856, 0, 0, 0, 0, 0, 0, 0, 3))
+        val ani = org.json.JSONObject("""{"stats":{"scoreDistribution":[{"score":10,"amount":7},{"score":100,"amount":5}]}}""")
+        assertTrue("anilist's are by tens", e.aniVotes(ani) == listOf(5, 0, 0, 0, 0, 0, 0, 0, 0, 7))
+        val media = { name: String, format: String -> org.json.JSONObject().put("format", format).put("title", org.json.JSONObject().put("romaji", name)).put("synonyms", org.json.JSONArray()) }
+        val manga = media("Solo Leveling", "MANGA"); val novel = media("Solo Leveling", "NOVEL")
+        assertTrue("a manga isn't its novel", e.aniPick(listOf(novel, manga), listOf("Solo Leveling"), false) === manga)
+        assertTrue("two of a name are none", e.aniPick(listOf(manga, media("Solo Leveling", "MANGA")), listOf("Solo Leveling"), false) == null)
+        assertTrue("nor its pilot", e.aniPick(listOf(media("Solo Leveling", "ONE_SHOT"), manga), listOf("Solo Leveling"), false) === manga)
+        val other = media("Wan Piece", "MANGA").put("synonyms", org.json.JSONArray().put("One Piece")); val onePiece = media("ONE PIECE", "MANGA")
+        assertTrue("its own name before another's synonym", e.aniPick(listOf(other, onePiece), listOf("One Piece"), false) === onePiece)
+        assertTrue("a synonym, when it's all there is", e.aniPick(listOf(other), listOf("One Piece"), false) === other)
+        val show = media("Frieren", "TV")
+        assertTrue("an anime's the show, and the exact name", e.aniPick(listOf(media("Frieren", "MOVIE"), show, media("Frieren 2nd Season", "TV")), listOf("Frieren"), true) === show)
+        val node = { id: Int, format: String, type: String -> org.json.JSONObject().put("relationType", "SEQUEL").put("node", org.json.JSONObject().put("id", id).put("format", format).put("type", type)) }
+        val linked = org.json.JSONObject().put("relations", org.json.JSONObject().put("edges", org.json.JSONArray().put(node(1, "MANGA", "MANGA")).put(node(2, "MOVIE", "ANIME")).put(node(3, "TV", "ANIME"))))
+        assertTrue("the next season's the show, not the film or the manga", e.aniNext(linked, "SEQUEL")?.optInt("id") == 3)
+        assertTrue("a film's still walked through", e.aniNext(org.json.JSONObject().put("relations", org.json.JSONObject().put("edges", org.json.JSONArray().put(node(2, "MOVIE", "ANIME")))), "SEQUEL")?.optInt("id") == 2)
+    }
+
+    @Test
     fun episodeGraphLive() = kotlinx.coroutines.runBlocking {
         Pages.dir = kotlin.io.path.createTempDirectory().toFile()
         val anime = EpisodeRatings.get(listOf("One Piece"), "", true)
-        println("One Piece: imdb ${anime?.imdb?.size} tvmaze ${anime?.tvmaze?.size}")
+        println("One Piece: imdb ${anime?.imdb?.size} tvmaze ${anime?.tvmaze?.size} mal ${anime?.mal?.size}")
+        assertTrue("myanimelist's polls and anilist's votes", (anime?.mal?.size ?: 0) > 1000 && anime?.votes?.firstOrNull()?.first == "AniList")
+        val seasons = EpisodeRatings.get(listOf("Sousou no Frieren"), "", true)?.mal?.map { it.season }?.distinct()
+        assertTrue("its seasons by anilist's links: $seasons", seasons == listOf(1, 2))
+        val berserk = EpisodeRatings.manga(listOf("Berserk"))
+        assertTrue("a manga's votes from both", berserk?.votes?.map { it.first } == listOf("AniList", "MyAnimeList"))
         assertTrue("the anime, not the 8-episode live action", (anime?.imdb?.size ?: 0) > 1000 && (anime?.tvmaze?.size ?: 0) > 100 && anime!!.url.contains("tvmaze.com"))
         val series = EpisodeRatings.get(listOf("مسلسل Breaking Bad الموسم الاول"), "", false)
         println("Breaking Bad: imdb ${series?.imdb?.size} tvmaze ${series?.tvmaze?.size}")

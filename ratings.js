@@ -7,6 +7,7 @@ const Ratings = (() => {
     queue = task.then(() => new Promise(resolve => setTimeout(resolve, 2200)));
     return task;
   };
+  const exact = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
   const norm = s => String(s || '').toLowerCase().replace(/(?:الموسم|الحلقة)\s.*|\bseason\s+\d+.*/gi, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
   async function lookup(c) {
     const cinema = c.type === 'cinema', title = norm(c.title), year = String(c.year || '');
@@ -51,7 +52,7 @@ const Ratings = (() => {
   // a title's score, asked by each of its names (Scores.malFind): its search page has a row per title, its name in bold, its type, and last its
   // score; a search it's sure of goes straight to the title's own page, and one finding nothing is a 404. manga.php has the light novels too
   async function mal(c) {
-    const kind = c.type === 'manga' ? 'manga' : 'anime', exact = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(), key = s => exact(s).replace(/^the /, '');
+    const kind = c.type === 'manga' ? 'manga' : 'anime', key = s => exact(s).replace(/^the /, '');
     const score = s => { const v = Number(s); return v > 0 && v <= 10 ? { source: 'MyAnimeList', value: v.toFixed(2) } : null; };
     const page = async url => { try { return new DOMParser().parseFromString(await api.fetch(url, null, false, true), 'text/html'); } catch (e) { if (/HTTP 404/.test(e.message)) return null; throw e; } };
     // a title's own page, with every name it goes by
@@ -138,18 +139,98 @@ const Ratings = (() => {
     }
     return imdbRows(edges);
   }
+  // ---------- AniList and myanimelist ----------
+  const SHOWS = ['TV', 'TV_SHORT', 'ONA'], ANI_LINKS = 'id idMal format relations{edges{relationType node{id format type}}}';
+  // the one title of one of these names (two: none, rather than the wrong one's): its own name before another's synonym, as "Wan Piece" goes by
+  // "One Piece" too. Not its native: latin letters alone, "ONE PIECE パーティー" would read "one piece". A manga's isn't its light novel or its pilot, often of that very name
+  const aniPick = (rows, names, anime) => {
+    const want = new Set(names.map(exact).filter(Boolean));
+    const kept = rows.filter(m => (anime ? SHOWS.includes(m.format) : !['NOVEL', 'ONE_SHOT'].includes(m.format))), named = list => list.some(n => want.has(exact(n)));
+    const own = kept.filter(m => named([m.title.romaji, m.title.english])), same = own.length ? own : kept.filter(m => named(m.synonyms));
+    return same.length === 1 ? same[0] : null;
+  };
+  const aniAsk = query => api.fetch('https://graphql.anilist.co', { query }, false, true).then(JSON.parse).then(j => j.data);
+  const aniFind = async (names, anime) => {
+    const latin = [...new Set(names.map(s => s.trim().replace(/\s*cour 1$/i, '').replace(/cour (\d+)$/i, 'part $1')).filter(exact))]; // an exact name: a near one is often another season
+    for (const q of latin.slice(0, 3)) {
+      const hit = aniPick((await aniAsk(`{Page(perPage:10){media(search:${JSON.stringify(q)},type:${anime ? 'ANIME' : 'MANGA'}){${ANI_LINKS} title{romaji english} synonyms stats{scoreDistribution{score amount}}}}}`)).Page.media, latin, anime);
+      if (hit) return hit;
+    }
+    return null;
+  };
+  // its next season that way; a show before a film, when both follow it
+  const aniNext = (m, way) => {
+    const next = (m.relations?.edges || []).filter(e => e.relationType === way && e.node.type === 'ANIME').map(e => e.node);
+    return next.find(n => SHOWS.includes(n.format)) || next[0];
+  };
+  // every season's myanimelist id, first to last: it lists each as its own title. Films are walked through, not kept: Demon Slayer's seasons have Mugen Train between them
+  const seasonIds = async hit => {
+    const seen = new Set([hit.id]);
+    const walk = async way => {
+      const out = [];
+      for (let m = hit, i = 0; i < 12; i++) {
+        const next = aniNext(m, way);
+        if (!next || seen.has(next.id)) break;
+        seen.add(next.id);
+        m = (await aniAsk(`{Media(id:${next.id}){${ANI_LINKS}}}`).catch(() => null))?.Media;
+        if (!m) break;
+        out.push(m);
+      }
+      return out;
+    };
+    return [...(await walk('PREQUEL')).reverse(), hit, ...await walk('SEQUEL')].filter(m => SHOWS.includes(m.format)).map(m => m.idMal);
+  };
+  // a page of its episode list: each one's number and its poll's score, out of 5 there, out of 10 like the grid's others. No votes yet: null
+  const malEpisodes = html => html.split('episode-list-data').slice(1).flatMap(row => {
+    const n = row.match(/episode-number[^>]*data-raw="(\d+)"/)?.[1], v = +row.match(/episode-poll[^>]*data-raw="([\d.]+)"/)?.[1];
+    return n ? [[+n, v > 0 ? v * 2 : null]] : [];
+  });
+  // how many gave each score, 10 down to 1; from its table: the title's own score, higher up the page, is a score-label too
+  const malVotes = html => {
+    const votes = Array(10).fill(0);
+    for (const [, s, n] of html.slice(html.indexOf('score-stats')).matchAll(/score-label score-(\d+)[\s\S]*?\((\d+) votes\)/g)) votes[10 - s] = +n;
+    return votes;
+  };
+  const aniVotes = m => [10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map(s => m.stats?.scoreDistribution?.find(d => d.score === s * 10)?.amount || 0);
+  const summed = votes => votes.reduce((a, b) => a + b, 0);
+  const malSeasons = async ids => {
+    const rows = [];
+    for (const [i, id] of ids.entries()) {
+      if (!id) continue;
+      try {
+        for (let offset = 0; offset < 2000; offset += 100) { // 100 a page: One Piece's 1200 is 12
+          const page = malEpisodes(await api.fetch(`https://myanimelist.net/anime/${id}/x/episode?offset=${offset}`, null, false, true));
+          rows.push(...page.map(([n, v]) => [i + 1, n, v]));
+          if (page.length < 100) break;
+        }
+      } catch {} // the seasons it did give stand
+    }
+    return inOrder(rows);
+  };
+  // a manga's: neither site rates its chapters, so how many gave it each score
+  const mangaVotes = names => scraper.remember('mangaRatings:' + names.map(exact).join(), async () => {
+    const hit = await aniFind(names, false).catch(() => null);
+    if (!hit) return null;
+    const mal = hit.idMal ? await api.fetch(`https://myanimelist.net/manga/${hit.idMal}/x/stats`, null, false, true).then(malVotes).catch(() => []) : [];
+    const votes = [['AniList', aniVotes(hit)], ['MyAnimeList', mal]].filter(([, v]) => summed(v) > 0);
+    return votes.length ? { votes } : null;
+  });
   // both sites, each an extra: found by the show's names, else kitsu's (witanime's "Kimetsu no Yaiba" is "Demon Slayer"). tvmaze
-  // names its imdb id, so the two are one show. Fewer than 2 rated: nothing to compare
-  const episodes = (names, id, anime) => scraper.remember('epRatings:' + [id, ...names.map(spelled)].join(), async () => {
-    let all = names.filter(spelled), show = await findShow(all, anime).catch(() => null);
+  // names its imdb id, so the two are one show. Fewer than 2 rated: nothing to compare. An anime has myanimelist's too, its seasons
+  // by AniList, which rates none of its episodes: its own part is the title's votes
+  const episodes = (names, id, anime) => scraper.remember('epRatings2:' + [id, ...names.map(spelled)].join(), async () => {
+    let all = names.filter(spelled);
+    const ani = anime ? aniFind(all, true).catch(() => null) : null, ml = ani ? ani.then(hit => (hit ? seasonIds(hit).then(malSeasons) : [])).catch(() => []) : [];
+    let show = await findShow(all, anime).catch(() => null);
     if (!show && anime) {
       const kitsu = (await scraper.kitsuShow(all).catch(() => null))?.names || [];
       all = [...all, ...kitsu];
       show = await findShow(kitsu, true).catch(() => null);
     }
     const tt = id || show?.externals?.imdb || await imdbId(all).catch(() => '');
-    const [tvmaze, imdb] = await Promise.all([show ? getJson(`https://api.tvmaze.com/shows/${show.id}/episodes`).then(tvmazeRows).catch(() => []) : [], tt ? imdbEps(tt).catch(() => []) : []]);
-    return rated(tvmaze) > 1 || rated(imdb) > 1 ? { imdb, tvmaze, url: show?.url || '' } : null; // none isn't kept: it may be a blip
+    const [tvmaze, imdb, mal, hit] = await Promise.all([show ? getJson(`https://api.tvmaze.com/shows/${show.id}/episodes`).then(tvmazeRows).catch(() => []) : [], tt ? imdbEps(tt).catch(() => []) : [], ml, ani]);
+    const votes = hit && summed(aniVotes(hit)) > 0 ? [['AniList', aniVotes(hit)]] : [];
+    return rated(tvmaze) > 1 || rated(imdb) > 1 || rated(mal) > 1 || votes.length ? { imdb, tvmaze, url: show?.url || '', mal, votes } : null; // none isn't kept: it may be a blip
   });
   const seasonName = s => (s > 1900 ? String(s) : t('seasonShort') + s);
   // the grid's colours, best first (style.css .eg-t0...), by the score each starts at
@@ -167,21 +248,27 @@ const Ratings = (() => {
       <tbody>${eps.map(n => `<tr><th>${t('epShort')}${n}</th>${seasons.map(s => cell(s, n)).join('')}</tr>`).join('')}</tbody>
       <tfoot><tr><th>${t('avgShort')}</th>${seasons.map(s => `<th>${seasonAvg(rows, s)}</th>`).join('')}</tr></tfoot></table></div>`;
   }
-  async function graph(el, names, id, anime) {
+  // how many gave the title each score, 10 down to 1, in the grid's colours
+  const votesHtml = votes => {
+    const top = Math.max(...votes, 1), all = summed(votes) || 1;
+    return `<p class="sheet-text">${t('voteShare')} · ${summed(votes).toLocaleString()}</p><div class="eg-votes">${votes.map((n, i) => `<div><b>${10 - i}</b><span><i class="eg-t${tier(10 - i)}" style="width:${n / top * 100}%"></i></span><small>\u2066${(n / all * 100).toFixed(1)}%\u2069</small></div>`).join('')}</div>`;
+  };
+  async function graph(el, names, id, anime, manga) {
     el.innerHTML = '<div class="spin"></div>';
-    const g = await episodes(names, id, anime).catch(() => null);
+    const g = await (manga ? mangaVotes(names) : episodes(names, id, anime)).catch(() => null);
     if (!el.isConnected) return; // closed meanwhile
-    const sources = g ? [['IMDb', g.imdb], ['TVmaze', g.tvmaze]].filter(([, rows]) => rated(rows) > 1) : [];
-    if (!sources.length) { el.innerHTML = `<p class="sheet-text">${t('noEpRatings')}</p>`; return; }
-    el.innerHTML = `<div class="fchips">${sources.map(([name], k) => `<button class="fchip ${k ? '' : 'on'}" data-k="${k}">${name}</button>`).join('')}</div><div class="eg"></div>${g.url && sources.some(([name]) => name === 'TVmaze') ? `<small><a href="${esc(g.url)}" target="_blank" rel="noopener">TVmaze · CC BY-SA</a></small>` : ''}`;
+    const sources = g ? [['MyAnimeList', g.mal || []], ['IMDb', g.imdb || []], ['TVmaze', g.tvmaze || []]].filter(([, rows]) => rated(rows) > 1) : [], votes = g?.votes || [];
+    if (!sources.length && !votes.length) { el.innerHTML = `<p class="sheet-text">${t(manga ? 'noRatings' : 'noEpRatings')}</p>`; return; }
+    const draw = k => { box.innerHTML = k < sources.length ? gridHtml(sources[k][1]) : votesHtml(votes[k - sources.length][1]); };
+    el.innerHTML = `<div class="fchips">${[...sources, ...votes].map(([name], k) => `<button class="fchip ${k ? '' : 'on'}" data-k="${k}">${name}</button>`).join('')}</div><div class="eg"></div>${g.url && sources.some(([name]) => name === 'TVmaze') ? `<small><a href="${esc(g.url)}" target="_blank" rel="noopener">TVmaze · CC BY-SA</a></small>` : ''}`;
     const box = el.querySelector('.eg');
     el.querySelector('.fchips').onclick = e => {
       const b = e.target.closest('[data-k]');
       if (!b) return;
       el.querySelectorAll('.fchip').forEach(c => c.classList.toggle('on', c === b));
-      box.innerHTML = gridHtml(sources[b.dataset.k][1]);
+      draw(+b.dataset.k);
     };
-    box.innerHTML = gridHtml(sources[0][1]);
+    draw(0);
   }
   const observer = new IntersectionObserver(entries => entries.forEach(async ({target, isIntersecting}) => {
     if (!isIntersecting) return;

@@ -191,6 +191,12 @@ input:focus-visible, select:focus-visible { outline: none; }
 .eg-t6 { background: #633974; color: #fff; }
 .eg-q { background: #bdbdbd; color: #000; }
 .eg-body small a { color: var(--muted); }
+.eg-votes { display: grid; gap: 6px; width: min(480px, 100%); }
+.eg-votes div { display: flex; align-items: center; gap: 8px; }
+.eg-votes b { flex: none; width: 24px; text-align: center; }
+.eg-votes span { flex: 1; height: 22px; }
+.eg-votes i { display: block; height: 100%; border-radius: 6px; }
+.eg-votes small { flex: none; width: 52px; margin: 0; color: var(--muted); text-align: end; }
 #hfl[hidden] { display: none; }
 #hfl.on { background: var(--red); border-color: var(--red); }
 .eps.list .ep.seen img { opacity: .45; }

@@ -320,6 +320,7 @@ async function mangaSeries(id, force) {
           <div class="actions">${Ratings.slot({title:s.title, alt:s.alt, type:"manga"})}
             ${start ? `<a class="btn red" href="#/manga/read/${start.id}">${ICON.play} ${esc(start.label)}</a>` : ''}
             <button class="btn ghost" id="fav">${inList(path) ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList')}</button>
+            <button class="btn ghost" id="grf">${ICON.star} ${t('titleRatings')}</button>
             <button class="btn ghost" id="rf">${ICON.refresh} ${t('refresh')}</button>
           </div>
         </div>
@@ -344,6 +345,7 @@ async function mangaSeries(id, force) {
   $('#rev').onclick = () => { rev = !rev; drawChs(); };
   $('#fav').onclick = e => { const on = toggleList({ path, title: s.title, poster: s.poster, type: 'manga' }); e.currentTarget.innerHTML = on ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList'); };
   CastInfo.mount($('#title-cast'), [s.title, ...(s.alt || '').split(/[,،]/)], 'manga');
+  $('#grf').onclick = () => ratingsSheet([s.title, ...(s.alt || '').split(/[,،]/)], '', false, true);
   // chapters' actions, on one (long-press) or several picked: mark them read or unread (both ids: the listed chapter's and
   // its saved copy's, which may come from the other site), or every one before; download them or delete their saved copies
   const pick = cids => chs.filter(c => cids.includes(String(c.id))); // newest first, as listed
