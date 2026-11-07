@@ -1259,6 +1259,7 @@ function hiddenView() {
 
 async function title(path, force) {
   const d = await scraper.details(path, force);
+  if (d.path && decodeURIComponent(d.path) !== path) return location.replace('#/title' + d.path); // found under another address (the website's episode cards, risto.js): its own
   const h = store.history[path];
   const type = path.startsWith('/movie') ? 'movie' : 'anime';
   const first = h?.epPath || d.episodes[0]?.path;
@@ -1390,6 +1391,10 @@ async function play(epPath) {
   const show = showOf(epPath);
   let d = { title: '', poster: '', episodes: [] };
   try { d = await scraper.details(show); } catch {}
+  if (d.path && decodeURIComponent(d.path) !== show) { // found under another address (risto.js): the same episode at its own
+    const e = d.episodes.find(e => e.ep === epPath.split('/').pop());
+    if (e) return location.replace(playHash(e.path));
+  }
   const idx = d.episodes.findIndex(e => e.path === epPath);
   const ep = d.episodes[idx]?.ep ?? epPath.split('/').pop();
   store.history[show] = { show, epPath, ep, title: d.title, poster: d.poster, at: Date.now() };

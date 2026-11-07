@@ -1,0 +1,111 @@
+// The website's anime section: RistoAnime (WordPress) in place of witanime, which Cloudflare refuses Vercel's servers.
+// Its pages go through scraper.js's cache (load, remember) and come out in the same shapes as witanime's (home, list,
+// details), under the same paths: /anime/<series slug>, /anime/<slug>~<season id> (another season of it),
+// /anime/~<episode post slug> (a latest-episode card: resolved to its season's page), /movie/<post slug>,
+// /watch/<show key>/<episode>, /watch/movie/<post slug>. The desktop and Android apps keep witanime.
+if (window.api?.web) (() => {
+  const AJ = RA + '/wp-content/themes/TopAnime/Ajaxt/'; // its own pages' XHR endpoints
+  const slugOf = href => { try { return decodeURIComponent(new URL(href, RA).pathname.replace(/^\/(series\/)?|\/$/g, '')); } catch { return ''; } };
+  const postUrl = slug => `${RA}/${encodeURIComponent(slug)}/`, seriesUrl = slug => `${RA}/series/${encodeURIComponent(slug)}/`;
+  // "جميع حلقات انمي Black Clover مترجمة اون لاين", "انمي Black Clover الموسم 2 الحلقة 6 مترجمة اون لاين" -> the show's own name
+  const clean = s => s.replace(/^جميع حلقات\s+/, '').replace(/^(?:انمي|أنمي|فيلم)\s+/, '').replace(/\s+الحلقة\s+\d.*$/, '')
+    .replace(/\s+(?:مترجم|مدبلج)\S*(?:\s+اون\s*لاين|\s+اونلاين)?\s*$/, '').trim();
+  const bg = el => el?.getAttribute('style')?.match(/url\(([^)]+)\)/)?.[1] || el?.getAttribute('data-style')?.match(/url\(([^)]+)\)/)?.[1] || '';
+
+  // its poster cards: a series (/series/x), a film's post ("فيلم-..."), or an episode's post
+  const cards = (root, sel = '.MovieItem, .SlideItem') => [...root.querySelectorAll(sel)].map(el => {
+    const a = el.querySelector('a[href]'), slug = slugOf(a?.getAttribute('href')), name = txt(el.querySelector('.title h4') || el.querySelector('.title'));
+    if (!slug) return null;
+    const nums = txt(el.querySelector('.release-year')).match(/\d+(?:\.\d+)?/g) || [];
+    const c = { title: clean(name), poster: bg(el.querySelector('.poster')), rating: nums.find(n => n !== '10') || '', year: txt(el.querySelector('.year')), badge: '', ep: null };
+    if (/^\/series\//.test(new URL(a.getAttribute('href'), RA).pathname)) return { ...c, path: `/anime/${slug}`, type: 'anime' };
+    if (/^فيلم/.test(slug)) return { ...c, path: `/movie/${slug}`, type: 'movie' };
+    const ep = txt(el.querySelector('.Episode em')) || name.match(/الحلقة\s+(\d+(?:\.\d+)?)/)?.[1];
+    return ep ? { ...c, path: `/watch/~${slug}/${ep}`, type: 'episode', ep, badge: 'EP ' + ep, showPath: `/anime/~${slug}` } : { ...c, path: `/anime/~${slug}`, type: 'anime' };
+  }).filter(Boolean);
+  // a page's season list, or the bare links the season call answers with
+  const episodes = (root, sel = '.EpisodesList a[href]') => [...root.querySelectorAll(sel)].map(a => ({ n: txt(a.querySelector('em')), url: a.getAttribute('href') })).filter(e => e.n);
+
+  parsers.raList = doc => ({ items: cards(doc, '.MovieItem'), slides: cards(doc, '.SlideItem'),
+    pages: Math.max(1, ...[...doc.querySelectorAll('.pagination a')].map(a => +txt(a)).filter(Boolean)) });
+  // a series, season, film or episode page: they share one layout
+  parsers.raPage = doc => {
+    const tax = [...doc.querySelectorAll('.TaxContent li')].map(li => [txt(li.querySelector('span')).replace(/\s*:\s*$/, ''), [...li.querySelectorAll('a')].map(txt).filter(v => v && v !== 'now')]);
+    const val = re => tax.find(([k]) => re.test(k))?.[1] || [];
+    const poster = doc.querySelector('.InnerPoster img')?.getAttribute('src') || '';
+    return {
+      title: clean(txt(doc.querySelector('h1.PostTitle'))), alt: val(/الانجليزي/)[0] || '', desc: txt(doc.querySelector('.StoryArea p')),
+      genres: val(/النوع/), year: val(/عرض من|الاصدار/)[0] || '', poster, banner: bg(doc.querySelector('.singleCover .BG')) || poster,
+      info: tax.filter(([k, v]) => v.length && !/النوع|التصنيف/.test(k)).map(([k, v]) => [k, v.join('، ')]),
+      episodes: episodes(doc),
+      seasons: [...doc.querySelectorAll('.SeasonsList li a[data-season]')].map(a => ({ id: a.dataset.season, name: txt(a), active: a.parentElement.classList.contains('active') })),
+      postId: [...doc.querySelectorAll('script')].map(s => s.textContent.match(/post_id:\s*'(\d+)'/)?.[1]).find(Boolean) || '',
+      seasonUrl: doc.querySelector('[itemprop=containsSeason] > a[itemprop=url]')?.getAttribute('href') || '', // an episode's post: its season
+      related: cards(doc.querySelector('#MainFiltar') || doc.createElement('div'), '.MovieItem'),
+    };
+  };
+
+  const mostViewed = () => remember('ra:views', async () => cards(parse(await api.fetch(AJ + 'Filtering.php', { type: 'views' })), '.MovieItem'));
+  const list = (url, force) => load('raList', url, force);
+  async function details(path, force) {
+    const [, kind, key] = path.match(/^\/(anime|movie)\/(.+)$/) || [];
+    if (!key) throw new Error('bad path');
+    const show = p => ({ alt: '', trailer: '', tags: [p.year].filter(Boolean), title: p.title, desc: p.desc, genres: p.genres, info: p.info, poster: p.poster, banner: p.banner });
+    if (kind === 'movie') return { ...show(await load('raPage', postUrl(key), force)), path, related: [], episodes: [{ path: `/watch/movie/${key}`, ep: 'Movie', url: postUrl(key) }] };
+    if (key[0] === '~') { // an episode's post: its season's own page (the app moves there), else the post's own list
+      const p = await load('raPage', postUrl(key.slice(1)), force), season = p.seasonUrl && slugOf(p.seasonUrl);
+      if (season) return details('/anime/' + season, force);
+    }
+    const [slug, id] = key[0] === '~' ? [key] : key.split('~');
+    const p = await load('raPage', slug[0] === '~' ? postUrl(slug.slice(1)) : seriesUrl(slug), force);
+    const season = id && p.seasons.find(s => s.id === id);
+    // another season: its list comes from the page's own call (kept a day: older seasons hardly change)
+    const eps = season && !season.active ? await remember(`ra:season:${id}`, async () => episodes(parse(await api.fetch(AJ + 'Single/Episodes.php', { season: id, post_id: p.postId })), 'a[href]')) : p.episodes;
+    const title = season ? clean(season.name) : p.title;
+    return { ...show(p), path, title,
+      alt: /الموسم\s+(?:[2-9]|\d\d)/.test(title) ? '' : p.alt, // the English name is season 1's: Anime Witcher would match that one
+      episodes: eps.map(e => ({ path: `/watch/${key}/${e.n}`, ep: e.n, url: e.url })).sort((a, b) => parseFloat(a.ep) - parseFloat(b.ep)),
+      related: [...p.seasons.filter(s => s !== season && !(s.active && !id)).map(s => ({ path: s.active ? `/anime/${slug}` : `/anime/${slug}~${s.id}`,
+        type: 'anime', title: clean(s.name), poster: p.poster, rating: '', year: '', badge: '', ep: null })), ...p.related] };
+  }
+  // an episode's page on the site, through its show's list
+  const episodeUrl = async epPath => {
+    const [, key, n] = epPath.match(/^\/watch\/(.+)\/([^/]+)$/) || [];
+    if (!key) throw new Error('bad path');
+    const d = await details(key === 'movie' ? `/movie/${n}` : `/anime/${key}`);
+    const e = d.episodes.find(e => e.path === epPath) || d.episodes.find(e => e.ep === n);
+    if (!e) throw new Error('episode not found');
+    return e.url.replace(/\/?$/, '/');
+  };
+
+  Object.assign(scraper, {
+    async home(force) {
+      const [h, views] = await Promise.all([list(RA + '/', force), mostViewed().catch(() => [])]);
+      return { hero: h.slides.slice(0, 8).map(c => ({ path: c.showPath || c.path, watch: c.type === 'episode' ? c.path : '', title: c.title, desc: '', banner: c.poster })),
+        rows: [{ title: 'أحدث الحلقات', items: h.items }, { title: 'الأكثر مشاهدة', items: views }].filter(r => r.items.length) };
+    },
+    // witanime's listings by their paths (app.js SECTIONS, filter.js): its filters have no match here, the plain list is shown
+    async list(base, page = 1, force) {
+      if (/Most Viewed/.test(base)) return { items: await mostViewed(), pages: 1 };
+      return list(/^\/movies/.test(base) ? `${RA}/movies/${page > 1 ? `page/${page}/` : ''}` : `${RA}/series/${page > 1 ? `?offset=${page}` : ''}`, force);
+    },
+    newEpisodes: (page, force) => list(page > 1 ? `${RA}/?page=${page}/` : RA + '/', force),
+    search: q => list(`${RA}/?s=${encodeURIComponent(q)}`),
+    details,
+    ristoanime: async () => [], // the main source here: not again as a backup
+    SITE: RA,
+  });
+  window.Risto = {
+    // its servers, as tokens web.js plays straight away (api.stream)
+    async sources(epPath) {
+      const doc = parse(await api.fetch((await episodeUrl(epPath)) + 'watch/'));
+      return [...doc.querySelectorAll('li[data-watch]')].map(li => li.dataset.watch).filter(u => u.startsWith('https://')).map(u => ({ label: hostName(u), quality: '', token: 'ra:' + u }));
+    },
+    // its download page: the hosts' own pages, opened in a new tab
+    async downloads(epPath) {
+      const doc = parse(await api.fetch((await episodeUrl(epPath)) + 'download/'));
+      return [...doc.querySelectorAll('a[href^="http"]')].filter(a => a.querySelector('em') && !a.getAttribute('href').startsWith(RA))
+        .map(a => ({ label: txt(a.querySelector('em')).split('.')[0], quality: 'HD', token: a.getAttribute('href') }));
+    },
+  };
+})();
