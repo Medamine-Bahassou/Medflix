@@ -9,6 +9,7 @@ const STR = {
   ar: {
     home: 'الرئيسية', anime: 'أنمي', remove: 'إزالة', series: 'المسلسلات', movies: 'أفلام الأنمي', cinema: 'أفلام ومسلسلات', dubbed: 'مدبلج', schedule: 'مواعيد الأنمي', myList: 'قائمتي', searchPh: 'ابحث عن أنمي أو فيلم…', listSearchPh: 'ابحث في قائمتي…', cancel: 'إلغاء', clear: 'مسح',
     settings: 'الإعدادات', more: 'المزيد', storage: 'مجلد التطبيق', storageHint: 'احفظ التنزيلات والإعدادات وقائمتك وسجل المشاهدة في مجلد MEDFLIX على الهاتف، لتبقى حتى بعد حذف التطبيق وإعادة تثبيته.', storageAllow: 'السماح بالوصول', storageOn: 'مفعّل', storageOff: 'يحتاج إذن الوصول إلى كل الملفات', storageReady: 'تم حفظ بياناتك في مجلد MEDFLIX', storageAsk: 'اسمح للتطبيق بالوصول إلى الملفات ليحفظ قائمتك وسجل المشاهدة والإعدادات والتنزيلات في مجلد MEDFLIX على الهاتف. هكذا تبقى بعد حذف التطبيق، وتعود تلقائيًا عند إعادة تثبيته والسماح مرة أخرى.', later: 'لاحقًا', close: 'إغلاق', reverse: 'عكس الترتيب', dockTitle: 'أزرار الشريط السفلي', dockHint: 'اختر حتى 5 أزرار تظهر في الشريط السفلي على الهاتف، والباقي تجده في القائمة الجانبية ☰.',
+    dataTitle: 'بياناتك', dataHint: 'قائمتك وسجل المشاهدة وإعداداتك محفوظة في هذا المتصفح فقط. احفظ نسخة منها لتنقلها إلى جهاز آخر أو تستعيدها لاحقًا.', backup: 'حفظ نسخة من بياناتي', restore: 'استعادة نسخة محفوظة', restored: 'تمت استعادة بياناتك', restoreBad: 'هذا الملف ليس نسخة من بياناتك', clearCache: 'مسح الصفحات المحفوظة', getApp: 'تطبيق أندرويد', getAppHint: 'التنزيلات، والعرض على التلفاز، وكل مصادر الأنمي.', getAppBtn: 'تحميل التطبيق',
     inDock: 'في الشريط', available: 'أزرار أخرى', dockFull: 'الشريط ممتلئ: أزل زرًا أولًا', dockMin: 'يجب أن يبقى زر واحد على الأقل', language: 'اللغة',
     moveUp: 'تحريك للأعلى', moveDown: 'تحريك للأسفل', removeDock: 'إزالة من الشريط', addDock: 'إضافة إلى الشريط',
     rfChip: 'التقييم', rfTitle: 'التصفية حسب التقييم', rfHint: 'فعّل التقييمات التي تهمك وحدد أقل درجة تقبلها. تبقى اختياراتك محفوظة.', rfFilms: 'الأفلام والمسلسلات', rfAnime: 'الأنمي والمانجا', rfMatch: 'يجب أن يحقق العمل', rfAll: 'كلها', rfAny: 'أيًا منها', rfKeep: 'إبقاء الأعمال بلا تقييم', rfKeepHint: 'تبقى في النتائج رغم عدم العثور على درجتها', rfBest: 'الأقرب للبحث', rfShow: 'عرض ⁦%d⁩ من النتائج', rfDone: 'تم', rfChecking: 'جارٍ فحص التقييمات… ⁦%d/%d⁩', rfHidden: 'أخفت التصفية ⁦%d⁩ من النتائج', rfNone: 'لا توجد نتائج بهذا التقييم', rfNoneHint: 'خفّض الدرجة الدنيا أو أوقف أحد التقييمات', rfStart: 'اكتب اسم عمل، أو فعّل تصفية التقييم لتجد الأعمال دون كتابة', rfWalking: 'جارٍ البحث في الأعمال…', rfWent: 'تم فحص ⁦%d⁩ عملًا', rfMore: 'البحث عن المزيد', rfPick: 'مصدر التقييم', rfNoScore: 'بلا تقييم', rfEverywhere: 'البحث في كل الأعمال', rfNotHere: 'لا يوجد تطابق في نتائج التصفية',
@@ -54,6 +55,7 @@ homeHotManga: 'المانجا الرائجة', homeLatestManga: 'أحدث فصو
   en: {
     home: 'Home', anime: 'Anime', remove: 'Remove', series: 'Series', movies: 'Anime Movies', cinema: 'Movies & TV', dubbed: 'Dubbed', schedule: 'Anime Schedule', myList: 'My List', searchPh: 'Titles, series, movies…', listSearchPh: 'Search my list…', cancel: 'Cancel', clear: 'Clear',
     settings: 'Settings', more: 'More', storage: 'App folder', storageHint: 'Keep downloads, settings, your list and watch history in a MEDFLIX folder on the phone, so they survive uninstalling and reinstalling the app.', storageAllow: 'Allow access', storageOn: 'Active', storageOff: 'Needs all-files access', storageReady: 'Your data is now saved in the MEDFLIX folder', storageAsk: 'Allow file access so your list, watch history, settings and downloads are kept in a MEDFLIX folder on the phone. They then survive uninstalling the app, and come back when you reinstall and allow access again.', later: 'Later', close: 'Close', reverse: 'Reverse order', dockTitle: 'Bottom bar buttons', dockHint: "Pick up to 5 buttons for the phone's bottom bar; everything else is in the side menu ☰.",
+    dataTitle: 'Your data', dataHint: 'Your list, watch history and settings are kept in this browser only. Save a copy to move them to another device or bring them back later.', backup: 'Save a copy of my data', restore: 'Restore a saved copy', restored: 'Your data was restored', restoreBad: 'This file isn’t a copy of your data', clearCache: 'Clear saved pages', getApp: 'Android app', getAppHint: 'Downloads, casting to TV, and every anime source.', getAppBtn: 'Get the app',
     inDock: 'In the bar', available: 'Other buttons', dockFull: 'The bar is full: remove one first', dockMin: 'Keep at least one button', language: 'Language',
     moveUp: 'Move up', moveDown: 'Move down', removeDock: 'Remove from bar', addDock: 'Add to bar',
     rfChip: 'Rating', rfTitle: 'Filter by rating', rfHint: 'Turn on the scores you care about and set the lowest you\'ll accept. Your choices are kept.', rfFilms: 'Films & series', rfAnime: 'Anime & manga', rfMatch: 'A title must pass', rfAll: 'All of them', rfAny: 'Any of them', rfKeep: 'Keep titles with no score', rfKeepHint: 'They stay in the results when no score is found', rfBest: 'Best match', rfShow: 'Show ⁦%d⁩ results', rfDone: 'Done', rfChecking: 'Checking scores… ⁦%d/%d⁩', rfHidden: '%d hidden by your filter', rfNone: 'No results at this rating', rfNoneHint: 'Lower the minimum or turn a score off', rfStart: 'Type a title, or turn on a rating filter to find titles without typing', rfWalking: 'Looking through titles…', rfWent: 'Checked ⁦%d⁩ titles', rfMore: 'Find more', rfPick: 'Rating from', rfNoScore: 'No score', rfEverywhere: 'Search all titles', rfNotHere: 'Nothing in these filtered results matches',
@@ -330,11 +332,18 @@ function settingsView() {
       <div class="set-list"><label class="set-row"><i class="set-tile">${ICON.skipForward}</i><span>${t('skipIntroSet')}</span><input type="checkbox" id="intro-on" ${store.prefs.skipIntro === false ? '' : 'checked'}></label></div></section>
     <section class="set-card">${head(t('hiddenTitle'), t('hiddenHint'))}
       <div class="set-list"><a class="set-row set-link" href="#/hidden"><i class="set-tile">${ICON.eyeSlash}</i><span>${t('openHidden', hidden)}</span>${ICON.caretRight}</a></div></section>
+    ${api.web ? `<section class="set-card">${head(t('dataTitle'), t('dataHint'))}<div class="set-list">
+      <button class="set-row set-link" id="bk"><i class="set-tile">${ICON.download}</i><span>${t('backup')}</span></button>
+      <label class="set-row set-link"><i class="set-tile">${ICON.folder}</i><span>${t('restore')}</span><input type="file" id="rs" accept=".json,application/json" hidden></label>
+      <button class="set-row set-link" id="cc"><i class="set-tile">${ICON.trash}</i><span>${t('clearCache')}</span></button></div></section>
+    <section class="set-card">${head(t('getApp'), t('getAppHint'))}<div class="set-list">
+      <a class="set-row set-link" href="https://github.com/Medamine-Bahassou/Medflix/releases/latest" target="_blank" rel="noopener"><i class="set-tile">${ICON.download}</i><span>${t('getAppBtn')}</span>${ICON.external}</a></div></section>` : ''}
     <section class="set-card">${head(t('language'))}
       <div class="lang set-lang"><button data-l="ar" class="${lang === 'ar' ? 'on' : ''}">العربية</button><button data-l="en" class="${lang === 'en' ? 'on' : ''}">English</button></div>
     </section>${window.BUILD ? `<p class="set-build" dir="ltr">Build ${esc(BUILD)}</p>` : ''}</div></div></div>`;
   if (api.storage) drawStorage();
   $('#intro-on').onchange = e => { store.prefs.skipIntro = e.target.checked; persist('prefs'); };
+  if (api.web) webData();
   $('.settings').onclick = e => {
     const b = e.target.closest('[data-act]');
     if (!b) return;
@@ -346,6 +355,30 @@ function settingsView() {
     store.prefs.dock = d; persist('prefs');
     renderNav(); settingsView();
   };
+}
+
+// the website keeps everything in the browser (web.js): a copy of it as a file, put back from one; and the saved pages cleared
+const BACKUP = ['list', 'history', 'seen', 'prefs', 'manga', 'mangaSeen', 'hidden']; // not downloads (none here) nor streams (a cache)
+function webData() {
+  $('#bk').onclick = () => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify({ medflix: 1, at: Date.now(), data: Object.fromEntries(BACKUP.map(k => [k, store[k]])) })], { type: 'application/json' }));
+    a.download = `medflix-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+  $('#rs').onchange = async e => {
+    try {
+      const b = JSON.parse(await e.target.files[0].text());
+      if (b?.medflix !== 1 || !b.data || typeof b.data !== 'object') throw new Error('not a backup');
+      const keys = BACKUP.filter(k => b.data[k] && typeof b.data[k] === 'object' && !Array.isArray(b.data[k])); // a file from anywhere: only our keys, only objects
+      if (!keys.length) throw new Error('not a backup');
+      await Promise.all(keys.map(k => (store[k] = b.data[k], persist(k))));
+      toast(t('restored'));
+      setTimeout(() => location.reload(), 900); // everything drawn from it again (the dock, the language, the lists)
+    } catch { e.target.value = ''; toast(t('restoreBad'), true); }
+  };
+  $('#cc').onclick = () => Promise.all(['pages', 'lookups'].map(k => api.set(k, {}))).then(() => location.reload());
 }
 
 // ---------- user state (persisted in main process JSON) ----------

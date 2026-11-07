@@ -41,11 +41,13 @@ module.exports = async (req, res) => {
       const reader = r.body.getReader(), dec = new TextDecoder(), re = new RegExp(stopAt);
       for (;;) { const { done, value } = await reader.read(); if (done) break; data += dec.decode(value, { stream: true }); if (re.test(data)) { reader.cancel(); break; } }
     } else data = await r.text();
-    // RistoAnime's pages are ~350KB, ~300KB of it inline scripts and styles nothing reads: dropped before they're sent on and
-    // parsed. Its season list's call needs the page's post id, which only a script has: that one line is kept
-    if (u.hostname === 'ristoanime.me' && /html/.test(r.headers.get('content-type') || '')) {
+    // RistoAnime's pages (~350KB) and animeschedule's (~7MB) are mostly inline scripts, styles, <noscript> image copies and
+    // indentation nothing reads: dropped before they're sent on and parsed. RistoAnime's season list's call needs the page's post id,
+    // which only a script has: that one line is kept
+    if (/^(ristoanime\.me|animeschedule\.net)$/.test(u.hostname) && /html/.test(r.headers.get('content-type') || '')) {
       const id = data.match(/post_id:\s*'\d+'/)?.[0];
-      data = data.replace(/<(script|style|svg)\b[^>]*>[\s\S]*?<\/\1>/gi, '') + (id ? `<script>${id}</script>` : '');
+      data = data.replace(/<(script|style|svg|noscript)\b[^>]*>[\s\S]*?<\/\1>/gi, '').replace(/ data-srcset="[^"]*"/g, '')
+        .replace(/\s{2,}/g, ' ') + (id ? `<script>${id}</script>` : ''); // its indentation alone is ~4.5MB of animeschedule's; text is read whitespace-collapsed anyway
     }
     // shared: no visitor's cookies in it, and only good answers kept (5 min, then served stale for a day while it refreshes)
     if (shared) res.setHeader('Cache-Control', r.status < 400 ? 'public, s-maxage=300, stale-while-revalidate=86400' : 'no-store');

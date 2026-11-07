@@ -298,7 +298,7 @@ input:focus-visible, select:focus-visible { outline: none; }
 /* ---------- schedule ---------- */
 .page.sched { padding-bottom: 0; }
 .rows.sched-rows { margin-top: 0; }
-.sched-q { display: flex; align-items: center; gap: 10px; max-width: 900px; height: 48px; margin-bottom: 16px; padding-inline: 14px 8px; border-radius: 12px; background: #ffffff12; border: 1px solid #ffffff1a; transition: border-color .2s; }
+.sched-q { display: flex; align-items: center; gap: 10px; height: 48px; margin-bottom: 16px; padding-inline: 14px 8px; border-radius: 12px; background: #ffffff12; border: 1px solid #ffffff1a; transition: border-color .2s; }
 .sched-q:focus-within { border-color: #ffffff55; }
 .sched-q > svg { width: 18px; height: 18px; flex: none; color: var(--muted); }
 .sched-q input { flex: 1; min-width: 0; height: 100%; background: none; border: 0; outline: 0; color: #fff; font: inherit; font-size: 16px; } /* 16px: no zoom on focus */
@@ -634,7 +634,8 @@ body.drawer-open #drawer-bg { opacity: 1; pointer-events: auto; }
 /* settings: plain sections (heading, hint, one grouped list with hairlines), like the phone's own settings */
 .set-grid { display: grid; gap: 32px; max-width: 1040px; align-items: start; }
 .set-side { display: grid; gap: 32px; }
-@media (min-width: 980px) { .set-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px 56px; } }
+/* the bottom bar is a phone's (max-width: 760px): its settings only there; wider, the other sections share the width */
+@media (min-width: 761px) { .set-dock { display: none; } .set-side { grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); gap: 32px 56px; } }
 .set-card h2 { font-size: 17px; line-height: 1.3; margin-bottom: 4px; }
 .set-card .hint { max-width: 60ch; color: var(--muted); font-size: 13px; line-height: 1.5; }
 .set-card h3 { margin: 22px 0 8px; color: var(--muted); font-size: 13px; font-weight: 600; }
@@ -655,6 +656,8 @@ body.drawer-open #drawer-bg { opacity: 1; pointer-events: auto; }
 .set-row > span { flex: 1; min-width: 0; font-weight: 500; }
 .set-acts { display: flex; flex: none; }
 .set-link { padding-inline-end: 14px; }
+button.set-row, label.set-row { width: 100%; background: none; color: inherit; font: inherit; text-align: start; cursor: pointer; }
+.set-link:hover { background: #ffffff08; }
 .set-link:active { background: #ffffff0d; }
 .set-link > svg { width: 16px; height: 16px; color: #777; }
 [dir=rtl] .set-link > svg { transform: scaleX(-1); }
@@ -670,7 +673,7 @@ a, img { -webkit-user-drag: none; -webkit-touch-callout: none; } /* a held link 
 .set-row .icon-btn.full { color: #555; }
 .set-row .icon-btn svg { width: 18px; height: 18px; }
 .settings :is(button, a):focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
-.set-lang { width: 100%; max-width: 360px; border-radius: 12px; }
+.set-lang { width: 100%; border-radius: 12px; }
 .set-lang button { flex: 1; height: 44px; border-radius: 9px; font-size: 14px; }
 @media (max-width: 760px) {
   .nav-gear { display: none; }
@@ -730,7 +733,7 @@ img.broken:not(.rd-pages img) { content: url("data:image/gif;base64,R0lGODlhAQAB
 .set-stor .set-row small { color: var(--muted); font-weight: 500; }
 .set-stor .set-row.on small { color: #46d369; }
 .empty .why { display: block; margin-top: 10px; color: #777; font-size: 12px; overflow-wrap: anywhere; } /* what refused the request, to report */
-.set-build { color: #666; font-size: 12px; text-align: center; }
+.set-build { grid-column: 1 / -1; color: #666; font-size: 12px; text-align: center; }
 .set-stor { border-radius: 12px; background: #161616; overflow: hidden; }
 .set-stor .set-row { padding-block: 10px; }
 .sheet-text { padding: 0 4px 16px; color: #ccc; line-height: 1.6; }

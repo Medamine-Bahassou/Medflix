@@ -118,8 +118,10 @@ parsers.newEpisodes = (text, url) => {
 const AS = 'https://animeschedule.net';
 parsers.airTimes = doc => {
   const rank = { raw: 0, sub: 1, dub: 2 }, best = {};
-  for (const s of doc.querySelectorAll('.timetable-column-show[route]')) {
-    const route = s.getAttribute('route'), at = s.querySelector('time.show-air-time')?.getAttribute('datetime'), r = rank[s.querySelector('[airType]')?.getAttribute('airType')] ?? 3;
+  // its attributes went data-* (route -> data-route, airType -> data-air-type): either is read
+  for (const s of doc.querySelectorAll('.timetable-column-show:is([route], [data-route])')) {
+    const route = s.getAttribute('data-route') || s.getAttribute('route'), at = s.querySelector('time.show-air-time')?.getAttribute('datetime');
+    const air = s.querySelector('[data-air-type], [airType]'), r = rank[air?.getAttribute('data-air-type') || air?.getAttribute('airType')] ?? 3;
     if (at && !(best[route]?.r <= r)) best[route] = { route, title: txt(s.querySelector('.show-title-bar')), at, r,
       poster: s.querySelector('img[data-src]')?.getAttribute('data-src') || s.querySelector('img.show-poster')?.getAttribute('src'),
       ep: txt(s.querySelector('.show-episode')).replace(/^\D+/, '') };
