@@ -15,6 +15,7 @@ The UI only talks to `window.api`. It never calls the network or storage directl
 - `preload.js` exposes `api` over IPC to `main.js` (Electron).
 - `mobile.js` builds the same `api` on Capacitor: `CapacitorHttp`, IndexedDB, and the custom `Downloader` plugin (`DownloaderPlugin.java`).
 - `web.js` builds it for the website (Vercel: `vercel.json` serves `www/`): sites asked through `api/proxy.js`, IndexedDB, iframe player, no downloads.
+  Cloudflare challenges Vercel's servers, so challenged requests go on to `UPSTREAM` (env): `npm run proxy` on a home connection, behind a tunnel, sharing the secret `KEY`.
 
 **Rule:** a new `api` call goes in both `preload.js`/`main.js` and `mobile.js`. A phone-only feature is called with
 `api.x?.()` so the desktop skips it (examples: `storage`, `cast`, `checkUpdate`, `installUpdate`).
