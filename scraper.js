@@ -260,13 +260,13 @@ async function ristoanime(title, alt, ep, movie) {
 
 // ---------- kitsu: episodes' names and stills (witanime lists numbers only) ----------
 const KITSU = 'https://kitsu.io/api/edge';
-const fold = s => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+const foldName = s => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 parsers.kitsuFind = j => (j.data || []).map(a => ({ id: a.id, names: [a.attributes.canonicalTitle, ...Object.values(a.attributes.titles || {})].filter(Boolean).map(fold) }));
 parsers.kitsuEps = j => ({ count: j.meta?.count || 0, eps: (j.data || []).map(({ attributes: a }) =>
   ({ n: String(a.number), name: a.canonicalTitle || a.titles?.en_us || a.titles?.en || a.titles?.en_jp || '', thumb: a.thumbnail?.original || '' })) });
 // a show on kitsu by one of its names (only an exact one: a near miss is often another season)
 async function kitsuShow(names) {
-  const want = names.map(fold).filter(Boolean);
+  const want = names.map(foldName).filter(Boolean);
   if (!want.length) return null;
   return (await load('kitsuFind', `${KITSU}/anime?filter[text]=${encodeURIComponent(names[0])}&page[limit]=5&fields[anime]=canonicalTitle,titles`, false, true))
     .find(a => a.names.some(n => want.includes(n)));
@@ -285,7 +285,7 @@ async function episodeInfo(names) {
 
 // ---------- animefillerlist.com: which episodes are filler (it has no api: its pages) ----------
 const AFL = 'https://www.animefillerlist.com';
-const aflName = s => fold(String(s || '').replace(/×/g, 'x')).replace(/([ou])u/g, '$1'); // its "Hunter × Hunter" and "Shippuden" are the sites' "x" and "Shippuuden"
+const aflName = s => foldName(String(s || '').replace(/×/g, 'x')).replace(/([ou])u/g, '$1'); // its "Hunter × Hunter" and "Shippuden" are the sites' "x" and "Shippuuden"
 // { name: slug }: its slugs can't be guessed ("blue-lock" is Black Clover's films). "Bleach: TYBW (Bleach: Sennen Kessen-hen)" goes by
 // either name, but an exact name wins ("One Pace (One Piece)" isn't One Piece) and a year is part of it ("Hunter × Hunter (2011)" isn't the 1999 one)
 parsers.fillerShows = doc => {
@@ -303,7 +303,7 @@ parsers.fillerEps = doc => Object.fromEntries([...doc.querySelectorAll('tr[id^="
   .filter(([n, kind]) => n && kind));
 // found by the show's own names, else kitsu's (witanime's "Kimetsu no Yaiba" is its "Demon Slayer"). Exact ones only: a near miss
 // is often another season, numbered differently. Asked once a day: a small site, and these hardly change
-const filler = names => remember('filler:' + names.map(fold).join(), async () => { // all the names: a downloaded episode's has only its title, and its miss mustn't stand for the show's
+const filler = names => remember('filler:' + names.map(foldName).join(), async () => { // all the names: a downloaded episode's has only its title, and its miss mustn't stand for the show's
   const shows = await load('fillerShows', AFL + '/shows', false, true), slug = list => list.map(n => shows[aflName(n)]).find(Boolean);
   const hit = slug(names) || slug((await kitsuShow(names))?.names || []);
   return hit ? load('fillerEps', `${AFL}/shows/${hit}`, false, true) : {};
