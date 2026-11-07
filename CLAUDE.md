@@ -15,8 +15,9 @@ The UI only talks to `window.api`. It never calls the network or storage directl
 - `preload.js` exposes `api` over IPC to `main.js` (Electron).
 - `mobile.js` builds the same `api` on Capacitor: `CapacitorHttp`, IndexedDB, and the custom `Downloader` plugin (`DownloaderPlugin.java`).
 - `web.js` builds it for the website (Vercel: `vercel.json` serves `www/`): sites asked through `api/proxy.js`, IndexedDB, iframe player, no downloads.
-  Cloudflare challenges Vercel's servers: those requests go out through `EXIT_PROXY` (env, a residential proxy URL). Plain page reads
-  are GETs that Vercel's cache shares between visitors for 5 minutes.
+  Cloudflare refuses witanime (and egydead, animerco, olympustaff) to Vercel's servers, so the website's anime comes from RistoAnime
+  (`risto.js`, web only: same shapes and paths as `scraper.js`). Plain page reads are GETs that Vercel's cache shares for 5 minutes;
+  `EXIT_PROXY` (env, optional) sends challenged requests through a residential proxy.
 
 **Rule:** a new `api` call goes in both `preload.js`/`main.js` and `mobile.js`. A phone-only feature is called with
 `api.x?.()` so the desktop skips it (examples: `storage`, `cast`, `checkUpdate`, `installUpdate`).
