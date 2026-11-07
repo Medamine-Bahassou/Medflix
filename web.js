@@ -4,16 +4,18 @@
 if (!window.api) (() => {
   const SITE = 'https://witanime.site', AR = 'https://eva.animerco.org';
   const sleep = ms => new Promise(r => setTimeout(r, ms));
-  // plain page reads (no form) go as GET: Vercel's cache shares each answer between all visitors for a few minutes
-  const viaProxy = async (req, shared) => {
-    const r = shared ? await fetch('/api/proxy?' + new URLSearchParams({ url: req.url, h: JSON.stringify(req.headers || {}) }))
+  // everything goes as GET (no cookies: no answer is the visitor's own), which Vercel's cache shares between all visitors
+  // for a few minutes; a body too long for an address (a big GraphQL query) is POSTed
+  const viaProxy = async req => {
+    const q = new URLSearchParams({ url: req.url, h: JSON.stringify(req.headers || {}), ...(req.method && { m: req.method }), ...(req.body && { b: req.body }) });
+    const r = q.toString().length < 6000 ? await fetch('/api/proxy?' + q)
       : await fetch('/api/proxy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req) });
     if (!r.ok) throw new Error((await r.json().catch(() => null))?.error || `proxy HTTP ${r.status}`);
     return r.json();
   };
   const http = async (url, opt = {}) => {
     for (let i = 0; ; i++) { // rate-limited bursts (429): wait and retry (see main.js)
-      const res = await viaProxy({ url, ...opt }, !opt.method);
+      const res = await viaProxy({ url, ...opt });
       if (res.status !== 429 || i === 3) return res;
       await sleep((+res.headers['retry-after'] || 2 ** i) * 1000);
     }

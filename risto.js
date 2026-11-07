@@ -85,6 +85,9 @@ if (window.api?.web) (() => {
   const genreUrl = (g, page = 1) => `${RA}/genre/${encodeURIComponent(g)}/${page > 1 ? `?page=${page}/` : ''}`;
   const TASTE = ['أكشن', 'كوميدي', 'رومانسي']; // a new visitor's genre rows
   // the visitor's last anime (app.js store.history, newest first): their genres pick the genre rows
+  // several late rows landing together: one redrawing
+  let redrawT;
+  const redraw = () => { clearTimeout(redrawT); redrawT = setTimeout(() => scraper.changed(), 300); };
   const watched = () => Object.values(store.history).filter(h => h.show?.startsWith('/anime/')).sort((a, b) => b.at - a.at).slice(0, 5);
 
   Object.assign(scraper, {
@@ -93,19 +96,29 @@ if (window.api?.web) (() => {
     async home(force) {
       const mine = watched(), seen = new Set(mine.map(h => h.title));
       const fresh = items => [...items.filter(c => !seen.has(c.title)), ...items.filter(c => seen.has(c.title))];
-      const tastes = (await Promise.all(mine.map(h => details(h.show).catch(() => null)))).filter(Boolean); // cached pages, mostly
-      const count = {};
-      tastes.flatMap(d => d.genres).forEach(g => count[g] = (count[g] || 0) + 1);
-      const genres = [...new Set([...Object.keys(count).sort((a, b) => count[b] - count[a]), ...TASTE])].slice(0, 3);
-      const [h, views, films, ...byGenre] = await Promise.all([list(RA + '/', force), mostViewed().catch(() => []), list(`${RA}/movies/`, force).catch(() => null),
-        ...genres.map(g => list(genreUrl(g), force).catch(() => null))]);
-      const genreRow = i => byGenre[i] && { title: t('genreRow', genres[i]), items: fresh(shows(byGenre[i].items)), base: '/genre/' + genres[i] };
-      const last = tastes[0];
+      const core = list(RA + '/', force);
+      // the other rows get until a moment after the latest episodes: a slower one is left out of this drawing, and the page
+      // is drawn again once it's in (it's cached by then), so one slow list never holds the whole feed
+      const ready = core.then(() => new Promise(r => setTimeout(r, 1200)), () => {});
+      const soon = p => {
+        let got = false;
+        p = p.then(v => (got = true, v), () => (got = true, null));
+        return Promise.race([p, ready.then(() => { if (!got) p.then(v => v && redraw()); return null; })]);
+      };
+      const tastes = Promise.all(mine.map(h => details(h.show).catch(() => null))).then(l => l.filter(Boolean)); // cached pages, mostly
+      const genres = tastes.then(l => {
+        const count = {};
+        l.flatMap(d => d.genres).forEach(g => count[g] = (count[g] || 0) + 1);
+        return [...new Set([...Object.keys(count).sort((a, b) => count[b] - count[a]), ...TASTE])].slice(0, 3);
+      });
+      const [h, views, films, last, byGenre] = await Promise.all([core, soon(mostViewed()), soon(list(`${RA}/movies/`, force)), soon(tastes.then(l => l[0])),
+        soon(genres.then(gs => Promise.all(gs.map(async g => ({ g, d: await list(genreUrl(g), force).catch(() => null) })))))]);
+      const genreRow = i => byGenre?.[i]?.d && { title: t('genreRow', byGenre[i].g), items: fresh(shows(byGenre[i].d.items)), base: '/genre/' + byGenre[i].g };
       return { hero: byShow(h.slides).slice(0, 8).map(c => ({ path: c.showPath || c.path, watch: c.type === 'episode' ? c.path : '', title: c.title, desc: '', banner: c.poster })),
         rows: [
           { title: 'أحدث الحلقات', items: byShow(h.items) },
           last && { title: t('becauseWatched', last.title), items: fresh(last.related) },
-          { title: 'أكثر الأنميات مشاهدة', items: shows(views) },
+          { title: 'أكثر الأنميات مشاهدة', items: shows(views || []) },
           genreRow(0),
           films && { title: 'أحدث الأفلام', items: films.items, base: '/movies' },
           genreRow(1),

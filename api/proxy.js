@@ -1,7 +1,8 @@
 // Vercel function: the website's stand-in for main.js's fetching. A browser can't read the sites (no CORS) nor set
 // their headers (user agent, referer, origin, cookies), so web.js asks here: POST { url, method, headers, body, redirect, stopAt }
 // -> { status, url, headers, cookies, data }. Stateless: the session cookies witanime needs travel back to web.js's jar.
-// Plain page reads come as GET ?url=&h= instead, so Vercel's cache shares each answer between all visitors for a few minutes.
+// The website sends everything as GET ?url=&h=&m=&b= (no cookies: nothing is the visitor's own), so Vercel's cache shares
+// each answer between all visitors for a few minutes; POST stays for a body too long for an address.
 const MediaHosts = require('../hosts');
 const { fetch: exitFetch, ProxyAgent } = require('undici');
 
@@ -24,7 +25,7 @@ module.exports = async (req, res) => {
   const shared = req.method === 'GET';
   if (!shared && req.method !== 'POST') return res.status(405).end();
   let q;
-  try { q = shared ? { url: req.query.url, headers: JSON.parse(req.query.h || '{}') } : req.body || {}; } catch { return res.status(400).json({ error: 'bad headers' }); }
+  try { q = shared ? { url: req.query.url, headers: JSON.parse(req.query.h || '{}'), method: req.query.m, body: req.query.b } : req.body || {}; } catch { return res.status(400).json({ error: 'bad headers' }); }
   const { url, method = 'GET', headers = {}, body, redirect = 'follow', stopAt } = q;
   let u;
   try { u = new URL(url); } catch { return res.status(400).json({ error: 'bad url' }); }
@@ -40,6 +41,12 @@ module.exports = async (req, res) => {
       const reader = r.body.getReader(), dec = new TextDecoder(), re = new RegExp(stopAt);
       for (;;) { const { done, value } = await reader.read(); if (done) break; data += dec.decode(value, { stream: true }); if (re.test(data)) { reader.cancel(); break; } }
     } else data = await r.text();
+    // RistoAnime's pages are ~350KB, ~300KB of it inline scripts and styles nothing reads: dropped before they're sent on and
+    // parsed. Its season list's call needs the page's post id, which only a script has: that one line is kept
+    if (u.hostname === 'ristoanime.me' && /html/.test(r.headers.get('content-type') || '')) {
+      const id = data.match(/post_id:\s*'\d+'/)?.[0];
+      data = data.replace(/<(script|style|svg)\b[^>]*>[\s\S]*?<\/\1>/gi, '') + (id ? `<script>${id}</script>` : '');
+    }
     // shared: no visitor's cookies in it, and only good answers kept (5 min, then served stale for a day while it refreshes)
     if (shared) res.setHeader('Cache-Control', r.status < 400 ? 'public, s-maxage=300, stale-while-revalidate=86400' : 'no-store');
     res.json({ status: r.status, url: r.url, headers: Object.fromEntries(KEEP.map(k => [k, r.headers.get(k)]).filter(([, v]) => v)), cookies: shared ? [] : r.headers.getSetCookie(), data });
