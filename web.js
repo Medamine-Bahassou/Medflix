@@ -116,6 +116,16 @@ if (!window.api) (() => {
       }
     },
     playerFull: () => frame()?.requestFullscreen().catch(() => {}),
+    // a TV (Chromecast, Android TV) through the browser's own Remote Playback: only a video playing here, in the page (a
+    // downloaded episode) or in the player's own frame (Anime Witcher's files, MediaHosts.videoHtml); a host's player is
+    // another site's page, out of reach. The TV then plays it and this page is its remote: nothing here is stopped ({ screen })
+    async cast() {
+      const v = document.querySelector('.player video') || frame()?.contentDocument?.querySelector('video');
+      if (!v?.currentSrc) throw new Error(frame() ? 'not castable' : 'no video');
+      if (!v.remote) { if (!v.webkitShowPlaybackTargetPicker) throw new Error('not castable'); v.webkitShowPlaybackTargetPicker(); return { screen: true }; } // Safari: AirPlay
+      try { await v.remote.prompt(); } catch (e) { throw new Error(e.name === 'NotAllowedError' ? 'cancelled' : 'not castable'); } // NotAllowed: the picker closed
+      return { screen: true };
+    },
     playerVisible() {}, // the iframe sits under the menu, nothing to hide
     playerSnapshot: async () => '',
     onPlayerBack() {}, // the browser's back button walks the hash history

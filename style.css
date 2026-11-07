@@ -503,6 +503,14 @@ html, body { overscroll-behavior-y: none; } /* no WebView stretch / glow (or bro
 .sheet-wrap.open .sheet { transform: none; }
 .sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 4px 12px; }
 .sheet-head b { font-size: 18px; }
+/* the card's ask (app.js askOrGo): carry on / its page / the card's own episode, the safe choice first and biggest */
+.ask-head { display: flex; align-items: center; gap: 16px; padding: 6px 4px 20px; }
+.ask-head img { width: 72px; aspect-ratio: 2/3; object-fit: cover; border-radius: 8px; background: #ffffff14; flex: none; }
+.ask-head small { display: block; margin-bottom: 4px; color: var(--muted); font-size: 12px; font-weight: 500; }
+.ask-head b { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 18px; line-height: 1.3; }
+.ask-main { justify-content: center; height: 52px; border-radius: 99px; font-size: 15px; }
+.ask-more { display: flex; gap: 10px; margin-top: 10px; }
+.ask-more .btn { flex: 1; min-width: 0; justify-content: center; height: 48px; border-radius: 99px; }
 .sheet-x { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: #ffffff12; color: #fff; }
 .sheet-x svg { width: 18px; height: 18px; }
 .sheet-list { display: grid; overflow-y: auto; overscroll-behavior: contain; }

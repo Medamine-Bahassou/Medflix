@@ -29,7 +29,7 @@ const STR = {
     play: 'تشغيل', moreInfo: 'المزيد', details: 'التفاصيل', charactersCast: 'الشخصيات والممثلون', viewAllCast: 'عرض الكل', enlargeImage: 'عرض الصورة بحجم كامل', loadMoreCast: 'تحميل المزيد', castSearch: 'ابحث عن شخصية أو ممثل…', loadingCast: 'جارٍ تحميل الشخصيات…', noCast: 'لا تتوفر معلومات عن الشخصيات لهذا العنوان.', castUnavailable: 'تعذّر تحميل الشخصيات حالياً.', japaneseVoice: 'الصوت الياباني', actor: 'الممثل', prev: 'السابق', next: 'التالي',
     results: q => `نتائج البحث عن «${q}»`, listEmpty: 'قائمتك فارغة', listHint: 'مرّر على أي عنوان واضغط + لحفظه هنا.',
     resume: e => `متابعة الحلقة ${e}`, inList: 'في قائمتي', trailer: 'الإعلان', episodes: 'الحلقات', jump: 'انتقل إلى حلقة…', moreLike: 'أعمال مشابهة',
-    back: 'رجوع (Esc)', loadingServers: 'جارٍ تحميل السيرفرات…', openBrowser: 'فتح في المتصفح', openBrowserTip: 'إذا لم يعمل المشغّل داخل التطبيق', cast: 'عرض على التلفاز', casting: 'يُعرض الآن على التلفاز', castPlayFirst: 'شغّل الفيديو هنا أولاً، ثم اعرضه على التلفاز', castWifi: 'اتصل بشبكة الواي فاي نفسها التي يتصل بها التلفاز', castFailed: 'تعذّر التشغيل على التلفاز، جرّب سيرفراً آخر',
+    back: 'رجوع (Esc)', loadingServers: 'جارٍ تحميل السيرفرات…', openBrowser: 'فتح في المتصفح', openBrowserTip: 'إذا لم يعمل المشغّل داخل التطبيق', cast: 'عرض على التلفاز', casting: 'يُعرض الآن على التلفاز', castPlayFirst: 'شغّل الفيديو هنا أولاً، ثم اعرضه على التلفاز', castHost: 'لا يمكن عرض هذا السيرفر على التلفاز من المتصفح، اختر سيرفراً آخر', castWifi: 'اتصل بشبكة الواي فاي نفسها التي يتصل بها التلفاز', castFailed: 'تعذّر التشغيل على التلفاز، جرّب سيرفراً آخر',
     // witanime's row headings, always Arabic and vague: its heading stays the row's key (SECTIONS), this is what's shown
     'الأكثر مشاهدة': 'أكثر حلقات الأنمي مشاهدة',
     'أحدث الحلقات': 'أحدث حلقات الأنمي',
@@ -75,7 +75,7 @@ homeHotManga: 'المانجا الرائجة', homeLatestManga: 'أحدث فصو
     play: 'Play', moreInfo: 'More Info', details: 'Details', charactersCast: 'Characters & cast', viewAllCast: 'View all', enlargeImage: 'View image fullscreen', loadMoreCast: 'Load more', castSearch: 'Search characters or actors…', loadingCast: 'Loading characters…', noCast: 'Character and cast information is not available for this title.', castUnavailable: 'Character information could not be loaded right now.', japaneseVoice: 'Japanese voice', actor: 'Actor', prev: 'Prev', next: 'Next',
     results: q => `Results for “${q}”`, listEmpty: 'Your list is empty', listHint: 'Hover any title and press + to save it here.',
     resume: e => `Resume Ep ${e}`, inList: 'In My List', trailer: 'Trailer', episodes: 'Episodes', jump: 'Jump to ep…', moreLike: 'More Like This',
-    back: 'Back (Esc)', loadingServers: 'Loading servers…', openBrowser: 'Open in browser', openBrowserTip: "If the in-app player won't load", cast: 'Cast to TV', casting: 'Playing on the TV', castPlayFirst: 'Start the video here first, then cast it', castWifi: 'Connect to the same Wi-Fi as the TV', castFailed: "Couldn't play it on the TV, try another server",
+    back: 'Back (Esc)', loadingServers: 'Loading servers…', openBrowser: 'Open in browser', openBrowserTip: "If the in-app player won't load", cast: 'Cast to TV', casting: 'Playing on the TV', castPlayFirst: 'Start the video here first, then cast it', castHost: 'This server can’t be cast from the browser: pick another one', castWifi: 'Connect to the same Wi-Fi as the TV', castFailed: "Couldn't play it on the TV, try another server",
 homeHotManga: 'Trending manga', homeLatestManga: 'Latest manga chapters', homeHotNovels: 'Trending novels', homeLatestNovels: 'Latest novel chapters', epFinal: '(final)',
     prevEp: 'Previous', nextEp: 'Next', skipIntro: 'Skip intro', playback: 'Playback', skipIntroSet: 'Skip intro button', skipIntroHint: "Shows a button to skip an episode's opening while it plays.", chooseServer: 'Choose server', searchingServers: 'Searching servers…', searching: 'Searching…',
     server: 'Server', noneWorked: 'No server worked', noneWorkedHint: 'Try another one above, or open in browser.',
@@ -609,8 +609,34 @@ document.addEventListener('click', e => {
     });
     return;
   }
-  location.hash = d.href;
+  askOrGo(d);
 });
+// a card of something already started, or one going straight into an episode or chapter (the latest ones), asks first: that
+// episode could be far past where the viewer is, a spoiler. The main choice is never the one that could spoil: where it was
+// left, or, not started, its page; the card's own episode is the lesser one beside it (NativeActivity.kt ResumeSheet)
+const PLAYS = /^#\/(play\/|cinema\/episode\/|cinema\/[^/]+\/watch$|manga\/read\/)/;
+function resumeOf(d) {
+  if (d.path.startsWith('/manga/series/')) { const r = store.manga[d.path.slice('/manga/series/'.length)]; return r?.chapterId && ['#/manga/read/' + r.chapterId, t('resumeCh', chNum(r.n))]; }
+  const h = store.history[d.path];
+  if (!h) return null;
+  if (h.slug) return [h.ep ? edHref(h.slug) : `#/cinema/${encodeURIComponent(h.slug)}/watch`, h.ep ? t('resume', h.ep) : t('play')]; // a film: the player finds its place
+  return h.epPath && [playHash(h.epPath), t('resume', h.ep)];
+}
+function askOrGo(d) {
+  const page = /^\/(manga|cinema|airing)\//.test(d.path) ? '#' + d.path : '#/title' + d.path, resume = resumeOf(d);
+  if (!resume && !PLAYS.test(d.href)) return location.hash = d.href;
+  const own = d.href !== page && d.href !== resume?.[0] && [d.href, (d.badge || '').replace(/\bEP\b|الحلقة/, t('ep')).replace('والأخيرة', t('epFinal')) || t('play')];
+  const reading = /^\/manga\//.test(d.path);
+  const w = document.createElement('div');
+  w.className = 'sheet-wrap';
+  w.innerHTML = `<div class="sheet ask-sheet" role="dialog" aria-label="${esc(d.title)}">
+    <div class="ask-head">${d.poster ? `<img src="${esc(img(d.poster))}" alt="">` : ''}<div>${resume ? `<small>${t(reading ? 'continueReading' : 'continueWatching')}</small>` : ''}<b dir="auto">${esc(d.title)}</b></div></div>
+    <a class="btn red ask-main" href="${esc(resume?.[0] || page)}">${resume ? ICON.play : ICON.info} ${esc(resume?.[1] || t('details'))}</a>
+    ${own || resume ? `<div class="ask-more">${own ? `<a class="btn ghost" href="${esc(own[0])}">${ICON.play} ${esc(own[1])}</a>` : ''}${resume ? `<a class="btn ghost" href="${esc(page)}">${ICON.info} ${t('details')}</a>` : ''}</div>` : ''}</div>`;
+  document.body.append(w);
+  requestAnimationFrame(() => w.classList.add('open'));
+  w.onclick = e => { if (e.target === w || e.target.closest('a')) closeSheet(); }; // a link goes on by itself (no return false: that would stop it)
+}
 document.addEventListener('load', e => e.target.tagName === 'IMG' && e.target.classList.add('ok'), true);
 document.addEventListener('error', e => e.target.tagName === 'IMG' && e.target.classList.add('ok', 'broken'), true); // broken: offline posters etc.
 let barColor;
@@ -1732,7 +1758,7 @@ document.addEventListener('click', e => {
     v?.pause();
     api.player(null);
     toast(t('casting'));
-  }, e => /cancelled/.test(e.message) || toast(t(/no video/.test(e.message) ? 'castPlayFirst' : /no wifi/.test(e.message) ? 'castWifi' : 'castFailed'), true));
+  }, e => /cancelled/.test(e.message) || toast(t(/no video/.test(e.message) ? 'castPlayFirst' : /no wifi/.test(e.message) ? 'castWifi' : /not castable/.test(e.message) ? 'castHost' : 'castFailed'), true));
 });
 const closeTrailer = () => { const m = $('.trailer'); m?.remove(); return !!m; };
 const back = () => closeSettings() || closeDrawer() || closeSheet() || closeSelect() || closeSearch() || closeMenu() || closeTrailer() || ($('.player') && $('#back').click());
