@@ -15,7 +15,8 @@ The UI only talks to `window.api`. It never calls the network or storage directl
 - `preload.js` exposes `api` over IPC to `main.js` (Electron).
 - `mobile.js` builds the same `api` on Capacitor: `CapacitorHttp`, IndexedDB, and the custom `Downloader` plugin (`DownloaderPlugin.java`).
 - `web.js` builds it for the website (Vercel: `vercel.json` serves `www/`): sites asked through `api/proxy.js`, IndexedDB, iframe player, no downloads.
-  Cloudflare challenges Vercel's servers, so challenged requests go on to `UPSTREAM` (env): `npm run proxy` on a home connection, behind a tunnel, sharing the secret `KEY`.
+  Cloudflare challenges Vercel's servers: with the `extension/` browser extension installed, `web.js` asks from the visitor's browser instead
+  (its tab passes the check). Without it, challenged requests can go on to `UPSTREAM` (env): `npm run proxy` on a home connection, sharing the secret `KEY`.
 
 **Rule:** a new `api` call goes in both `preload.js`/`main.js` and `mobile.js`. A phone-only feature is called with
 `api.x?.()` so the desktop skips it (examples: `storage`, `cast`, `checkUpdate`, `installUpdate`).
@@ -47,7 +48,7 @@ Java no longer ship, except `DownloadService` (the download notification), which
 - **Sources**: witanime.site (anime, the main source), eva.animerco.org (backup servers), appswat.com + olympustaff.com (manga), novltime.com (novels: its open JSON API), seanovel.org + sunovels.com + kolnovel.com (novels: plain pages, `NovelSites.kt`; seanovel's robots.txt rules out its `/api/`; sunovels' locked chapters are left out),
   myseed/arabseed/egydead (movies, which hop between domains), cima.my-cima.net and wecima.singles (backup servers),
   animeschedule.net (air times), api.aniskip.com + AniList (skip intro), animefillerlist.com (filler episodes), kitsu.io + IMDb suggest (search suggestions), IMDb GraphQL + rottentomatoes.com + backend.metacritic.com + AniList + myanimelist.net (ratings; the search's rating filter is Android only so far), IMDb GraphQL + api.tvmaze.com + myanimelist.net's episode polls (the show page's episode rating grid; TVmaze needs its CC BY-SA link shown), AniList + myanimelist.net's stats (votes by score, the only rating graph a manga has: neither rates chapters).
-- **Adding a host**: update the allowlist in `main.js`, `SITES` in `api/proxy.js`, the `fetch` allowlist in `mobile.js` (and its constants at the top),
+- **Adding a host**: update the allowlist in `main.js`, `SITES` in `api/proxy.js` and `extension/background.js`, the `fetch` allowlist in `mobile.js` (and its constants at the top),
   `ImageCache.HOSTS` if it serves images, and the CSP in `index.html` if needed.
 - **Page cache** (`scraper.js` `load()`): stale-while-revalidate. Scraped pages are kept 90 days and shown from the cache
   instantly. The site is asked again at most once a minute per page, and if the result changed the view redraws (`route(true)`).
