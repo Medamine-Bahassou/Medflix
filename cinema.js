@@ -271,7 +271,9 @@ async function wcWatch(m) {
 
 // EgyDead (behind Cloudflare's check, which is shown when it asks): its watch page is laid out like ArabSeed's.
 // It hops domains: egydead.space sends on to the current one, where its links point
-const EGY = 'https://egydead.space';
+// the website: that redirect is behind Cloudflare's check for Vercel's servers, the current domain isn't, so it's asked there
+// directly (when egydead.space starts sending elsewhere, this follows it)
+const EGY = api.web ? 'https://a1.egydead.media' : 'https://egydead.space';
 async function egyWatch(m) {
   const hit = [...parse(await api.fetch(`${EGY}/?s=${encodeURIComponent(mcKey(m.title))}`)).querySelectorAll('.posts-list .movieItem a[href]')]
     .find(a => sameFilm(m, a.getAttribute('title') || txt(a.querySelector('.BottomTitle'))));
