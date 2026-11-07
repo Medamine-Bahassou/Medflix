@@ -85,6 +85,17 @@ if (window.api?.web) (() => {
   const genreUrl = (g, page = 1) => `${RA}/genre/${encodeURIComponent(g)}/${page > 1 ? `?page=${page}/` : ''}`;
   const TASTE = ['أكشن', 'كوميدي', 'رومانسي']; // a new visitor's genre rows
   // the visitor's last anime (app.js store.history, newest first): their genres pick the genre rows
+  // the slider's pictures: RistoAnime only has small episode stills, blurry at full width. AniList's wide banner (or its large
+  // cover) by the show's Latin name, all of them in one query, kept a day. Page() answers a miss with an empty list, where
+  // Media() would fail the whole query
+  const latin = s => s.replace(/الموسم\s+(\d+)/, 'Season $1').replace(/[\u0600-\u06FF]+/g, '').replace(/\s+/g, ' ').trim();
+  const art = names => remember('ra:art:' + names.join('|'), async () => {
+    // each name twice: as is, and without its season (AniList often names a later season by its arc alone)
+    const ask = (k, n) => `${k}: Page(perPage: 1) { media(search: ${JSON.stringify(n)}, type: ANIME, sort: SEARCH_MATCH) { bannerImage coverImage { extraLarge } } }`;
+    const query = `{${names.map((n, i) => ask('a' + i, n) + ' ' + ask('b' + i, n.replace(/\s*Season \d+$/, ''))).join(' ')}}`;
+    const d = JSON.parse(await api.fetch('https://graphql.anilist.co', { query })).data;
+    return names.map((_, i) => { const m = d[`a${i}`]?.media[0] || d[`b${i}`]?.media[0]; return m?.bannerImage || m?.coverImage?.extraLarge || ''; });
+  });
   // several late rows landing together: one redrawing
   let redrawT;
   const redraw = () => { clearTimeout(redrawT); redrawT = setTimeout(() => scraper.changed(), 300); };
@@ -111,10 +122,12 @@ if (window.api?.web) (() => {
         l.flatMap(d => d.genres).forEach(g => count[g] = (count[g] || 0) + 1);
         return [...new Set([...Object.keys(count).sort((a, b) => count[b] - count[a]), ...TASTE])].slice(0, 3);
       });
-      const [h, views, films, last, byGenre] = await Promise.all([core, soon(mostViewed()), soon(list(`${RA}/movies/`, force)), soon(tastes.then(l => l[0])),
-        soon(genres.then(gs => Promise.all(gs.map(async g => ({ g, d: await list(genreUrl(g), force).catch(() => null) })))))]);
+      const slides = core.then(h => byShow(h.slides).slice(0, 8));
+      const [h, views, films, last, byGenre, pics] = await Promise.all([core, soon(mostViewed()), soon(list(`${RA}/movies/`, force)), soon(tastes.then(l => l[0])),
+        soon(genres.then(gs => Promise.all(gs.map(async g => ({ g, d: await list(genreUrl(g), force).catch(() => null) }))))),
+        soon(slides.then(l => art(l.map(c => latin(c.title)))))]);
       const genreRow = i => byGenre?.[i]?.d && { title: t('genreRow', byGenre[i].g), items: fresh(shows(byGenre[i].d.items)), base: '/genre/' + byGenre[i].g };
-      return { hero: byShow(h.slides).slice(0, 8).map(c => ({ path: c.showPath || c.path, watch: c.type === 'episode' ? c.path : '', title: c.title, desc: '', banner: c.poster })),
+      return { hero: (await slides).map((c, i) => ({ path: c.showPath || c.path, watch: c.type === 'episode' ? c.path : '', title: c.title, desc: '', banner: pics?.[i] || c.poster })),
         rows: [
           { title: 'أحدث الحلقات', items: byShow(h.items) },
           last && { title: t('becauseWatched', last.title), items: fresh(last.related) },
