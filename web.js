@@ -1,4 +1,4 @@
-// Website (Vercel) stand-in for the Electron / Android api: the sites are asked through api/proxy.js (or the extension), user data is kept in
+// Website (Vercel) stand-in for the Electron / Android api: the sites are asked through api/proxy.js, user data is kept in
 // IndexedDB, and the player is an iframe (as mobile.js). No downloads: every host's page opens in a new tab instead.
 if (!window.api) (() => {
   const SITE = 'https://witanime.site', AR = 'https://eva.animerco.org';
@@ -6,29 +6,25 @@ if (!window.api) (() => {
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   // the proxy is stateless: the cookies the sites set (witanime's session, which its csrf token belongs to) are kept here
   const jar = {};
-  // the Medflix extension (extension/), when installed: asks from this browser, which Cloudflare lets through where it
-  // refuses Vercel's servers. Its bridge marks the page before this runs, and answers by postMessage
-  const ext = document.documentElement.dataset.medflixExt, waiting = {};
-  let asked = 0;
-  window.addEventListener('message', e => e.source === window && e.data?.medflix === 'answer' && waiting[e.data.id]?.(e.data.res));
-  const viaExt = req => new Promise(ok => { const id = ++asked; waiting[id] = res => { delete waiting[id]; ok(res); }; window.postMessage({ medflix: 'ask', id, req }, location.origin); });
-  const viaProxy = async req => {
-    const r = await fetch('/api/proxy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req) });
+  // plain page reads (no form, no session) go as GET: Vercel's cache shares each answer between all visitors for a few
+  // minutes, so the paid exit proxy (api/proxy.js) is asked about once per page, not once per visitor
+  const viaProxy = async (req, shared) => {
+    const r = shared ? await fetch('/api/proxy?' + new URLSearchParams({ url: req.url, h: JSON.stringify(req.headers || {}) }))
+      : await fetch('/api/proxy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req) });
     if (!r.ok) throw new Error((await r.json().catch(() => null))?.error || `proxy HTTP ${r.status}`);
     return r.json();
   };
   const http = async (url, opt = {}) => {
-    const origin = new URL(url).origin;
+    const origin = new URL(url).origin, shared = !opt.method && !opt.stopAt && !opt.redirect; // the episode page and its gates carry the session
     for (let i = 0; ; i++) { // witanime rate-limits bursts with 429: wait and retry (see main.js)
-      const cookie = Object.entries(jar[origin] || {}).map(([k, v]) => `${k}=${v}`).join('; ');
-      const res = await (ext ? viaExt : viaProxy)({ url, ...opt, headers: { ...opt.headers, ...(cookie && { cookie }) } });
-      if (res.error) throw new Error(res.error);
+      const cookie = !shared && Object.entries(jar[origin] || {}).map(([k, v]) => `${k}=${v}`).join('; ');
+      const res = await viaProxy({ url, ...opt, headers: { ...opt.headers, ...(cookie && { cookie }) } }, shared);
       for (const c of res.cookies) { const kv = c.split(';')[0], at = kv.indexOf('='); (jar[origin] ||= {})[kv.slice(0, at).trim()] = kv.slice(at + 1); }
       if (res.status !== 429 || i === 3) return res;
       await sleep((+res.headers['retry-after'] || 2 ** i) * 1000);
     }
   };
-  const refusal = res => res.headers['cf-mitigated'] ? ' · Cloudflare check' + (ext ? '' : ' · needs the Medflix browser extension') : '';
+  const refusal = res => res.headers['cf-mitigated'] ? ' · Cloudflare check' : '';
   const hostRequest = async (url, form, headers = {}) => {
     const r = await http(url, form ? { method: 'POST', body: new URLSearchParams(form).toString(), headers: { ...headers, 'Content-Type': 'application/x-www-form-urlencoded' } } : { headers });
     if (r.status >= 400) throw new Error(`host HTTP ${r.status}`);
