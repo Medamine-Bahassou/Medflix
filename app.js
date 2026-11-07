@@ -36,6 +36,7 @@ const STR = {
     'أكثر الأنميات مشاهدة': 'أكثر الأنميات مشاهدة',
     'أكثر الأفلام مشاهدة': 'أكثر أفلام الأنمي مشاهدة',
     'أشهر أنميات الموسم': 'أشهر أنميات الموسم',
+    genreRow: g => `أنمي ${g}`, becauseWatched: n => `لأنك شاهدت «\u2068${n}\u2069»`, // the website's feed (risto.js)
 homeHotManga: 'المانجا الرائجة', homeLatestManga: 'أحدث فصول المانجا', homeHotNovels: 'الروايات الرائجة', homeLatestNovels: 'أحدث فصول الروايات', epFinal: 'والأخيرة',
     prevEp: 'الحلقة السابقة', nextEp: 'الحلقة التالية', skipIntro: 'تخطي المقدمة', playback: 'تشغيل الفيديو', skipIntroSet: 'زر تخطي المقدمة', skipIntroHint: 'يظهر زر لتخطي مقدمة الحلقة أثناء عرضها.', chooseServer: 'اختر سيرفرًا', searchingServers: 'جارٍ البحث عن سيرفرات…', searching: 'جارٍ البحث…',
     server: 'سيرفر', noneWorked: 'لم يعمل أي سيرفر', noneWorkedHint: 'جرّب سيرفرًا آخر من القائمة أو افتح الحلقة في المتصفح.',
@@ -89,6 +90,7 @@ homeHotManga: 'Trending manga', homeLatestManga: 'Latest manga chapters', homeHo
     // the site's own section titles
     'الأكثر مشاهدة': 'Most watched anime episodes', 'أحدث الحلقات': 'Latest anime episodes', 'أحدث الأفلام': 'Latest anime movies', 'تابع المشاهدة': 'Continue Watching',
     'أكثر الأنميات مشاهدة': 'Most watched anime', 'أكثر الأفلام مشاهدة': 'Most watched anime movies', 'أشهر أنميات الموسم': 'Top anime this season',
+    genreRow: g => `\u2068${g}\u2069 anime`, becauseWatched: n => `Because you watched \u2068${n}\u2069`,
   },
 };
 let lang = 'ar';
@@ -685,8 +687,9 @@ async function section(name, force) {
   const refresh = () => section(name, true);
   if (SECTIONS[name]) return listView(name, await scraper.list(SECTIONS[name], 1, force), n => scraper.list(SECTIONS[name], n, true), refresh);
   if (name === 'أحدث الحلقات') return listView(name, await scraper.newEpisodes(1, force), n => scraper.newEpisodes(n, true), refresh);
-  const items = (await scraper.home(force)).rows.find(r => r.title === name)?.items || [];
-  listView(name, { items, pages: 1 }, null, refresh);
+  const r = (await scraper.home(force)).rows.find(r => r.title === name);
+  if (r?.base) return listView(name, await scraper.list(r.base, 1, force), n => scraper.list(r.base, n, true), refresh); // a row naming its full listing (risto.js)
+  listView(name, { items: r?.items || [], pages: 1 }, null, refresh);
 }
 
 // the anime schedule, from animeschedule.net: today and the 6 days after, each show at its air time (in the phone's time zone).

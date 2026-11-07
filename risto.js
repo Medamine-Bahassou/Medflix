@@ -78,18 +78,48 @@ if (window.api?.web) (() => {
     return e.url.replace(/\/?$/, '/');
   };
 
+  // its lists repeat a show once per episode (most viewed: one show's whole season): one card per show, the first (newest,
+  // most viewed); shows() turns those episode cards into the show's own
+  const byShow = items => items.filter((c, i) => items.findIndex(o => o.title === c.title) === i);
+  const shows = items => byShow(items).map(c => c.type === 'episode' ? { ...c, path: c.showPath, type: 'anime', badge: '', ep: null, showPath: undefined } : c);
+  const genreUrl = (g, page = 1) => `${RA}/genre/${encodeURIComponent(g)}/${page > 1 ? `?page=${page}/` : ''}`;
+  const TASTE = ['أكشن', 'كوميدي', 'رومانسي']; // a new visitor's genre rows
+  // the visitor's last anime (app.js store.history, newest first): their genres pick the genre rows
+  const watched = () => Object.values(store.history).filter(h => h.show?.startsWith('/anime/')).sort((a, b) => b.at - a.at).slice(0, 5);
+
   Object.assign(scraper, {
+    // the feed: what's new, then rows picked from what the visitor watches (their last show's suggestions, their genres),
+    // shows they already watch moved to the end of those rows
     async home(force) {
-      const [h, views] = await Promise.all([list(RA + '/', force), mostViewed().catch(() => [])]);
-      return { hero: h.slides.slice(0, 8).map(c => ({ path: c.showPath || c.path, watch: c.type === 'episode' ? c.path : '', title: c.title, desc: '', banner: c.poster })),
-        rows: [{ title: 'أحدث الحلقات', items: h.items }, { title: 'الأكثر مشاهدة', items: views }].filter(r => r.items.length) };
+      const mine = watched(), seen = new Set(mine.map(h => h.title));
+      const fresh = items => [...items.filter(c => !seen.has(c.title)), ...items.filter(c => seen.has(c.title))];
+      const tastes = (await Promise.all(mine.map(h => details(h.show).catch(() => null)))).filter(Boolean); // cached pages, mostly
+      const count = {};
+      tastes.flatMap(d => d.genres).forEach(g => count[g] = (count[g] || 0) + 1);
+      const genres = [...new Set([...Object.keys(count).sort((a, b) => count[b] - count[a]), ...TASTE])].slice(0, 3);
+      const [h, views, films, ...byGenre] = await Promise.all([list(RA + '/', force), mostViewed().catch(() => []), list(`${RA}/movies/`, force).catch(() => null),
+        ...genres.map(g => list(genreUrl(g), force).catch(() => null))]);
+      const genreRow = i => byGenre[i] && { title: t('genreRow', genres[i]), items: fresh(shows(byGenre[i].items)), base: '/genre/' + genres[i] };
+      const last = tastes[0];
+      return { hero: byShow(h.slides).slice(0, 8).map(c => ({ path: c.showPath || c.path, watch: c.type === 'episode' ? c.path : '', title: c.title, desc: '', banner: c.poster })),
+        rows: [
+          { title: 'أحدث الحلقات', items: byShow(h.items) },
+          last && { title: t('becauseWatched', last.title), items: fresh(last.related) },
+          { title: 'أكثر الأنميات مشاهدة', items: shows(views) },
+          genreRow(0),
+          films && { title: 'أحدث الأفلام', items: films.items, base: '/movies' },
+          genreRow(1),
+          genreRow(2),
+        ].filter(r => r?.items.length) };
     },
     // witanime's listings by their paths (app.js SECTIONS, filter.js): its filters have no match here, the plain list is shown
     async list(base, page = 1, force) {
-      if (/Most Viewed/.test(base)) return { items: await mostViewed(), pages: 1 };
+      if (/Most Viewed/.test(base)) return { items: shows(await mostViewed()), pages: 1 };
+      const genre = base.match(/^\/genre\/(.+)/)?.[1];
+      if (genre) { const d = await list(genreUrl(genre, page), force); return { ...d, items: shows(d.items) }; }
       return list(/^\/movies/.test(base) ? `${RA}/movies/${page > 1 ? `page/${page}/` : ''}` : `${RA}/series/${page > 1 ? `?offset=${page}` : ''}`, force);
     },
-    newEpisodes: (page, force) => list(page > 1 ? `${RA}/?page=${page}/` : RA + '/', force),
+    newEpisodes: async (page, force) => { const d = await list(page > 1 ? `${RA}/?page=${page}/` : RA + '/', force); return { ...d, items: byShow(d.items) }; },
     search: q => list(`${RA}/?s=${encodeURIComponent(q)}`),
     details,
     ristoanime: async () => [], // the main source here: not again as a backup
