@@ -649,6 +649,7 @@ body.drawer-open #drawer-bg { opacity: 1; pointer-events: auto; }
   .set-nav svg { width: 17px; height: 17px; flex: none; }
   .set-grid { max-width: 820px; width: 100%; margin-inline: auto; }
   .set-side { gap: 40px; }
+  .set-side > .set-card:not(.on) { display: none; } /* a tab per section: the side menu's chosen one (settingsView) */
   .set-side .set-card h2 { font-size: 16px; margin: 0 2px 12px; } /* .set-side, .set-box > p: past the phone's rules, which come later */
   .set-box { border: 1px solid #ffffff14; border-radius: 12px; background: #121212; overflow: hidden; }
   .set-box > p.hint { max-width: none; margin: 0; padding: 14px 18px; border-bottom: 1px solid #ffffff0f; }

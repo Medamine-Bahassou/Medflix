@@ -311,7 +311,7 @@ function confirmSheet(title, text, okLabel) {
   });
 }
 
-let unspy = null; // stops the settings side menu's scroll watcher (settingsView): one at a time
+let setTab = ''; // the settings tab shown on wide screens (its side menu): kept when the view is drawn again (language, dock)
 // root: the page (#/settings: phones, through the drawer) or the desktop's modal (the top bar's gear, openSettings)
 function settingsView(root = view) {
   const modal = root !== view;
@@ -339,8 +339,9 @@ function settingsView(root = view) {
     { id: 'lang', icon: ICON.textAa, title: t('language'), // the label shows only in the desktop card, where the switch sits at the row's end
       body: `<div class="set-lang-row"><span>${t('interfaceLang')}</span><div class="lang set-lang"><button data-l="ar" class="${lang === 'ar' ? 'on' : ''}">العربية</button><button data-l="en" class="${lang === 'en' ? 'on' : ''}">English</button></div></div>` },
   ].filter(Boolean);
+  if (!secs.some(s => s.id === setTab)) setTab = secs[0].id;
   root.innerHTML = `<div class="page settings"><h1>${t('settings')}${modal ? `<button class="icon-btn set-x" title="${t('close')}" aria-label="${t('close')}">${ICON.x}</button>` : ''}</h1><div class="set-wrap">
-    <nav class="set-nav">${secs.map((s, i) => `<button class="${i ? '' : 'on'}" data-sec="${s.id}">${s.icon}<span>${s.title}</span></button>`).join('')}</nav>
+    <nav class="set-nav">${secs.map(s => `<button class="${s.id === setTab ? 'on' : ''}" data-sec="${s.id}">${s.icon}<span>${s.title}</span></button>`).join('')}</nav>
     <div class="set-grid">
     <section class="set-card set-dock">${head(t('dockTitle'), t('dockHint'))}
       <div class="dock-preview">${dock.map((id, i) => `<span class="${i ? '' : 'on'}">${navSvg(id)}<small>${dockLabel(id)}</small></span>`).join('')}</div>
@@ -350,28 +351,19 @@ function settingsView(root = view) {
       <div class="set-list">${NAV.filter(n => !dock.includes(n.id)).map(n => line(n, -1)).join('')}</div>
     </section>
     <div class="set-side">
-    ${secs.map(s => `<section class="set-card" id="set-${s.id}"><h2>${s.title}</h2><div class="set-box">${s.hint ? `<p class="hint">${s.hint}</p>` : ''}${s.body}</div></section>`).join('')}
+    ${secs.map(s => `<section class="set-card ${s.id === setTab ? 'on' : ''}" data-sec="${s.id}"><h2>${s.title}</h2><div class="set-box">${s.hint ? `<p class="hint">${s.hint}</p>` : ''}${s.body}</div></section>`).join('')}
     ${window.BUILD ? `<p class="set-build" dir="ltr">Build ${esc(BUILD)}</p>` : ''}</div></div></div></div>`;
-  // the side menu: a click scrolls to its section; scrolling marks the last section whose top has reached the top of the view
-  // (the page under the header; the modal's own scrolling column), or the last one at the very end: it can't scroll up there
-  const navBtns = [...root.querySelectorAll('.set-nav button')], cards = [...root.querySelectorAll('.set-side > .set-card')];
-  const scroller = modal ? root.querySelector('.set-grid') : window;
-  const mark = () => {
-    if (!root.contains(cards[0])) return unspy?.(); // the page was left
-    const el = modal ? scroller : document.documentElement, top = modal ? scroller.getBoundingClientRect().top : 80;
-    const cur = el.scrollTop + el.clientHeight >= el.scrollHeight - 4 ? cards.at(-1) : cards.filter(c => c.getBoundingClientRect().top - top < 120).at(-1) || cards[0];
-    navBtns.forEach(b => b.classList.toggle('on', 'set-' + b.dataset.sec === cur.id));
-  };
-  unspy?.();
-  scroller.addEventListener('scroll', mark, { passive: true });
-  unspy = () => { scroller.removeEventListener('scroll', mark); unspy = null; };
   if (api.storage) drawStorage();
   $('#intro-on').onchange = e => { store.prefs.skipIntro = e.target.checked; persist('prefs'); };
   if (api.web) webData();
   root.querySelector('.settings').onclick = e => {
     if (e.target.closest('.set-x')) return closeSettings();
     const sec = e.target.closest('.set-nav button');
-    if (sec) return $('#set-' + sec.dataset.sec).scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (sec) { // wide screens: a tab per section, the menu's button shows only its own (style.css); phones list them all
+      setTab = sec.dataset.sec;
+      root.querySelectorAll('.set-nav button, .set-side > .set-card').forEach(el => el.classList.toggle('on', el.dataset.sec === setTab));
+      return root.querySelector('.set-grid').scrollTo?.(0, 0);
+    }
     const b = e.target.closest('[data-act]');
     if (!b) return;
     const d = [...dock], i = d.indexOf(b.dataset.id);
@@ -402,7 +394,6 @@ function closeSettings() {
   const wrap = $('.set-modal-wrap');
   if (!wrap) return false;
   wrap.remove();
-  unspy?.();
   document.body.classList.remove('modal-open');
   if ($('.player')) api.playerVisible(true);
   return true;
