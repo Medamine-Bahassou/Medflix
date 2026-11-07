@@ -905,7 +905,8 @@ const saveDownloads = () => {
 };
 const dlLabels = () => ({ labelActive: t('dlNotifActive'), labelMany: t('dlNotifMany'), labelPreparing: t('dlPreparing') });
 
-const inAppHost = MediaHosts.supports; // the one host the app can download from itself (see main.js)
+// the hosts the app can download from itself (see main.js); none on the website (web.js), whose tab can't keep files
+const inAppHost = label => !!(api.download || api.downloadEnqueue) && MediaHosts.supports(label);
 // Each show (an anime, a manga series) has its own queue: one episode/chapter at a time, oldest first, while
 // different shows download side by side. A show can be paused on its own; Pause all holds every show.
 const held = show => store.prefs.dlHeld?.[show] ?? !!store.prefs.dlPaused; // a show's own choice beats Pause all

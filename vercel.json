@@ -1,0 +1,6 @@
+{
+  "installCommand": "echo no install: the site is plain files, api/proxy.js needs no packages",
+  "buildCommand": "npm run build:web",
+  "outputDirectory": "www",
+  "functions": { "api/proxy.js": { "maxDuration": 60 } }
+}

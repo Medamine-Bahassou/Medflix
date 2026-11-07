@@ -1,0 +1,6 @@
+android
+docs
+node_modules
+tests
+tools
+*.apk
