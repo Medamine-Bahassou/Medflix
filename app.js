@@ -9,7 +9,7 @@ const STR = {
   ar: {
     home: 'الرئيسية', anime: 'أنمي', remove: 'إزالة', series: 'المسلسلات', movies: 'أفلام الأنمي', cinema: 'أفلام ومسلسلات', dubbed: 'مدبلج', schedule: 'مواعيد الأنمي', myList: 'قائمتي', searchPh: 'ابحث عن أنمي أو فيلم…', listSearchPh: 'ابحث في قائمتي…', cancel: 'إلغاء', clear: 'مسح',
     settings: 'الإعدادات', more: 'المزيد', storage: 'مجلد التطبيق', storageHint: 'احفظ التنزيلات والإعدادات وقائمتك وسجل المشاهدة في مجلد MEDFLIX على الهاتف، لتبقى حتى بعد حذف التطبيق وإعادة تثبيته.', storageAllow: 'السماح بالوصول', storageOn: 'مفعّل', storageOff: 'يحتاج إذن الوصول إلى كل الملفات', storageReady: 'تم حفظ بياناتك في مجلد MEDFLIX', storageAsk: 'اسمح للتطبيق بالوصول إلى الملفات ليحفظ قائمتك وسجل المشاهدة والإعدادات والتنزيلات في مجلد MEDFLIX على الهاتف. هكذا تبقى بعد حذف التطبيق، وتعود تلقائيًا عند إعادة تثبيته والسماح مرة أخرى.', later: 'لاحقًا', close: 'إغلاق', reverse: 'عكس الترتيب', dockTitle: 'أزرار الشريط السفلي', dockHint: 'اختر حتى 5 أزرار تظهر في الشريط السفلي على الهاتف، والباقي تجده في القائمة الجانبية ☰.',
-    dataTitle: 'بياناتك', dataHint: 'قائمتك وسجل المشاهدة وإعداداتك محفوظة في هذا المتصفح فقط. احفظ نسخة منها لتنقلها إلى جهاز آخر أو تستعيدها لاحقًا.', backup: 'حفظ نسخة من بياناتي', restore: 'استعادة نسخة محفوظة', restored: 'تمت استعادة بياناتك', restoreBad: 'هذا الملف ليس نسخة من بياناتك', clearCache: 'مسح الصفحات المحفوظة', getApp: 'تطبيق أندرويد', getAppHint: 'التنزيلات، والعرض على التلفاز، وكل مصادر الأنمي.', getAppBtn: 'تحميل التطبيق',
+    dataTitle: 'بياناتك', dataHint: 'قائمتك وسجل المشاهدة وإعداداتك محفوظة في هذا المتصفح فقط. احفظ نسخة منها لتنقلها إلى جهاز آخر أو تستعيدها لاحقًا.', backup: 'حفظ نسخة من بياناتي', restore: 'استعادة نسخة محفوظة', restored: 'تمت استعادة بياناتك', restoreBad: 'هذا الملف ليس نسخة من بياناتك', clearCache: 'مسح الصفحات المحفوظة', getApp: 'تطبيق أندرويد', getAppHint: 'التنزيلات، والعرض على التلفاز، وكل مصادر الأنمي.', getAppBtn: 'تحميل التطبيق', interfaceLang: 'لغة الواجهة',
     inDock: 'في الشريط', available: 'أزرار أخرى', dockFull: 'الشريط ممتلئ: أزل زرًا أولًا', dockMin: 'يجب أن يبقى زر واحد على الأقل', language: 'اللغة',
     moveUp: 'تحريك للأعلى', moveDown: 'تحريك للأسفل', removeDock: 'إزالة من الشريط', addDock: 'إضافة إلى الشريط',
     rfChip: 'التقييم', rfTitle: 'التصفية حسب التقييم', rfHint: 'فعّل التقييمات التي تهمك وحدد أقل درجة تقبلها. تبقى اختياراتك محفوظة.', rfFilms: 'الأفلام والمسلسلات', rfAnime: 'الأنمي والمانجا', rfMatch: 'يجب أن يحقق العمل', rfAll: 'كلها', rfAny: 'أيًا منها', rfKeep: 'إبقاء الأعمال بلا تقييم', rfKeepHint: 'تبقى في النتائج رغم عدم العثور على درجتها', rfBest: 'الأقرب للبحث', rfShow: 'عرض ⁦%d⁩ من النتائج', rfDone: 'تم', rfChecking: 'جارٍ فحص التقييمات… ⁦%d/%d⁩', rfHidden: 'أخفت التصفية ⁦%d⁩ من النتائج', rfNone: 'لا توجد نتائج بهذا التقييم', rfNoneHint: 'خفّض الدرجة الدنيا أو أوقف أحد التقييمات', rfStart: 'اكتب اسم عمل، أو فعّل تصفية التقييم لتجد الأعمال دون كتابة', rfWalking: 'جارٍ البحث في الأعمال…', rfWent: 'تم فحص ⁦%d⁩ عملًا', rfMore: 'البحث عن المزيد', rfPick: 'مصدر التقييم', rfNoScore: 'بلا تقييم', rfEverywhere: 'البحث في كل الأعمال', rfNotHere: 'لا يوجد تطابق في نتائج التصفية',
@@ -55,7 +55,7 @@ homeHotManga: 'المانجا الرائجة', homeLatestManga: 'أحدث فصو
   en: {
     home: 'Home', anime: 'Anime', remove: 'Remove', series: 'Series', movies: 'Anime Movies', cinema: 'Movies & TV', dubbed: 'Dubbed', schedule: 'Anime Schedule', myList: 'My List', searchPh: 'Titles, series, movies…', listSearchPh: 'Search my list…', cancel: 'Cancel', clear: 'Clear',
     settings: 'Settings', more: 'More', storage: 'App folder', storageHint: 'Keep downloads, settings, your list and watch history in a MEDFLIX folder on the phone, so they survive uninstalling and reinstalling the app.', storageAllow: 'Allow access', storageOn: 'Active', storageOff: 'Needs all-files access', storageReady: 'Your data is now saved in the MEDFLIX folder', storageAsk: 'Allow file access so your list, watch history, settings and downloads are kept in a MEDFLIX folder on the phone. They then survive uninstalling the app, and come back when you reinstall and allow access again.', later: 'Later', close: 'Close', reverse: 'Reverse order', dockTitle: 'Bottom bar buttons', dockHint: "Pick up to 5 buttons for the phone's bottom bar; everything else is in the side menu ☰.",
-    dataTitle: 'Your data', dataHint: 'Your list, watch history and settings are kept in this browser only. Save a copy to move them to another device or bring them back later.', backup: 'Save a copy of my data', restore: 'Restore a saved copy', restored: 'Your data was restored', restoreBad: 'This file isn’t a copy of your data', clearCache: 'Clear saved pages', getApp: 'Android app', getAppHint: 'Downloads, casting to TV, and every anime source.', getAppBtn: 'Get the app',
+    dataTitle: 'Your data', dataHint: 'Your list, watch history and settings are kept in this browser only. Save a copy to move them to another device or bring them back later.', backup: 'Save a copy of my data', restore: 'Restore a saved copy', restored: 'Your data was restored', restoreBad: 'This file isn’t a copy of your data', clearCache: 'Clear saved pages', getApp: 'Android app', getAppHint: 'Downloads, casting to TV, and every anime source.', getAppBtn: 'Get the app', interfaceLang: 'Interface language',
     inDock: 'In the bar', available: 'Other buttons', dockFull: 'The bar is full: remove one first', dockMin: 'Keep at least one button', language: 'Language',
     moveUp: 'Move up', moveDown: 'Move down', removeDock: 'Remove from bar', addDock: 'Add to bar',
     rfChip: 'Rating', rfTitle: 'Filter by rating', rfHint: 'Turn on the scores you care about and set the lowest you\'ll accept. Your choices are kept.', rfFilms: 'Films & series', rfAnime: 'Anime & manga', rfMatch: 'A title must pass', rfAll: 'All of them', rfAny: 'Any of them', rfKeep: 'Keep titles with no score', rfKeepHint: 'They stay in the results when no score is found', rfBest: 'Best match', rfShow: 'Show ⁦%d⁩ results', rfDone: 'Done', rfChecking: 'Checking scores… ⁦%d/%d⁩', rfHidden: '%d hidden by your filter', rfNone: 'No results at this rating', rfNoneHint: 'Lower the minimum or turn a score off', rfStart: 'Type a title, or turn on a rating filter to find titles without typing', rfWalking: 'Looking through titles…', rfWent: 'Checked ⁦%d⁩ titles', rfMore: 'Find more', rfPick: 'Rating from', rfNoScore: 'No score', rfEverywhere: 'Search all titles', rfNotHere: 'Nothing in these filtered results matches',
@@ -112,6 +112,7 @@ document.addEventListener('click', e => { // language buttons: nav pill, drawer 
   if (!l || l === lang) return;
   lang = store.prefs.lang = l; persist('prefs');
   applyLang(); route();
+  if (settingsModal()) settingsView(settingsModal()); // the modal, drawn again in it
 });
 
 // ---------- navigation ----------
@@ -310,7 +311,10 @@ function confirmSheet(title, text, okLabel) {
   });
 }
 
-function settingsView() {
+let unspy = null; // stops the settings side menu's scroll watcher (settingsView): one at a time
+// root: the page (#/settings: phones, through the drawer) or the desktop's modal (the top bar's gear, openSettings)
+function settingsView(root = view) {
+  const modal = root !== view;
   const dock = dockIds();
   const btn = (act, id, label, txt, off) => `<button class="icon-btn" data-act="${act}" data-id="${id}" title="${label}" aria-label="${label}" ${off ? 'disabled' : ''}>${txt}</button>`;
   const line = (n, i) => `<div class="set-row ${i >= 0 ? 'on' : ''}"><i class="set-tile">${navSvg(n.id)}</i><span>${t(n.id)}</span>${i >= 0
@@ -318,7 +322,26 @@ function settingsView() {
     : btn('add', n.id, t('addDock'), ICON.plus).replace('class="icon-btn"', `class="icon-btn${dock.length >= DOCK_MAX ? ' full' : ''}"`)}</div>`; // full: still tappable, says why
   const head = (title, hint) => `<h2>${title}</h2>${hint ? `<p class="hint">${hint}</p>` : ''}`;
   const hidden = Object.keys(store.hidden).length;
-  view.innerHTML = `<div class="page settings"><h1>${t('settings')}</h1><div class="set-grid">
+  // the sections after the dock's: phones stack them; wider screens list them in a side menu too, each a bordered card with
+  // its hint at the top (style.css). One list, so both read the same sections
+  const secs = [
+    api.storage && { id: 'stor', icon: ICON.folder, title: t('storage'), hint: t('storageHint'), body: '<div class="set-stor" id="stor"></div>' },
+    { id: 'play', icon: ICON.play, title: t('playback'), hint: t('skipIntroHint'),
+      body: `<div class="set-list"><label class="set-row"><i class="set-tile">${ICON.skipForward}</i><span>${t('skipIntroSet')}</span><input type="checkbox" id="intro-on" ${store.prefs.skipIntro === false ? '' : 'checked'}></label></div>` },
+    { id: 'hidden', icon: ICON.eyeSlash, title: t('hiddenTitle'), hint: t('hiddenHint'),
+      body: `<div class="set-list"><a class="set-row set-link" href="#/hidden"><i class="set-tile">${ICON.eyeSlash}</i><span>${t('openHidden', hidden)}</span>${ICON.caretRight}</a></div>` },
+    api.web && { id: 'data', icon: ICON.folder, title: t('dataTitle'), hint: t('dataHint'), body: `<div class="set-list">
+      <button class="set-row set-link" id="bk"><i class="set-tile">${ICON.download}</i><span>${t('backup')}</span></button>
+      <label class="set-row set-link"><i class="set-tile">${ICON.folder}</i><span>${t('restore')}</span><input type="file" id="rs" accept=".json,application/json" hidden></label>
+      <button class="set-row set-link" id="cc"><i class="set-tile">${ICON.trash}</i><span>${t('clearCache')}</span></button></div>` },
+    api.web && { id: 'app', icon: ICON.download, title: t('getApp'), hint: t('getAppHint'),
+      body: `<div class="set-list"><a class="set-row set-link" href="https://github.com/Medamine-Bahassou/Medflix/releases/latest" target="_blank" rel="noopener"><i class="set-tile">${ICON.download}</i><span>${t('getAppBtn')}</span>${ICON.external}</a></div>` },
+    { id: 'lang', icon: ICON.textAa, title: t('language'), // the label shows only in the desktop card, where the switch sits at the row's end
+      body: `<div class="set-lang-row"><span>${t('interfaceLang')}</span><div class="lang set-lang"><button data-l="ar" class="${lang === 'ar' ? 'on' : ''}">العربية</button><button data-l="en" class="${lang === 'en' ? 'on' : ''}">English</button></div></div>` },
+  ].filter(Boolean);
+  root.innerHTML = `<div class="page settings"><h1>${t('settings')}${modal ? `<button class="icon-btn set-x" title="${t('close')}" aria-label="${t('close')}">${ICON.x}</button>` : ''}</h1><div class="set-wrap">
+    <nav class="set-nav">${secs.map((s, i) => `<button class="${i ? '' : 'on'}" data-sec="${s.id}">${s.icon}<span>${s.title}</span></button>`).join('')}</nav>
+    <div class="set-grid">
     <section class="set-card set-dock">${head(t('dockTitle'), t('dockHint'))}
       <div class="dock-preview">${dock.map((id, i) => `<span class="${i ? '' : 'on'}">${navSvg(id)}<small>${dockLabel(id)}</small></span>`).join('')}</div>
       <h3>${t('inDock')} <small>${dock.length}/${DOCK_MAX}</small></h3>
@@ -327,24 +350,28 @@ function settingsView() {
       <div class="set-list">${NAV.filter(n => !dock.includes(n.id)).map(n => line(n, -1)).join('')}</div>
     </section>
     <div class="set-side">
-    ${api.storage ? `<section class="set-card">${head(t('storage'), t('storageHint'))}<div class="set-stor" id="stor"></div></section>` : ''}
-    <section class="set-card">${head(t('playback'), t('skipIntroHint'))}
-      <div class="set-list"><label class="set-row"><i class="set-tile">${ICON.skipForward}</i><span>${t('skipIntroSet')}</span><input type="checkbox" id="intro-on" ${store.prefs.skipIntro === false ? '' : 'checked'}></label></div></section>
-    <section class="set-card">${head(t('hiddenTitle'), t('hiddenHint'))}
-      <div class="set-list"><a class="set-row set-link" href="#/hidden"><i class="set-tile">${ICON.eyeSlash}</i><span>${t('openHidden', hidden)}</span>${ICON.caretRight}</a></div></section>
-    ${api.web ? `<section class="set-card">${head(t('dataTitle'), t('dataHint'))}<div class="set-list">
-      <button class="set-row set-link" id="bk"><i class="set-tile">${ICON.download}</i><span>${t('backup')}</span></button>
-      <label class="set-row set-link"><i class="set-tile">${ICON.folder}</i><span>${t('restore')}</span><input type="file" id="rs" accept=".json,application/json" hidden></label>
-      <button class="set-row set-link" id="cc"><i class="set-tile">${ICON.trash}</i><span>${t('clearCache')}</span></button></div></section>
-    <section class="set-card">${head(t('getApp'), t('getAppHint'))}<div class="set-list">
-      <a class="set-row set-link" href="https://github.com/Medamine-Bahassou/Medflix/releases/latest" target="_blank" rel="noopener"><i class="set-tile">${ICON.download}</i><span>${t('getAppBtn')}</span>${ICON.external}</a></div></section>` : ''}
-    <section class="set-card">${head(t('language'))}
-      <div class="lang set-lang"><button data-l="ar" class="${lang === 'ar' ? 'on' : ''}">العربية</button><button data-l="en" class="${lang === 'en' ? 'on' : ''}">English</button></div>
-    </section>${window.BUILD ? `<p class="set-build" dir="ltr">Build ${esc(BUILD)}</p>` : ''}</div></div></div>`;
+    ${secs.map(s => `<section class="set-card" id="set-${s.id}"><h2>${s.title}</h2><div class="set-box">${s.hint ? `<p class="hint">${s.hint}</p>` : ''}${s.body}</div></section>`).join('')}
+    ${window.BUILD ? `<p class="set-build" dir="ltr">Build ${esc(BUILD)}</p>` : ''}</div></div></div></div>`;
+  // the side menu: a click scrolls to its section; scrolling marks the last section whose top has reached the top of the view
+  // (the page under the header; the modal's own scrolling column), or the last one at the very end: it can't scroll up there
+  const navBtns = [...root.querySelectorAll('.set-nav button')], cards = [...root.querySelectorAll('.set-side > .set-card')];
+  const scroller = modal ? root.querySelector('.set-grid') : window;
+  const mark = () => {
+    if (!root.contains(cards[0])) return unspy?.(); // the page was left
+    const el = modal ? scroller : document.documentElement, top = modal ? scroller.getBoundingClientRect().top : 80;
+    const cur = el.scrollTop + el.clientHeight >= el.scrollHeight - 4 ? cards.at(-1) : cards.filter(c => c.getBoundingClientRect().top - top < 120).at(-1) || cards[0];
+    navBtns.forEach(b => b.classList.toggle('on', 'set-' + b.dataset.sec === cur.id));
+  };
+  unspy?.();
+  scroller.addEventListener('scroll', mark, { passive: true });
+  unspy = () => { scroller.removeEventListener('scroll', mark); unspy = null; };
   if (api.storage) drawStorage();
   $('#intro-on').onchange = e => { store.prefs.skipIntro = e.target.checked; persist('prefs'); };
   if (api.web) webData();
-  $('.settings').onclick = e => {
+  root.querySelector('.settings').onclick = e => {
+    if (e.target.closest('.set-x')) return closeSettings();
+    const sec = e.target.closest('.set-nav button');
+    if (sec) return $('#set-' + sec.dataset.sec).scrollIntoView({ behavior: 'smooth', block: 'start' });
     const b = e.target.closest('[data-act]');
     if (!b) return;
     const d = [...dock], i = d.indexOf(b.dataset.id);
@@ -353,9 +380,39 @@ function settingsView() {
     if (b.dataset.act === 'up') [d[i - 1], d[i]] = [d[i], d[i - 1]];
     if (b.dataset.act === 'down') [d[i + 1], d[i]] = [d[i], d[i + 1]];
     store.prefs.dock = d; persist('prefs');
-    renderNav(); settingsView();
+    renderNav(); settingsView(root);
   };
 }
+// desktop: settings over the page it was opened from, not instead of it. Closed by ✕, Esc (back()), a click outside, or
+// leaving for another page (hidden items' link). The desktop app's player is a native view over the page: hidden meanwhile
+const settingsModal = () => $('.set-modal');
+function openSettings() {
+  if (settingsModal()) return;
+  const wrap = document.createElement('div');
+  wrap.className = 'set-modal-wrap';
+  wrap.innerHTML = `<div class="set-modal" role="dialog" aria-modal="true" aria-label="${t('settings')}"></div>`;
+  wrap.onclick = e => { if (e.target === wrap) closeSettings(); }; // braces: an onclick returning false would cancel every click inside (its links)
+  document.body.append(wrap);
+  document.body.classList.add('modal-open');
+  api.playerVisible(false);
+  settingsView(settingsModal());
+  wrap.querySelector('.set-x').focus();
+}
+function closeSettings() {
+  const wrap = $('.set-modal-wrap');
+  if (!wrap) return false;
+  wrap.remove();
+  unspy?.();
+  document.body.classList.remove('modal-open');
+  if ($('.player')) api.playerVisible(true);
+  return true;
+}
+addEventListener('hashchange', closeSettings);
+$('.nav-gear').addEventListener('click', e => { // the gear shows on wide screens only (style.css)
+  if (location.hash === '#/settings') return; // already the page
+  e.preventDefault();
+  openSettings();
+});
 
 // the website keeps everything in the browser (web.js): a copy of it as a file, put back from one; and the saved pages cleared
 const BACKUP = ['list', 'history', 'seen', 'prefs', 'manga', 'mangaSeen', 'hidden']; // not downloads (none here) nor streams (a cache)
@@ -1681,7 +1738,7 @@ document.addEventListener('click', e => {
   }, e => /cancelled/.test(e.message) || toast(t(/no video/.test(e.message) ? 'castPlayFirst' : /no wifi/.test(e.message) ? 'castWifi' : 'castFailed'), true));
 });
 const closeTrailer = () => { const m = $('.trailer'); m?.remove(); return !!m; };
-const back = () => closeDrawer() || closeSheet() || closeSelect() || closeSearch() || closeMenu() || closeTrailer() || ($('.player') && $('#back').click());
+const back = () => closeSettings() || closeDrawer() || closeSheet() || closeSelect() || closeSearch() || closeMenu() || closeTrailer() || ($('.player') && $('#back').click());
 // Android back button (MainActivity.java): true = handled here, otherwise it goes back a page
 window.androidBack = () => closeDrawer() || closeSheet() || closeSelect() || closeSearch() || closeMenu() || closeTrailer() || lockedBack();
 addEventListener('keydown', e => e.key === 'Escape' && back());
