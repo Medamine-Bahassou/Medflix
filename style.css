@@ -915,7 +915,12 @@ img.broken:not(.rd-pages img) { content: url("data:image/gif;base64,R0lGODlhAQAB
 .nv-text h1 { font-size:1.25em; margin-bottom:32px; line-height:1.6; }
 .nv-text p { margin-block:0 1.2em; white-space:pre-wrap; }
 .nv-reader .rd-head, .nv-reader .rd-bar { color:#fff; }
-@media(min-width:761px) { .nv-paper .dd-menu { width:200px; } }
+.nv-reader .rd-head .ttl { overflow:hidden; }
+.nv-reader .rd-head .ttl a { max-width:100%; }
+/* this compact theme list stays attached to its button, including on phones. */
+.nv-paper { flex:none; }
+.nv-paper .dd-menu { position:absolute; inset:auto; top:calc(100% + 8px); inset-inline-end:0; width:min(200px,calc(100vw - 32px)); max-height:min(320px,calc(100dvh - 160px)); padding:6px; border:1px solid #ffffff1a; border-radius:12px; transform:translateY(-6px) scale(.98); transition:opacity .15s, transform .15s; }
+.nv-paper.open::before, .nv-paper .dd-menu::before { display:none; }
 .nv-size-label { display:flex; align-items:center; gap:12px; color:var(--muted); font-size:13px; }
 .nv-size-label input { width:110px; accent-color:var(--red); }
 .nv-page [hidden], #nv-ch-more[hidden] { display:none; }
