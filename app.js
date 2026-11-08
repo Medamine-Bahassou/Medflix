@@ -127,7 +127,7 @@ const NAV = [
   ...(api.web ? [{ id: 'novels', href: '#/novels' }] : []),
   { id: 'schedule', href: '#/schedule' },
   { id: 'myList', href: '#/list' },
-  { id: 'downloads', href: '#/downloads' },
+  ...(api.web ? [] : [{ id: 'downloads', href: '#/downloads' }]),
 ];
 const DOCK_MAX = 5, DOCK_DEFAULT = ['home', 'anime', 'manga', 'cinema']; // novels is also available through the drawer on phones
 const dockLabel = id => t(id === 'schedule' ? 'scheduleShort' : id === 'cinema' ? 'cinemaShort' : id); // a fifth of the screen
@@ -1950,7 +1950,7 @@ async function route(soft) {
     else if (a === 'filter') await filterView();
     else if (a === 'list') myList();
     else if (a === 'hidden') hiddenView();
-    else if (a === 'downloads') api.web ? WebDownloads.page() : drawDownloads();
+    else if (a === 'downloads') api.web ? location.replace('#/') : drawDownloads();
     else if (a === 'offline') offline((rest[0] === 'cinema' ? '/' : '/watch/') + rest.join('/'));
     else if (a === 'schedule') await schedule();
     else if (a === 'airing') await airing(rest[0]);
