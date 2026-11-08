@@ -171,3 +171,11 @@ test('missing, invalid and out-of-range scores stay absent; a real zero is retai
   for (const v of [null, undefined, '', NaN, -1, 101]) assert.equal(filmScore('Metacritic', v), null);
   assert.equal(filmScore('Metacritic', 0).value, '0');
 });
+test('anilist score: the English name when the title finds nothing, the exact name, the TV show over a special of its name', async () => {
+  const media = (romaji, averageScore, format = 'TV', synonyms = []) => ({ format, title: { romaji }, synonyms, averageScore });
+  const score = async (c, answers) => { const r = ratings(async (url, form) => { if (!url.includes('anilist')) throw Error('offline'); return JSON.stringify({ data: { Page: { media: answers[JSON.parse(form.variables).search] || [] } } }); }); return (await r.lookup({ type: 'anime', ...c })).find(x => x.source === 'AniList')?.value; };
+  assert.equal(await score({ title: 'Ao Ashi Season 2', alt: 'Aoashi Season 2' }, { 'Aoashi Season 2': [media('Aoashi 2nd Season', 80, 'TV', ['Aoashi Season 2'])] }), '8.0');
+  assert.equal(await score({ title: 'Black Clover', alt: 'Black Clover' }, { 'Black Clover': [media('Black Clover', 79), media('Petit Clover', 67, 'SPECIAL', ['Black Clover'])] }), '7.9');
+  assert.equal(await score({ title: 'Kokoro', alt: 'Dangers: The Movie' }, { Kokoro: [media('Kokoro', 83), media('Kokoro Movie', 81, 'MOVIE', ['Dangers: The Movie'])] }), '8.1');
+  assert.equal(await score({ title: 'Show Season 2' }, { 'Show Season 2': [media('Show', 70), media('Show Season 2 Part', 60)] }), undefined); // only the season's own name: no guess
+});

@@ -467,7 +467,7 @@ async function cinemaPlay(slug) {
   };
   playerObs = new ResizeObserver(place);
   playerObs.observe(stage);
-  $('#back').onclick = () => (history.length > 1 ? history.back() : (location.hash = '#' + show));
+  $('#back').onclick = () => leavePlayer('#' + show);
   if (next) $('#nxt').onclick = () => location.replace(edHref(next.slug)); // like chapters: back still leaves the player
   $('#ext').onclick = () => api.openExternal(edUrl(slug));
 

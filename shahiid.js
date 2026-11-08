@@ -48,13 +48,28 @@ if (window.api?.web) (() => {
     return best;
   };
 
+  // its pictures come through wordpress's image service, which sizes them by address. Its pages ask for 200px, blurry on a card
+  const sized = (url, width) => url.replace(/^(https:\/\/i\d\.wp\.com\/[^?]+).*$/, width ? `$1?w=${width}&ssl=1` : '$1?ssl=1');
+  // AniList's pictures of a show: a real wide banner for its page, and a cover where the site lost its own (about 1 poster in 25 is a
+  // 404 there). Only under the show's exact name: no picture beats another show's. Kept, a miss too
+  const sameName = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const aniArt = (title, alt) => remember('sh:art:' + title, async () => {
+    for (const search of new Set([alt, title].filter(Boolean))) {
+      const query = `{Page(perPage:6){media(search:${JSON.stringify(search)},type:ANIME,sort:SEARCH_MATCH){title{romaji english} synonyms bannerImage coverImage{extraLarge}}}}`;
+      const media = JSON.parse(await api.fetch('https://graphql.anilist.co', { query })).data?.Page?.media || [];
+      const hit = media.find(m => [...Object.values(m.title), ...m.synonyms].some(n => sameName(n) === sameName(search)));
+      if (hit) return { banner: hit.bannerImage || hit.coverImage?.extraLarge || '', cover: hit.coverImage?.extraLarge || '' };
+    }
+    return {};
+  });
+
   const epNumber = name => name.match(/الحلقة\s+0*(\d[\d.]*)/)?.[1];
   // its poster cards: an episode, a season, a series or a film. Its dubbed and foreign-series kinds are left out
   const cards = doc => [...doc.querySelectorAll('.one-poster')].map(el => {
     const a = el.querySelector('a[href]'), img = el.querySelector('img'), name = txt(el.querySelector('h2')) || img?.getAttribute('alt') || '';
     if (!a) return null;
     const [, kind, slug] = decodeURIComponent(new URL(a.getAttribute('href'), SH).pathname).split('/');
-    const c = { title: clean(name), poster: img?.getAttribute('src') || '', rating: txt(el.querySelector('.rated-poster')), year: '', badge: '', ep: null };
+    const c = { title: clean(name), poster: sized(img?.getAttribute('src') || '', 400), rating: txt(el.querySelector('.rated-poster')), year: '', badge: '', ep: null };
     if (!slug || !c.title) return null;
     if (kind === 'anime') return { ...c, path: `/movie/s:${slug}`, type: 'movie' };
     if (kind === 'seasons') return { ...c, path: `/anime/s:${slug}`, type: 'anime' };
@@ -68,10 +83,10 @@ if (window.api?.web) (() => {
     const meta = [...doc.querySelectorAll('.head-s-meta-first > span')].map(s => { const [k, ...v] = txt(s).split(/\s*:\s*/); return [k, v.join(': ')]; }).filter(([, v]) => v);
     const crumb = kind => doc.querySelector(`.breadcrumb-list a[href*="/${kind}/"]`)?.getAttribute('href') || '';
     const story = doc.querySelector('.head-s-story'), lines = [...story?.querySelectorAll('div') || []].map(txt).filter(Boolean);
-    const poster = (doc.querySelector('.head-s-movie-thumb img')?.getAttribute('src') || '').replace('resize=200%2C283', 'resize=350%2C496');
+    const poster = sized(doc.querySelector('.head-s-movie-thumb img')?.getAttribute('src') || '');
     return { title: clean(txt(doc.querySelector('h1'))), alt: meta.find(([k]) => /الانجليزي|الإنجليزي/.test(k))?.[1] || '', poster,
       desc: lines.length > 1 ? lines.slice(1).join(' ') : lines[0] || txt(story).replace(/^[^:]*:\s*/, ''), // its first line only repeats the title
-      genres: [...doc.querySelectorAll('.head-s-meta-ctas a')].map(txt).filter(Boolean), info: meta.filter(([k]) => !/الانجليزي|الإنجليزي/.test(k)),
+      genres: [...doc.querySelectorAll('.head-s-meta-ctas a')].map(txt).filter(Boolean), info: meta.filter(([k]) => !/الانجليزي|الإنجليزي|تقييم/.test(k)), // its copy of the score goes stale: the page's badges have the live one
       episodes: [...doc.querySelectorAll('a[href*="/episodes/"]')].map(a => ({ n: epNumber(txt(a)), url: a.getAttribute('href') })).filter(e => e.n),
       more: !!doc.querySelector('#pagination .next-page'), seriesUrl: crumb('series'), seasonUrl: crumb('seasons') };
   };
@@ -95,10 +110,14 @@ if (window.api?.web) (() => {
   async function shDetails(path, force) {
     const [, kind, key] = path.match(/^\/(anime|movie)\/s:(.+)$/) || [];
     if (!key) throw new Error('bad path');
-    const show = p => ({ alt: p.alt, trailer: '', tags: [], title: p.title, desc: p.desc, genres: p.genres, info: p.info, poster: p.poster, banner: p.poster });
+    // the page doesn't wait long for its banner: the next visit has it
+    const show = async p => {
+      const art = await Promise.race([aniArt(p.title, p.alt).catch(() => null), new Promise(r => setTimeout(r, 1500))]);
+      return { alt: p.alt, trailer: '', tags: [], title: p.title, desc: p.desc, genres: p.genres, info: p.info, poster: p.poster, banner: art?.banner || p.poster };
+    };
     if (kind === 'movie') {
       const url = `${SH}/anime/${encodeURIComponent(key)}/`;
-      return { ...show(await load('shPage', url, force)), path, related: [], episodes: [{ path: `/watch/movie/s:${key}`, ep: 'Movie', url }] };
+      return { ...await show(await load('shPage', url, force)), path, related: [], episodes: [{ path: `/watch/movie/s:${key}`, ep: 'Movie', url }] };
     }
     const slugOf = href => decodeURIComponent(new URL(href, SH).pathname).split('/')[2];
     if (key[0] === '~') { // the app moves to the season's own page
@@ -113,7 +132,7 @@ if (window.api?.web) (() => {
     }
     const url = seasonUrl(key), p = await load('shPage', url, force);
     const sisters = p.seriesUrl ? (await load('shList', p.seriesUrl, false, true).catch(() => null))?.items || [] : [];
-    return { ...show(p), path,
+    return { ...await show(p), path,
       episodes: (await allEpisodes(url, p, force)).map(e => ({ path: `/watch/s:${key}/${e.n}`, ep: e.n, url: e.url })).sort((a, b) => parseFloat(a.ep) - parseFloat(b.ep)),
       related: uniq(sisters).filter(c => c.path !== path && showKey(c) !== showKey({ title: p.title, type: 'anime' })) };
   }
@@ -220,6 +239,7 @@ if (window.api?.web) (() => {
     ristoanime: (...a) => onMainPage() ? r.ristoanime(...a) : Promise.resolve([]),
     okanime,
     shahiid,
+    cover: title => aniArt(title).then(a => a.cover), // a poster that didn't load (app.js)
   });
   // web.js asks these for a page's own servers and downloads
   Object.assign(Risto, {

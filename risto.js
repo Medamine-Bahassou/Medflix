@@ -131,7 +131,9 @@ if (window.api?.web) (() => {
         soon('genres',genres.then(gs => Promise.all(gs.map(async g => ({ g, d: await scraper.list('/genre/' + g, 1, force).catch(() => null) }))))),
         soon('art',slides.then(l => art(l.map(c => latin(c.title)))))]);
       const genreRow = i => byGenre?.[i]?.d && { title: t('genreRow', byGenre[i].g), items: fresh(shows(byGenre[i].d.items)), base: '/genre/' + byGenre[i].g };
-      return { hero: (await slides).map((c, i) => ({ path: c.showPath || c.path, watch: c.type === 'episode' ? c.path : '', title: c.title, desc: '', banner: pics?.[i] || c.poster })),
+      // a poster or a cover stretched across the screen is a blur: only the real wide pictures, when there are enough of them
+      const wide = u => /\/banner\//.test(u || ''), enough = (pics || []).filter(wide).length >= 3;
+      return { hero: (await slides).map((c, i) => ({ path: c.showPath || c.path, watch: c.type === 'episode' ? c.path : '', title: c.title, desc: '', banner: pics?.[i] || c.poster })).filter((_, i) => !enough || wide(pics[i])),
         rows: [
           { title: 'أحدث الحلقات', items: byShow(h.items) },
           last && { title: t('becauseWatched', last.title), items: fresh(last.related) },

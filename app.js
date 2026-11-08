@@ -712,7 +712,16 @@ addEventListener('pointerup', () => {
   setTimeout(() => removeEventListener('click', eat, true));
 });
 document.addEventListener('load', e => e.target.tagName === 'IMG' && e.target.classList.add('ok'), true);
-document.addEventListener('error', e => e.target.tagName === 'IMG' && e.target.classList.add('ok', 'broken'), true); // broken: offline posters etc.
+document.addEventListener('error', e => {
+  const i = e.target;
+  if (i.tagName !== 'IMG') return;
+  i.classList.add('ok', 'broken'); // broken: offline posters etc.
+  // an anime's poster the site lost: the website asks for another, once per picture (history keeps the dead address, so a saved show is covered too)
+  const box = i.closest('.card'), anime = box ? ['anime', 'movie'].includes(cardData.get(box.dataset.id)?.type) : i.matches('.det .poster') && location.hash.startsWith('#/title');
+  if (!anime || !scraper.cover || i.dataset.rescued) return;
+  i.dataset.rescued = 1;
+  scraper.cover(box ? box.querySelector('.img')?.dataset.ph : $('.det h1')?.textContent).then(url => { if (url && i.isConnected) { i.classList.remove('broken'); i.src = url; } }, () => {});
+}, true);
 let barColor;
 const syncBar = () => {
   $('#nav').classList.toggle('solid', scrollY > 40);
@@ -1479,7 +1488,7 @@ async function title(path, force) {
           <h1>${esc(d.title)}</h1>${d.alt ? `<div class="alt">${esc(d.alt)}</div>` : ''}
           <div class="chips">${d.tags.filter(x => !/^\d+\.\d+$/.test(x)).map(x => `<span class="chip">${esc(x)}</span>`).join('')}${d.genres.map(g => `<span class="chip">${esc(g)}</span>`).join('')}</div>
           <p class="desc" dir="auto">${esc(d.desc)}</p>
-          ${Ratings.slot({title:d.title, alt:d.alt, type:"anime"})}
+          ${Ratings.slot({title:d.title, alt:d.alt, type:"anime", path})}
           <div class="actions">
             ${first ? `<a class="btn red" href="${playHash(first)}">${ICON.play} ${h ? esc(t('resume', h.ep)) : t('play')}</a>` : ''}
             ${api.web && type==='movie' && first ? `<button class="btn ghost" id="web-film-dl">${ICON.download} ${t('downloadShort')}</button>` : ''}
@@ -1651,7 +1660,7 @@ async function play(epPath) {
   playerObs = new ResizeObserver(place);
   playerObs.observe(stage);
 
-  $('#back').onclick = () => (history.length > 1 ? history.back() : (location.hash = '#/title' + show));
+  $('#back').onclick = () => leavePlayer('#/title' + show);
   $('#ext').onclick = () => api.openExternal(scraper.SITE + epPath);
   skipIntro(d.title, d.alt, ep, () => api.playerTime?.(), at => api.playerSeek?.(at));
   if (!epPath.startsWith('/watch/movie/')) markFiller(d.title, d.alt, ep);
@@ -1929,6 +1938,16 @@ let pageRefresh = null;
 
 // ---------- router ----------
 let routeVersion = 0;
+// the player's back button. A host in the player's iframe can add history entries of its own (a redirect, a click on its player), and
+// history.back() would only step that iframe, leaving the page where it is: those are counted and stepped over. history.length stops
+// growing at 50, so a step that didn't leave goes to the page by its address
+let playerFrom = '', playerAt = 0, inPlayer = false;
+function leavePlayer(fallback) {
+  const here = location.hash;
+  if (!playerFrom) return location.replace(fallback); // opened directly or reloaded: going back would leave the site
+  history.go(playerAt - history.length - 1);
+  setTimeout(() => { if (location.hash === here) location.replace(playerFrom); }, 800);
+}
 async function route(soft) {
   // background redraws wait while a video plays or a search/sheet/menu is open, rather than reset them
   // (and while a pull-to-refresh runs: a redraw would drop its loads, and its spinner would never stop)
@@ -1953,6 +1972,8 @@ async function route(soft) {
   api.scrollbar?.(!(a === 'manga' && rest[0] === 'read')); // phones: the reader has its own scrollbar
   api.statusBar?.(true); // phones: the reader hides it with its bars (manga.js), every page starts with it
   const watching = a === 'play' || a === 'offline' || (a === 'cinema' && (rest[1] === 'watch' || rest[0] === 'episode'));
+  if (watching) { if (!inPlayer) playerAt = history.length; } else playerFrom = location.hash; // the next episode replaces this entry: the count stays
+  inPlayer = watching;
   api.keepAwake?.(watching); // phones: the video is in an iframe, which doesn't stop the screen locking mid-episode
   immersed = watching || (['manga', 'novels'].includes(a) && rest[0] === 'read');
   $('#nav').style.display = immersed ? 'none' : '';

@@ -66,7 +66,9 @@ const Ratings = (() => {
       const words = exact(asked).split(' '), theirs = new Set(t.names.flatMap(n => exact(n).split(' '))), digits = l => [...l].flatMap(w => w.match(/\d+/g) || []), own = new Set(digits(theirs));
       return words.filter(w => theirs.has(w)).length * 2 >= words.length && digits(words).every(n => own.has(n));
     };
-    const names = [c.title, ...(c.alt || '').split(/[|,،]/)].map(s => s.trim().replace(/\s*cour 1$/i, '').replace(/cour (\d+)$/i, 'part $1')).filter(exact), want = new Set(names.map(key));
+    const alts = (c.alt || '').split(/[|,،]/);
+    // a film's page: its title can be its TV show's name, its English one says which ("The Dangers in My Heart: The Movie")
+    const names = (/^\/movie\//.test(c.path || '') ? [...alts, c.title] : [c.title, ...alts]).map(s => s.trim().replace(/\s*cour 1$/i, '').replace(/cour (\d+)$/i, 'part $1')).filter(exact), want = new Set(names.map(key));
     let near = [];
     for (const name of names.slice(0, 3)) {
       const d = await page(`https://myanimelist.net/${kind}.php?q=${encodeURIComponent(name)}&cat=${kind}`);
@@ -86,11 +88,18 @@ const Ratings = (() => {
     return null;
   }
   async function anilist(c, title) {
-    const query = 'query($search:String,$type:MediaType){Page(perPage:10){media(search:$search,type:$type){title{romaji english native} synonyms averageScore}}}';
-    const j = JSON.parse(await api.fetch('https://graphql.anilist.co', { query, variables: JSON.stringify({ search: c.title, type: c.type === 'manga' ? 'MANGA' : 'ANIME' }) }));
-    const matches = (j.data?.Page?.media || []).filter(m => [...Object.values(m.title), ...m.synonyms].some(n => norm(n) === title));
-    const v = matches.length === 1 && matches[0].averageScore;
-    return v > 0 ? { source: 'AniList', value: (v / 10).toFixed(1) } : null;
+    const query = 'query($search:String,$type:MediaType){Page(perPage:10){media(search:$search,type:$type){format title{romaji english native} synonyms averageScore}}}';
+    const manga = c.type === 'manga', named = (m, is) => [...Object.values(m.title), ...m.synonyms].some(is);
+    for (const search of new Set([c.title, c.alt].filter(Boolean))) { // its search can miss a title it knows by the other name ("Ao Ashi Season 2", "Aoashi Season 2")
+      const j = JSON.parse(await api.fetch('https://graphql.anilist.co', { query, variables: JSON.stringify({ search, type: manga ? 'MANGA' : 'ANIME' }) }));
+      const media = j.data?.Page?.media || [], by = want => media.filter(m => named(m, n => exact(n) === exact(want)));
+      // the exact name first, the English one before the title (a film's page: its romaji name can be its TV show's), then one with the season dropped
+      const hits = [c.alt && by(c.alt), by(c.title), media.filter(m => named(m, n => norm(n) === title))].find(l => l?.length) || [];
+      const main = hits.filter(m => m.format === (manga ? 'MANGA' : 'TV')); // a special can go by its show's name
+      const hit = hits.length === 1 ? hits[0] : main.length === 1 ? main[0] : null;
+      if (hit) return hit.averageScore > 0 ? { source: 'AniList', value: (hit.averageScore / 10).toFixed(1) } : null;
+    }
+    return null;
   }
   // the sites' own logos, the same files the app shows (android's drawable-nodpi/logo_*.png)
   const LOGO = { IMDb: 'imdb', 'Rotten Tomatoes': 'rt', Metacritic: 'mc', MyAnimeList: 'mal', AniList: 'anilist' };

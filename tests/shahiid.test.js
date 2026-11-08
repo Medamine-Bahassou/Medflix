@@ -9,6 +9,7 @@ function setup({main,more}) {
   const ctx={window:{api:{web:true}},scraper,parsers:{},AR_NTH:['الاول','الثاني','الثالث','الرابع'],Risto:{},URL,URLSearchParams,location:{hash:''},console,
     load:async(_,url)=>({items:(main[/page\/2/.test(url)?2:1]||[]).map(x=>ep(...x)),pages:2})};
   vm.createContext(ctx);vm.runInContext(fs.readFileSync('shahiid.js','utf8'),ctx);
+  scraper.ctx=ctx;
   return scraper;
 }
 const titles=d=>Array.from(d.items,c=>`${c.title} ${c.ep}`); // an outer array: deepEqual refuses the vm's own
@@ -29,6 +30,13 @@ test('other seasons and a shorter name at another episode stay apart',async()=>{
 test('a show\'s specials are not the show',async()=>{
   const s=setup({main:{1:[['One Piece',1180,'/anime/s:~a'],['One Piece +',3,'/anime/s:~b']]},more:{}});
   assert.equal((await s.newEpisodes(1)).items.length,2);
+});
+test('a lost poster only takes a cover under the show\'s own name',async()=>{
+  const media=(romaji,extraLarge)=>({title:{romaji},synonyms:[],bannerImage:null,coverImage:{extraLarge}});
+  const s=setup({main:{},more:{}}),c=s.ctx;c.remember=(_,f)=>f();
+  c.api={fetch:async(_,form)=>JSON.stringify({data:{Page:{media:/Wandance/.test(form.query)?[media('Wandance','cover.jpg')]:[media('Another Show','wrong.jpg')]}}})};
+  assert.equal(await s.cover('Wandance'),'cover.jpg');
+  assert.equal(await s.cover('Unknown Show'),undefined);
 });
 test('a show on page 1 is not repeated on page 2',async()=>{
   const s=setup({main:{1:[['Show A',6,'/anime/s:~a']],2:[['Show A',5,'/anime/s:~a'],['Show B',1,'/anime/s:~b']]},more:{}});

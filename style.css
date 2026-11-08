@@ -892,7 +892,7 @@ img.broken:not(.rd-pages img) { content: url("data:image/gif;base64,R0lGODlhAQAB
 .cast-search[hidden] { display:none; }
 
 .source-rating { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 18px; }
-.source-rating:empty { display: none; }
+.source-rating:empty { margin: 0; } /* no display: none: hidden, it never comes on screen, which is what starts its lookup (ratings.js) */
 /* a source's badge (ratings.js badge): its logo or coloured mark, the score, "/10"; read left to right in either language */
 .rb { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding-inline: 5px 12px; border-radius: 9px; background: #ffffff10; border: 1px solid #ffffff1f; font-size: 15px; white-space: nowrap; direction: ltr; backdrop-filter: blur(6px); }
 .rb img { height: 22px; width: auto; border-radius: 4px; }
