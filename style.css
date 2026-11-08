@@ -266,20 +266,10 @@ input:focus-visible, select:focus-visible { outline: none; }
 /* ---------- misc ---------- */
 .empty { text-align: center; color: var(--muted); padding: 80px 0; }
 .empty b { display: block; color: #fff; font-size: 22px; margin-bottom: 6px; }
-/* the richer empty page (app.js emptyState): blank posters fanned behind the section's icon in a red glow, then the
-   text and where to go next */
-.empty.rich { padding: 64px 16px 80px; animation: rise .6s var(--ease) backwards; }
+.empty.rich { padding: 64px 16px 80px; animation: rise .6s var(--ease) backwards; } /* app.js emptyState */
 .empty.rich p { max-width: 420px; margin: 0 auto; line-height: 1.6; }
-.empty-art { position: relative; width: 190px; height: 150px; margin: 0 auto 28px; }
-.empty-art span { position: absolute; bottom: 0; left: 50%; width: 84px; aspect-ratio: 2/3; margin-left: -42px; border-radius: 10px;
-  background: linear-gradient(160deg, #2a2a2a, var(--card) 60%); border: 1px solid #ffffff14; }
-.empty-art span:nth-child(1) { transform: translateX(-52px) rotate(-12deg); opacity: .55; }
-.empty-art span:nth-child(3) { transform: translateX(52px) rotate(12deg); opacity: .55; }
-.empty-art span:nth-child(2) { z-index: 1; bottom: 14px; }
-.empty-art i { position: absolute; z-index: 2; left: 50%; top: 50%; display: grid; place-items: center; width: 62px; height: 62px; margin: -24px 0 0 -31px;
-  border-radius: 50%; background: var(--red); color: #fff; }
-.empty-art i svg { width: 28px; height: 28px; }
-.empty-acts { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 26px; }
+.empty-icon { display: block; margin-bottom: 18px; color: var(--muted); }
+.empty-icon svg { width: 56px; height: 56px; }
 .center { display: grid; place-items: center; min-height: 100vh; }
 .trailer { position: fixed; inset: 0; z-index: 80; background: #000d; display: grid; place-items: center; animation: fade .3s; }
 .trailer .viewer { max-width: 94vw; max-height: 92dvh; object-fit: contain; border-radius: 8px; animation: pop .4s var(--ease); }
@@ -952,7 +942,7 @@ img.broken:not(.rd-pages img) { content: url("data:image/gif;base64,R0lGODlhAQAB
 .nv-chapter-actions .icon-btn svg { width:16px; height:16px; }
 .nv-chapter-actions .icon-btn.on { color:#46d369; }
 .nv-chapter-actions .icon-btn:disabled { opacity:.5; cursor:wait; }
-.nv-chapters.selecting .nv-chapter.sel .ep { opacity:1; background:var(--red); color:#fff; }
+.nv-chapters.selecting .nv-chapter.sel .ep { opacity:1; background:#e5091433; box-shadow:inset 0 0 0 1.5px var(--red); color:#fff; } /* solid red buries the muted title and the icons. inset: the focus ring stays */
 .nv-dl-spin { width:14px; height:14px; border:2px solid #ffffff30; border-top-color:var(--red); border-radius:50%; animation:spin .7s linear infinite; }
 
 /* mouse context actions: viewport-clamped, with no backdrop or shadow. */
@@ -1113,3 +1103,12 @@ html:has(.nv-paged) { overflow:hidden; }
   /* over the page, not in the row: the same on both tabs */
   .det-page > .det-fab { display: inline-flex; position: fixed; inset-inline-end: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 20; min-height: 52px; box-shadow: 0 6px 20px #0009; }
 }
+
+/* a TV remote or controller (tv.js): seen across a room, and no hover to show what's lit. last: these outweigh the quieter rings above */
+body.tv { cursor:none; }
+body.tv :focus { outline:3px solid #fff; outline-offset:2px; }
+body.tv .card:focus { transform:scale(1.08) translateY(-6px); z-index:3; outline:3px solid var(--red); }
+body.tv .card:focus img { transform:scale(1.06); }
+body.tv .rd-pages:focus { outline:none; }
+body.tv .stage:focus { outline:none; }
+body.tv .stage:focus ~ .mplayer { outline:3px solid #fff; outline-offset:-3px; } /* the frame covers the stage */

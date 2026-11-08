@@ -475,10 +475,8 @@ function card(c, i = 0) {
 }
 const row = (title, items, href) => !items?.length ? '' : `<section class="row"><h3>${href ? `<a href="${href}">${esc(t(title))} ${ICON.next}</a>` : esc(t(title))}</h3>
   <div class="track-wrap"><button class="arrow l" aria-label="${t('prev')}">${ICON.caretLeft}</button><div class="track">${items.map(card).join('')}</div><button class="arrow r" aria-label="${t('next')}">${ICON.caretRight}</button></div></section>`;
-// an empty page: a few blank posters fanned out behind the section's icon, then what's missing and where to go from here
-// (acts: [href, label, icon]; the first is the red one)
-const emptyState = (icon, title, hint, acts = []) => `<div class="empty rich"><div class="empty-art" aria-hidden="true"><span></span><span></span><span></span><i>${icon}</i></div>
-  <b>${title}</b><p>${hint}</p>${acts.length ? `<div class="empty-acts">${acts.map(([href, label, ic], i) => `<a class="btn ${i ? 'ghost' : 'red'}" href="${href}">${ic} ${label}</a>`).join('')}</div>` : ''}</div>`;
+// an empty page: the section's icon in gray, then what's missing
+const emptyState = (icon, title, hint) => `<div class="empty rich"><i class="empty-icon" aria-hidden="true">${icon}</i><b>${title}</b><p>${hint}</p></div>`;
 const grid = items => items.length ? `<div class="grid">${items.map(card).join('')}</div>` : `<div class="empty"><b>${t('nothing')}</b>${t('tryElse')}</div>`;
 const spinner = () => { view.innerHTML = '<div class="center"><div class="spin"></div></div>'; };
 // error text shown on screen, without the sources' names or addresses ("no answer from witanime.site" -> "no answer from the site")
@@ -806,7 +804,7 @@ function heroPage(hero, rows, refresh) {
   if (hero.length) {
     show(0);
     $('.dots').onclick = e => e.target.dataset.i && (show(+e.target.dataset.i), restart());
-    const restart = () => { clearInterval(heroTimer); heroTimer = setInterval(() => show(cur + 1), 8000); };
+    const restart = () => { clearInterval(heroTimer); heroTimer = setInterval(() => $('.hero .info :focus') || show(cur + 1), 8000); }; // not under a TV remote's ring: its button would vanish
     restart();
     // swipe to the next / previous slide (the way pages turn: right to left is next, the other way in Arabic)
     let x0, y0;
@@ -1462,8 +1460,7 @@ function offline(epPath) {
 
 function myList() {
   const items = Object.values(store.list).sort((a, b) => b.at - a.at), nh = Object.keys(store.hidden).length;
-  view.innerHTML = `<div class="page"><h1>${t('myList')}${nh ? ` <a class="btn ghost small h1-btn" href="#/hidden">${ICON.eyeSlash} ${t('openHidden', nh)}</a>` : ''}</h1>${items.length ? grid(items) : emptyState(ICON.bookmark, t('listEmpty'), t('listHint'),
-    [['#/anime', t('anime'), ICON.series], ['#/cinema', t('cinema'), ICON.cinema], ['#/manga', t('manga'), ICON.manga]])}</div>`;
+  view.innerHTML = `<div class="page"><h1>${t('myList')}${nh ? ` <a class="btn ghost small h1-btn" href="#/hidden">${ICON.eyeSlash} ${t('openHidden', nh)}</a>` : ''}</h1>${items.length ? grid(items) : emptyState(ICON.bookmark, t('listEmpty'), t('listHint'))}</div>`;
 }
 
 // #/hidden: what was long-pressed away, by kind; ✕ (the card's remove button) brings one back
