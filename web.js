@@ -42,6 +42,21 @@ if (!window.api) (() => {
   };
 
   const frame = () => document.querySelector('.player > iframe.mplayer');
+  // Google's Cast sender, loaded the first time it may be wanted. false: this browser can't cast (Firefox, Safari, Brave by default)
+  let castSdk, castingAt = '';
+  const castReady = () => castSdk ||= new Promise(ok => {
+    window.__onGCastApiAvailable = on => {
+      if (!on || !window.cast?.framework) return ok(false); // (its framework can fail to load though the browser is able)
+      cast.framework.CastContext.getInstance().setOptions({ receiverApplicationId: chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID, autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED });
+      ok(true);
+    };
+    const s = document.createElement('script');
+    s.src = 'https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1';
+    s.onerror = () => ok(false);
+    document.head.append(s);
+    setTimeout(() => ok(false), 8000); // it says nothing at all on some browsers: a tap on Cast must still get an answer
+  }).then(on => { if (!on) castSdk = null; return on; }); // a slow connection, maybe: asked again next time
+  const limit = (promise, ms) => Promise.race([promise, sleep(ms).then(() => { throw new Error('timed out'); })]);
   // the popup ads of each host's player, measured in Chrome without an ad blocker: videa and mp4upload's a sandbox stops, and they play
   // on (videa first: 1080p from the start, where ok.ru stayed at 240p); ok.ru and vk open none. share4max/megamax's script takes every
   // click until its popup opens, so in a sandbox the video never starts; dood looks for a sandbox too (see mobile.js). Those can't be
@@ -109,6 +124,7 @@ if (!window.api) (() => {
     player(url, b, referrer, native = false) { // an iframe over the stage rect, as on Android (mobile.js)
       let f = frame();
       if (!url) return f?.remove();
+      if (castingAt && castingAt === location.hash) return; // the TV has this one: a resize mustn't start it here again
       const host = document.querySelector('.player');
       if (!host) return;
       if (!f) {
@@ -131,12 +147,35 @@ if (!window.api) (() => {
       }
     },
     playerFull: () => frame()?.requestFullscreen().catch(() => {}),
-    // a TV (Chromecast, Android TV) through the browser's own Remote Playback: only a video playing here, in the page (a
-    // downloaded episode) or in the player's own frame (Anime Witcher's files, MediaHosts.videoHtml); a host's player is
-    // another site's page, out of reach. The TV then plays it and this page is its remote: nothing here is stopped ({ screen })
-    async cast() {
+    // a TV (Chromecast, Android TV). A host's player is another site's page, out of reach, so the TV is handed a file of this episode and
+    // fetches it by itself, through Google's Cast sender (Chrome, Edge). No bytes pass through here. Asked for when the ⋮ opens: by the
+    // tap on Cast it's ready, and the TV picker only opens straight from a tap
+    castReady,
+    async cast({ title, poster, links } = {}) {
       const v = document.querySelector('.player video') || frame()?.contentDocument?.querySelector('video');
-      if (!v?.currentSrc) throw new Error(frame() ? 'not castable' : 'no video');
+      if (await castReady().catch(() => false)) {
+        const ctx = cast.framework.CastContext.getInstance();
+        if (!ctx.getCurrentSession()) await ctx.requestSession().catch(e => { throw new Error(/cancel/i.test(e) ? 'cancelled' : /unavailable/i.test(e) ? 'no tv' : String(e)); });
+        toast(t('castLooking'));
+        const session = ctx.getCurrentSession();
+        const here = v?.currentSrc && !v.currentSrc.startsWith('blob:') ? [{ url: v.currentSrc, at: v.currentTime }] : []; // the file already playing: from this moment
+        const rest = MediaHosts.castOrder(await links?.().catch(() => []) || []);
+        for (const l of [...here, ...rest]) {
+          try {
+            const url = l.url || await limit(api.downloadUrl(l.token), 15000);
+            if (/\.mkv(\?|$)/i.test(new URL(url).pathname)) continue; // the TV's player reads mp4
+            const media = new chrome.cast.media.MediaInfo(url, 'video/mp4');
+            media.metadata = Object.assign(new chrome.cast.media.GenericMediaMetadata(), { title, images: poster ? [new chrome.cast.Image(poster)] : [] });
+            const request = new chrome.cast.media.LoadRequest(media);
+            request.currentTime = l.at || 0;
+            await limit(session.loadMedia(request), 30000); // a file that won't play: the next one
+            castingAt = location.hash;
+            return; // playing there: stopped here (app.js)
+          } catch (e) { console.error(e); }
+        }
+        throw new Error('no file');
+      }
+      if (!v?.currentSrc) throw new Error('not castable');
       if (!v.remote) { if (!v.webkitShowPlaybackTargetPicker) throw new Error('not castable'); v.webkitShowPlaybackTargetPicker(); return { screen: true }; } // Safari: AirPlay
       try { await v.remote.prompt(); } catch (e) { throw new Error(e.name === 'NotAllowedError' ? 'cancelled' : 'not castable'); } // NotAllowed: the picker closed
       return { screen: true };

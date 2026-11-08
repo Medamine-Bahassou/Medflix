@@ -49,7 +49,7 @@ function playbackRoute(){
   store:{downloads:{},history:{},seen:{},streams:{},prefs:{}},$:sel=>sel==='#nav'?nav:nodes.get(sel)||null,console:{error:e=>errors.push(e)},failed:e=>errors.push(e),spinner:()=>view.innerHTML='<div class="center"><div class="spin"></div></div>',
   setTimeout:f=>{timers.set(++timerId,f);return timerId;},clearTimeout:id=>timers.delete(id),clearInterval(){},scrollTo(){},heroTimer:null,cardData:new Map(),pageRefresh:null,pagePress:null,picks:null,playerObs:null,
   closeContextMenu(){},CastInfo:{dispose(){}},closeSearch(){},closeDrawer(){},markActive(){},syncBar(){},immersed:false,
-  showOf:()=>'/anime/show',playHash:p=>'#/play/'+p.replace(/^\/watch\//,''),persist(){},esc:String,t:k=>k,ICON:{},skipBtn:'',playBar:()=>'',skipIntro(){},markFiller(){},showPlayBar(){},bestPerHost:l=>l,serverRank:()=>0,QUALITY:['4K','FHD','HD','SD'],CHECK:'',ddSkel:()=>'',watchServer(){},noNames:String,
+  showOf:()=>'/anime/show',playHash:p=>'#/play/'+p.replace(/^\/watch\//,''),persist(){},esc:String,t:k=>k,ICON:{},skipBtn:'',playBar:()=>'',playerMore:()=>'<i id="dlm"></i><i id="ext"></i>',skipIntro(){},markFiller(){},showPlayBar(){},bestPerHost:l=>l,serverRank:()=>0,QUALITY:['4K','FHD','HD','SD'],CHECK:'',ddSkel:()=>'',watchServer(){},noNames:String,
   ResizeObserver:class{observe(){}disconnect(){}},openMenu(){},closeMenu(){}};
  vm.createContext(c);
  vm.runInContext(app.slice(app.indexOf('async function play(epPath)'),app.indexOf('\nlet playerObs;',app.indexOf('async function play(epPath)'))),c);

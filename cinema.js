@@ -421,6 +421,8 @@ async function cinemaPlay(slug) {
   persist('history'); persist('seen');
   const eps = m.episodes.length ? m.episodes : ep && m.up ? (await load('edMovie', edUrl(m.up)).catch(() => null))?.episodes || [] : [];
   const next = eps[eps.findIndex(e => e.slug === slug) + 1];
+  castInfo = { links: () => edDownloads(slug), poster: m.poster };
+  panelNames = null;
   view.innerHTML = `<div class="player">
     <header>
       <button class="icon-btn" id="back" title="${t('back')}" aria-label="${t('back')}">${ICON.back}</button>
@@ -432,12 +434,7 @@ async function cinemaPlay(slug) {
         <div class="dd-menu"></div>
       </div>
       ${api.playerFull ? `<button class="icon-btn pfull" title="${t('fullscreen')}" aria-label="${t('fullscreen')}">${ICON.expand}</button>` : ''}
-      ${api.cast ? `<button class="icon-btn pcast" title="${t('cast')}" aria-label="${t('cast')}">${ICON.cast}</button>` : ''}
-      <div class="dd dlm" id="dlm">
-        <button class="dd-btn" title="${t('download')}">${ICON.download}<span class="lbl">${t('downloadShort')}</span></button>
-        <div class="dd-menu"></div>
-      </div>
-      <button class="btn ghost small" id="ext" title="${t('openBrowserTip')}">${ICON.external} <span>${t('openBrowser')}</span></button>
+      ${playerMore(eps.map(e => ({ n: e.n, go: edHref(e.slug), seen: store.seen['/cinema/' + e.slug], on: e.slug === slug })), m.banner || m.poster)}
     </header>
     <div class="stage"><div class="spin"></div></div>
     ${playBar()}
@@ -458,10 +455,19 @@ async function cinemaPlay(slug) {
 
   const here = () => [`#/cinema/${slug}/watch`, ep && `#/cinema/${slug}`].includes(decodeURIComponent(location.hash));
   let w = { servers: [], downloads: [] }, why = ''; // why: what refused it, shown under "no servers"
+  let answered = false; // the menu works before the servers' answer (it can take a minute): until then it says it's looking
+  // downloads are on third-party hosts: they open in the browser
+  const drawDl = () => dlm.querySelector('.dd-menu').innerHTML = !answered ? `<div class="dd-group">${t('searching')}</div>` : w.downloads.length
+    ? w.downloads.map((d, i) => `<button class="dd-item" data-i="${i}"><span class="host">${esc(d.label)}</span>${d.quality ? `<span class="q">${esc(d.quality)}</span>` : ''}<span class="tag">${ICON.external} ${t('browser')}</span></button>`).join('')
+    : `<div class="dd-group">${t('dlNone')}</div>`;
+  drawDl();
+  dlm.querySelector('.dd-btn').onclick = () => dlm.classList.contains('open') ? closeMenu(dlm) : openMenu(dlm);
+  dlm.querySelector('.dd-menu').onclick = e => { const b = e.target.closest('.dd-item'); if (b) { closeMenu(); const l=w.downloads[b.dataset.i]; if(api.web)return WebDownloads.downloadVideo([{id:'/cinema/'+slug,kind:'cinema',slug,show:'/cinema/'+slug,title:m.title,ep:m.n||'',poster:m.poster,token:l.url,host:l.label,quality:l.quality}]); api.openExternal(l.url); toast(t('openedBrowser')); } };
   // the saved answer, else the site's own servers once they're in (if any), else everything: the other sites (egydead's
   // Cloudflare check can take a minute the first time) join the menu when they answer
   const { promise: fresh, early } = watches.get(slug) || {};
   try { w = await (early ? Promise.race([watch, early.then(r => r.servers.length ? r : watch, () => watch)]) : watch); } catch (e) { console.error(e); why = noNames(e.message); }
+  answered = true; drawDl();
   if (next) edWatchSoon(m, next.slug).catch(() => {});
   if (!here()) return;
   // the menu takes the full answer when it comes (servers gone, or the other sites'), the video playing on
@@ -507,13 +513,6 @@ async function cinemaPlay(slug) {
   };
   srv.querySelector('.dd-btn').onclick = () => srv.classList.contains('open') ? closeMenu(srv) : openMenu(srv);
   srv.querySelector('.dd-menu').onclick = e => { const b = e.target.closest('.dd-item'); if (b) { closeMenu(); tried.clear(); pick(+b.dataset.i, true); } };
-  // downloads are on third-party hosts: they open in the browser
-  const drawDl = () => dlm.querySelector('.dd-menu').innerHTML = w.downloads.length
-    ? w.downloads.map((d, i) => `<button class="dd-item" data-i="${i}"><span class="host">${esc(d.label)}</span>${d.quality ? `<span class="q">${esc(d.quality)}</span>` : ''}<span class="tag">${ICON.external} ${t('browser')}</span></button>`).join('')
-    : `<div class="dd-group">${t('dlNone')}</div>`;
-  drawDl();
-  dlm.querySelector('.dd-btn').onclick = () => dlm.classList.contains('open') ? closeMenu(dlm) : openMenu(dlm);
-  dlm.querySelector('.dd-menu').onclick = e => { const b = e.target.closest('.dd-item'); if (b) { closeMenu(); const l=w.downloads[b.dataset.i]; if(api.web)return WebDownloads.downloadVideo([{id:'/cinema/'+slug,kind:'cinema',slug,show:'/cinema/'+slug,title:m.title,ep:m.n||'',poster:m.poster,token:l.url,host:l.label,quality:l.quality}]); api.openExternal(l.url); toast(t('openedBrowser')); } };
   if (!w.servers.length) {
     draw();
     stage.innerHTML = `<div class="empty"><b>${t('noServers')}</b>${t('noServersEdHint')}${why ? `<small class="why" dir="ltr">${esc(why)}</small>` : ''}<br><br><button class="btn red" id="again">${t('retry')}</button></div>`;

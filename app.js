@@ -29,7 +29,7 @@ const STR = {
     play: 'تشغيل', moreInfo: 'المزيد', details: 'التفاصيل', charactersCast: 'الشخصيات والممثلون', viewAllCast: 'عرض الكل', enlargeImage: 'عرض الصورة بحجم كامل', loadMoreCast: 'تحميل المزيد', castSearch: 'ابحث عن شخصية أو ممثل…', loadingCast: 'جارٍ تحميل الشخصيات…', noCast: 'لا تتوفر معلومات عن الشخصيات لهذا العنوان.', castUnavailable: 'تعذّر تحميل الشخصيات حالياً.', japaneseVoice: 'الصوت الياباني', actor: 'الممثل', prev: 'السابق', next: 'التالي',
     results: q => `نتائج البحث عن «${q}»`, listEmpty: 'قائمتك فارغة', listHint: 'اضغط + على أي بطاقة لتحفظها هنا، وتعود إليها متى شئت.',
     resume: e => `متابعة الحلقة ${e}`, inList: 'في قائمتي', trailer: 'الإعلان', episodes: 'الحلقات', jump: 'انتقل إلى حلقة…', moreLike: 'أعمال مشابهة',
-    back: 'رجوع (Esc)', loadingServers: 'جارٍ تحميل السيرفرات…', openBrowser: 'فتح في المتصفح', openBrowserTip: 'إذا لم يعمل المشغّل داخل التطبيق', cast: 'عرض على التلفاز', casting: 'يُعرض الآن على التلفاز', castPlayFirst: 'شغّل الفيديو هنا أولاً، ثم اعرضه على التلفاز', castHost: 'لا يمكن عرض هذا السيرفر على التلفاز من المتصفح، اختر سيرفراً آخر', castWifi: 'اتصل بشبكة الواي فاي نفسها التي يتصل بها التلفاز', castFailed: 'تعذّر التشغيل على التلفاز، جرّب سيرفراً آخر',
+    back: 'رجوع (Esc)', loadingServers: 'جارٍ تحميل السيرفرات…', openBrowser: 'فتح في المتصفح', openBrowserTip: 'إذا لم يعمل المشغّل داخل التطبيق', cast: 'عرض على التلفاز', casting: 'يُعرض الآن على التلفاز', castLooking: 'جارٍ إرسال الفيديو إلى التلفاز…', castNoFile: 'لا يوجد ملف لهذه الحلقة يمكن تشغيله على التلفاز', castNoTv: 'لم يُعثر على تلفاز على هذه الشبكة', castBrowser: 'العرض على التلفاز يعمل في Chrome أو Edge', castPlayFirst: 'شغّل الفيديو هنا أولاً، ثم اعرضه على التلفاز', castHost: 'لا يمكن عرض هذا السيرفر على التلفاز من المتصفح، اختر سيرفراً آخر', castWifi: 'اتصل بشبكة الواي فاي نفسها التي يتصل بها التلفاز', castFailed: 'تعذّر التشغيل على التلفاز، جرّب سيرفراً آخر',
     // witanime's row headings, always Arabic and vague: its heading stays the row's key (SECTIONS), this is what's shown
     'الأكثر مشاهدة': 'أكثر حلقات الأنمي مشاهدة',
     'أحدث الحلقات': 'أحدث حلقات الأنمي',
@@ -75,7 +75,7 @@ homeHotManga: 'المانجا الرائجة', homeLatestManga: 'أحدث فصو
     play: 'Play', moreInfo: 'More Info', details: 'Details', charactersCast: 'Characters & cast', viewAllCast: 'View all', enlargeImage: 'View image fullscreen', loadMoreCast: 'Load more', castSearch: 'Search characters or actors…', loadingCast: 'Loading characters…', noCast: 'Character and cast information is not available for this title.', castUnavailable: 'Character information could not be loaded right now.', japaneseVoice: 'Japanese voice', actor: 'Actor', prev: 'Prev', next: 'Next',
     results: q => `Results for “${q}”`, listEmpty: 'Your list is empty', listHint: 'Press + on any card to save it here and come back to it anytime.',
     resume: e => `Resume Ep ${e}`, inList: 'In My List', trailer: 'Trailer', episodes: 'Episodes', jump: 'Jump to ep…', moreLike: 'More Like This',
-    back: 'Back (Esc)', loadingServers: 'Loading servers…', openBrowser: 'Open in browser', openBrowserTip: "If the in-app player won't load", cast: 'Cast to TV', casting: 'Playing on the TV', castPlayFirst: 'Start the video here first, then cast it', castHost: 'This server can’t be cast from the browser: pick another one', castWifi: 'Connect to the same Wi-Fi as the TV', castFailed: "Couldn't play it on the TV, try another server",
+    back: 'Back (Esc)', loadingServers: 'Loading servers…', openBrowser: 'Open in browser', openBrowserTip: "If the in-app player won't load", cast: 'Cast to TV', casting: 'Playing on the TV', castLooking: 'Sending the video to the TV…', castNoFile: 'No file of this episode can play on a TV', castNoTv: 'No TV found on this network', castBrowser: 'Casting works in Chrome or Edge', castPlayFirst: 'Start the video here first, then cast it', castHost: 'This server can’t be cast from the browser: pick another one', castWifi: 'Connect to the same Wi-Fi as the TV', castFailed: "Couldn't play it on the TV, try another server",
 homeHotManga: 'Trending manga', homeLatestManga: 'Latest manga chapters', homeHotNovels: 'Trending novels', homeLatestNovels: 'Latest novel chapters', epFinal: '(final)',
     prevEp: 'Previous', nextEp: 'Next', skipIntro: 'Skip intro', playback: 'Playback', skipIntroSet: 'Skip intro button', skipIntroHint: "Shows a button to skip an episode's opening while it plays.", chooseServer: 'Choose server', searchingServers: 'Searching servers…', searching: 'Searching…',
     server: 'Server', noneWorked: 'No server worked', noneWorkedHint: 'Try another one above, or open in browser.',
@@ -1667,6 +1667,8 @@ async function play(epPath) {
   persist('history'); persist('seen');
 
   const prev = d.episodes[idx - 1], next = d.episodes[idx + 1];
+  castInfo = { links: () => animeDownloadLinks(epPath, d.title, d.alt, ep), poster: d.poster };
+  panelNames = epPath.startsWith('/watch/movie/') ? null : [d.title, ...(d.alt || '').split(/\s*[,،]\s*/)];
   view.innerHTML = `<div class="player">
     <header>
       <button class="icon-btn" id="back" title="${t('back')}" aria-label="${t('back')}">${ICON.back}</button>
@@ -1677,15 +1679,10 @@ async function play(epPath) {
         <div class="dd-menu"></div>
       </div>
       ${api.playerFull ? `<button class="icon-btn pfull" title="${t('fullscreen')}" aria-label="${t('fullscreen')}">${ICON.expand}</button>` : ''}
-      ${api.cast ? `<button class="icon-btn pcast" title="${t('cast')}" aria-label="${t('cast')}">${ICON.cast}</button>` : ''}
-      <div class="dd dlm" id="dlm">
-        <button class="dd-btn" title="${t('download')}">${ICON.download}<span class="lbl">${t('downloadShort')}</span></button>
-        <div class="dd-menu"></div>
-      </div>
-      <button class="btn ghost small" id="ext" title="${t('openBrowserTip')}">${ICON.external} <span>${t('openBrowser')}</span></button>
       ${skipBtn}
       <button class="icon-btn" id="prev" title="${t('prevEp')}" aria-label="${t('prevEp')}" ${prev ? '' : 'disabled'}>${ICON.skipBack}</button>
       <button class="icon-btn" id="next" title="${t('nextEp')}" aria-label="${t('nextEp')}" ${next ? '' : 'disabled'}>${ICON.skipForward}</button>
+      ${playerMore(d.episodes.map(e => ({ n: e.ep, go: playHash(e.path), seen: store.seen[e.path], on: e.path === epPath })), d.banner || d.poster)}
     </header>
     <div class="stage"><div class="spin"></div></div>
     ${playBar()}
@@ -1702,13 +1699,49 @@ async function play(epPath) {
   playerObs.observe(stage);
 
   $('#back').onclick = () => leavePlayer('#/title' + show);
-  $('#ext').onclick = () => api.openExternal(scraper.SITE + epPath);
+  $('#ext').onclick = () => api.openExternal(d.episodes[idx]?.url || scraper.SITE + epPath); // the website's sources have their own address: their paths exist on no site
   skipIntro(d.title, d.alt, ep, () => api.playerTime?.(), at => api.playerSeek?.(at));
   if (!epPath.startsWith('/watch/movie/')) markFiller(d.title, d.alt, ep);
   if (prev) $('#prev').onclick = () => location.replace(playHash(prev.path));
   if (next) $('#next').onclick = () => location.replace(playHash(next.path));
 
   const here = () => decodeURIComponent(location.hash) === playHash(epPath);
+  // download menu: every download link by quality. MediaFire downloads in the app, other hosts open in the browser.
+  // wired now, not after the servers' answer (it can take a minute): it asks on its own
+  const dlm = $('#dlm');
+  let links = null; // fetched on first open
+  const drawDl = () => {
+    const have = store.downloads[epPath];
+    const top = have?.state === 'done' ? `<button class="dd-item go" data-act="offline">${ICON.play}<span class="host">${t('playOffline')}</span></button>`
+      : have?.state === 'active' ? `<button class="dd-item go" data-act="list">${ICON.download}<span class="host">${t('dlOpenList')}</span></button>` : '';
+    const item = l => `<button class="dd-item ${l.quality === store.prefs.dlQuality && l.label === store.prefs.dlHost ? 'on' : ''}" data-i="${links.indexOf(l)}">
+      <span class="host">${esc(l.label)}</span><span class="tag ${inAppHost(l.label) ? 'app' : ''}">${inAppHost(l.label) ? t('inApp') : ICON.external + ' ' + t('browser')}</span>
+      ${CHECK}</button>`;
+    const groups = !links ? `<div class="dd-group">${t('searching')}</div>` : !links.length ? `<div class="dd-group">${t('dlNone')}</div>`
+      : QUALITY.map(q => links.filter(l => l.quality === q).sort((a, b) => (inAppHost(b.label)) - (inAppHost(a.label))))
+          .filter(g => g.length).map(g => `<div class="dd-group">${g[0].quality}<small>${g.length}</small></div>${g.map(item).join('')}`).join('');
+    dlm.querySelector('.dd-menu').innerHTML = top + groups;
+  };
+  dlm.querySelector('.dd-btn').onclick = async () => {
+    if (dlm.classList.contains('open')) return closeMenu(dlm);
+    drawDl();
+    openMenu(dlm);
+    if (links) return;
+    try { links = await animeDownloadLinks(epPath, d.title, d.alt, ep); } catch (e) { console.error(e); links = []; }
+    if (here()) drawDl();
+  };
+  dlm.querySelector('.dd-menu').onclick = e => {
+    const b = e.target.closest('.dd-item');
+    if (!b) return;
+    closeMenu();
+    if (b.dataset.act === 'offline') return location.hash = offlineHash(epPath);
+    if (b.dataset.act === 'list') return location.hash = '#/downloads';
+    const l = links[b.dataset.i];
+    store.prefs.dlQuality = l.quality; store.prefs.dlHost = l.label; persist('prefs');
+    if (api.web) return WebDownloads.downloadVideo([{id:epPath,epPath,show,title:d.title,ep,poster:d.poster,quality:l.quality,host:l.label,token:l.token}]);
+    if (inAppHost(l.label)) startDownload({ id: epPath, epPath, show, title: d.title, ep, poster: d.poster }, l.quality);
+    else api.openDownloadPage(l.token).then(() => toast(t('openedBrowser')), () => toast(t('dlFailed'), true));
+  };
   // animerco's, WeCima's and ristoanime's servers for the same episode are looked up alongside and appended as backups
   const backup = Promise.all([
     ...[scraper.animerco, scraper.wecima, scraper.ristoanime, scraper.okanime, scraper.shahiid].filter(Boolean).map(f => // the last two: website only
@@ -1772,41 +1805,6 @@ async function play(epPath) {
   };
   srv.querySelector('.dd-btn').onclick = () => srv.classList.contains('open') ? closeMenu(srv) : openMenu(srv);
 
-  // download menu: every download link by quality. MediaFire downloads in the app, other hosts open in the browser.
-  const dlm = $('#dlm');
-  let links = null; // fetched on first open
-  const drawDl = () => {
-    const have = store.downloads[epPath];
-    const top = have?.state === 'done' ? `<button class="dd-item go" data-act="offline">${ICON.play}<span class="host">${t('playOffline')}</span></button>`
-      : have?.state === 'active' ? `<button class="dd-item go" data-act="list">${ICON.download}<span class="host">${t('dlOpenList')}</span></button>` : '';
-    const item = l => `<button class="dd-item ${l.quality === store.prefs.dlQuality && l.label === store.prefs.dlHost ? 'on' : ''}" data-i="${links.indexOf(l)}">
-      <span class="host">${esc(l.label)}</span><span class="tag ${inAppHost(l.label) ? 'app' : ''}">${inAppHost(l.label) ? t('inApp') : ICON.external + ' ' + t('browser')}</span>
-      ${CHECK}</button>`;
-    const groups = !links ? `<div class="dd-group">${t('searching')}</div>` : !links.length ? `<div class="dd-group">${t('dlNone')}</div>`
-      : QUALITY.map(q => links.filter(l => l.quality === q).sort((a, b) => (inAppHost(b.label)) - (inAppHost(a.label))))
-          .filter(g => g.length).map(g => `<div class="dd-group">${g[0].quality}<small>${g.length}</small></div>${g.map(item).join('')}`).join('');
-    dlm.querySelector('.dd-menu').innerHTML = top + groups;
-  };
-  dlm.querySelector('.dd-btn').onclick = async () => {
-    if (dlm.classList.contains('open')) return closeMenu(dlm);
-    drawDl();
-    openMenu(dlm);
-    if (links) return;
-    try { links = await animeDownloadLinks(epPath, d.title, d.alt, ep); } catch (e) { console.error(e); links = []; }
-    if (here()) drawDl();
-  };
-  dlm.querySelector('.dd-menu').onclick = e => {
-    const b = e.target.closest('.dd-item');
-    if (!b) return;
-    closeMenu();
-    if (b.dataset.act === 'offline') return location.hash = offlineHash(epPath);
-    if (b.dataset.act === 'list') return location.hash = '#/downloads';
-    const l = links[b.dataset.i];
-    store.prefs.dlQuality = l.quality; store.prefs.dlHost = l.label; persist('prefs');
-    if (api.web) return WebDownloads.downloadVideo([{id:epPath,epPath,show,title:d.title,ep,poster:d.poster,quality:l.quality,host:l.label,token:l.token}]);
-    if (inAppHost(l.label)) startDownload({ id: epPath, epPath, show, title: d.title, ep, poster: d.poster }, l.quality);
-    else api.openDownloadPage(l.token).then(() => toast(t('openedBrowser')), () => toast(t('dlFailed'), true));
-  };
   srv.querySelector('.dd-menu').onclick = e => { const b = e.target.closest('.dd-item'); if (b) { closeMenu(); picked = true; tryFrom(+b.dataset.i); } };
   if (servers.length) tryFrom([store.prefs.showServer?.[show], store.prefs.server].filter(l => serverRank({ label: l }) < 3).map(l => servers.findIndex(s => s.label === l)).find(i => i >= 0) ?? 0); // this show's, else the last one anywhere
   else stage.innerHTML = '<div class="spin"></div>'; // nothing on witanime: wait for animerco
@@ -1877,6 +1875,57 @@ const closeMenu = only => {
 // a tap outside a menu closes it; the .dd itself is the phone sheet's dimmed backdrop
 document.addEventListener('click', e => document.querySelectorAll('.dd.open').forEach(m => (!m.contains(e.target) || e.target === m) && closeMenu(m)));
 document.addEventListener('click', e => e.target.closest('.player .pfull') && api.playerFull()); // phones: see mobile.js
+// the player's ⋮: download, cast, the browser and, when there are several, the episodes in a panel from the side. #dlm, #ext and
+// .pcast keep their names: each page wires them as ever. the panel is a menu too, so the video view, back and tapping off all just work
+let castInfo = null; // this page's { links: this episode's files, poster }, for casting
+let panelNames = null; // the show's names, to look its episodes' stills and names up by (series: none, as on their page)
+const playerMore = (eps, pic) => `<div class="pmore">
+  <div class="dd" id="pmenu"><button class="icon-btn" id="pmenuBtn" title="${t('more')}" aria-label="${t('more')}" aria-haspopup="menu">${ICON.dots}</button>
+    <div class="dd-menu">
+      ${eps.length > 1 ? `<button class="dd-item" id="pepsBtn">${ICON.index}<span class="host">${t('episodes')}</span></button>` : ''}
+      <button class="dd-item" id="pdl" title="${t('download')}">${ICON.download}<span class="host">${t('downloadShort')}</span></button>
+      ${api.cast ? `<button class="dd-item pcast">${ICON.cast}<span class="host">${t('cast')}</span></button>` : ''}
+      <button class="dd-item" id="ext" title="${t('openBrowserTip')}">${ICON.external}<span class="host">${t('openBrowser')}</span></button>
+    </div></div>
+  <div class="dd dlm" id="dlm"><button class="dd-btn"></button><div class="dd-menu"></div></div>
+  ${eps.length > 1 ? `<div class="dd pep" id="pep"><div class="dd-menu" role="dialog" aria-label="${t('episodes')}">
+    <div class="pep-head"><b>${t('episodes')} <small>${eps.length}</small></b><button class="icon-btn" id="pepX" title="${t('close')}" aria-label="${t('close')}">${ICON.x}</button></div>
+    <div class="pep-list" data-pic="${esc(img(pic))}">${eps.map(e => `<button class="pep-ep ${e.on ? 'on' : ''} ${e.seen && !e.on ? 'seen' : ''}" data-go="${esc(e.go)}" data-n="${esc(e.n)}"><img src="${esc(img(pic))}" alt="" loading="lazy"><span><b>${/^\d/.test(e.n) ? t('ep') + ' ' : ''}${esc(e.n)}</b></span></button>`).join('')}</div>
+  </div></div>` : ''}
+</div>`;
+// the panel's stills, names and filler marks, as on the show page: extras, asked for when it first opens, the numbers stand without them
+const fillPanel = list => {
+  if (!panelNames || list.dataset.filled) return;
+  list.dataset.filled = 1;
+  const rows = fn => list.isConnected && list.querySelectorAll('[data-n]').forEach(r => fn(r, +r.dataset.n));
+  scraper.episodeInfo(panelNames).then(info => rows((r, n) => {
+    const i = info[n], im = r.querySelector('img');
+    if (i?.thumb) { im.onerror = () => { im.onerror = null; im.src = list.dataset.pic; }; im.src = img(i.thumb); } // kitsu has dead ones
+    if (i?.name) r.querySelector('span').insertAdjacentHTML('beforeend', `<small dir="auto">${esc(i.name)}</small>`);
+  })).catch(() => {});
+  scraper.filler(panelNames).then(kinds => rows((r, n) => kinds[n] && r.querySelector('b').insertAdjacentHTML('beforeend', epKind(kinds[n])))).catch(() => {});
+};
+// after the tap-outside listener above: what opens here isn't closed again by the same tap
+document.addEventListener('click', e => {
+  const el = e.target;
+  if (el.closest('#pmenuBtn')) { api.castReady?.(); return $('#pmenu').classList.contains('open') ? closeMenu($('#pmenu')) : openMenu($('#pmenu')); }
+  const item = el.closest('#pmenu .dd-item');
+  if (item) {
+    $('#pmenuBtn').focus({ preventScroll: true }); // the item is about to hide: a remote's ring comes back here
+    if (item.id === 'pdl') $('#dlm .dd-btn').click();
+    if (item.id === 'pepsBtn') {
+      openMenu($('#pep'));
+      const list = $('.pep-list'), on = list.querySelector('.on');
+      fillPanel(list);
+      if (on) list.scrollTop = on.offsetTop - list.clientHeight / 2; // a long show opens at this episode
+    }
+    closeMenu($('#pmenu')); // last: with another menu open, the video view stays out of the way
+    return;
+  }
+  if (el.closest('#pepX')) return closeMenu($('#pep'));
+  const ep = el.closest('.pep-list [data-go]');
+  if (ep) { closeMenu(); if (!ep.classList.contains('on')) location.replace(ep.dataset.go); } // like the next-episode button: back still leaves the player
+});
 // the play / pause bar under every player's video, in the thumb's reach (MEGA's player has none of its own on phones): a
 // downloaded episode's video is in the page; a server's is in its frame, reached through api.playerToggle (phones)
 const playBar = (shown = false) => api.playerToggle || shown ? `<div class="pbar" ${shown ? '' : 'hidden'}><button class="icon-btn" id="pp" title="${t('play')}" aria-label="${t('play')}">${ICON.play}</button></div>` : '';
@@ -1902,13 +1951,14 @@ addEventListener('message', e => typeof e.data?.medPaused === 'boolean' && setPl
 // there, it stops here. Without Google Play services the screen is mirrored instead (screen: the player stays)
 document.addEventListener('click', e => {
   if (!e.target.closest('.player .pcast')) return;
-  const v = $('.player video'), title = $('.player .ttl')?.innerText.replace(/\s+/g, ' ').trim() || '';
-  api.cast({ title, file: v?.dataset.file, at: v?.currentTime || 0 }).then(r => {
+  const v = $('.player video'), title = [...$('.player .ttl')?.children || []].map(x => x.innerText.trim()).filter(Boolean).join(' · '); // the page spaces them with margins, which innerText drops
+  api.cast({ title, file: v?.dataset.file, at: v?.currentTime || 0, ...castInfo }).then(r => {
     if (r?.screen) return;
     v?.pause();
     api.player(null);
+    if (api.web && $('.stage')) $('.stage').innerHTML = `<div class="empty"><b>${t('casting')}</b></div>`; // nothing plays here now: not a spinner forever
     toast(t('casting'));
-  }, e => /cancelled/.test(e.message) || toast(t(/no video/.test(e.message) ? 'castPlayFirst' : /no wifi/.test(e.message) ? 'castWifi' : /not castable/.test(e.message) ? 'castHost' : 'castFailed'), true));
+  }, e => /cancelled/.test(e.message) || toast(t(/no video/.test(e.message) ? 'castPlayFirst' : /no wifi/.test(e.message) ? 'castWifi' : /no file/.test(e.message) ? 'castNoFile' : /no tv/.test(e.message) ? 'castNoTv' : /not castable/.test(e.message) ? 'castBrowser' : 'castFailed'), true));
 });
 const closeTrailer = () => { const m = $('.trailer'); m?.remove(); return !!m; };
 const back = () => closeContextMenu() || closeSettings() || closeDrawer() || closeSheet() || closeSelect() || closeSearch() || closeMenu() || closeTrailer() || ($('.player') && $('#back').click());

@@ -18,7 +18,7 @@ The UI only talks to `window.api`. It never calls the network or storage directl
   Cloudflare refuses witanime (and egydead, animerco, olympustaff) to Vercel's servers, so the website's anime comes from Shahiid Anime
   (`shahiid.js`, web only: lists, show pages, its own servers), with RistoAnime (`risto.js`: same shapes and paths as `scraper.js`) filling
   what it lacks and adding servers with OKAnime. One card per show across them (`showKey`). Plain page reads are GETs that Vercel's cache shares for 5 minutes;
-  `EXIT_PROXY` (env, optional) sends challenged requests through a residential proxy.
+  `EXIT_PROXY` (env, optional) sends challenged requests through a residential proxy. Casting: Google's Cast sender (loaded from gstatic when the player's ⋮ opens) hands the TV a direct file of the episode (`MediaHosts.castOrder`); only on https, and only in Chrome or Edge.
 
 **Rule:** a new `api` call goes in both `preload.js`/`main.js` and `mobile.js`. A phone-only feature is called with
 `api.x?.()` so the desktop skips it (examples: `storage`, `cast`, `checkUpdate`, `installUpdate`).
