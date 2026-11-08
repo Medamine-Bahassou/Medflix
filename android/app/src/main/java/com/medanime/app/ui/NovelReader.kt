@@ -289,7 +289,7 @@ fun NovelReaderScreen(novel: String, start: String, nav: Nav, title0: String = "
             Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().onSizeChanged { bottomH = it.height }) {
                 if (speaking != null) SpeechBar(speaking, paper) { sheet = "voice" }
                 AnimatedVisibility(showBars && !findOpen, enter = fadeIn(), exit = fadeOut()) {
-                    if (c != null) BottomBarOf(r, c, look, setLook, paper, title, poster, speaking != null) { sheet = it }
+                    if (c != null) BottomBarOf(r, c, look, setLook, paper) { sheet = it }
                 }
                 if (!showBars && c != null && speaking == null) StatusLine(r, c, paper)
             }
@@ -625,7 +625,7 @@ private fun TopBarOf(r: Rd, c: NovelChapter?, title: String, n0: String, poster:
 /** the bottom bar, in reach of a thumb: how far along (sliding moves through the chapter, from the right as the text runs) with the chapters beside it, then the tools */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun BottomBarOf(r: Rd, c: NovelChapter, l: Look, setLook: (Look) -> Unit, p: Paper, title: String, poster: String, speaking: Boolean, open: (String) -> Unit) {
+private fun BottomBarOf(r: Rd, c: NovelChapter, l: Look, setLook: (Look) -> Unit, p: Paper, open: (String) -> Unit) {
     var speedOpen by remember { mutableStateOf(false) }
     // auto-scrolling, the page never stops: the bars a tap shows go by themselves
     LaunchedEffect(r.bars, r.auto, speedOpen) { if (r.auto && r.bars && !speedOpen) { delay(4000); r.bars = false } }
@@ -646,7 +646,6 @@ private fun BottomBarOf(r: Rd, c: NovelChapter, l: Look, setLook: (Look) -> Unit
         Text("⁦${progress(r.at, c)}% · ${t("minLeft", minutesLeft(r.at, c))}⁩", Modifier.fillMaxWidth(), color = p.muted, fontSize = 11.sp, textAlign = TextAlign.Center)
         Row(Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
             Tool(Ic.index, t("rdIndex"), p) { open("index") }
-            Tool(Ic.headphones, t("ttsListen"), p, speaking) { if (speaking) ReadAloud.stop() else if (c.paras.isNotEmpty()) ReadAloud.start(r.novel, title, poster, c, if (r.at >= c.paras.size) 0 else r.at.toInt()) }
             Tool(Ic.textAa, t("rdDisplay"), p) { open("look") }
             // pages don't glide. A tap runs it, a long press its speed
             if (!l.paged) Column(Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).combinedClickable(onLongClick = { speedOpen = !speedOpen }) { r.auto = !r.auto; if (r.auto) speedOpen = false }.padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -657,9 +656,9 @@ private fun BottomBarOf(r: Rd, c: NovelChapter, l: Look, setLook: (Look) -> Unit
     }
 }
 @Composable
-private fun RowScope.Tool(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, p: Paper, on: Boolean = false, go: () -> Unit) =
+private fun RowScope.Tool(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, p: Paper, go: () -> Unit) =
     Column(Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).clickable(onClick = go).padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Icon(icon, label, Modifier.size(22.dp), tint = if (on) Red else p.fg)
+        Icon(icon, label, Modifier.size(22.dp), tint = p.fg)
         Text(label, Modifier.padding(top = 3.dp), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 
