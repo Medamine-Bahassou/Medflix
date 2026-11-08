@@ -267,8 +267,9 @@ fun MangaReaderScreen(cid: String, nav: Nav, title: String = "", chapter: String
         } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { /* pages are already readable */ }
     } }
     var lockBackAt by remember { mutableLongStateOf(0L) }
-    // locked: the first back only warns, a second one within 2s leaves
-    BackHandler(rdLocked) { if (System.currentTimeMillis() - lockBackAt < 2000) nav.back() else { lockBackAt = System.currentTimeMillis(); toast(t("backAgain")) } }
+    // locked or auto-scrolling: the first back only warns, a second one within 2s leaves
+    val backTwice = { if (System.currentTimeMillis() - lockBackAt < 2000) nav.back() else { lockBackAt = System.currentTimeMillis(); toast(t("backAgain")) } }
+    BackHandler(rdLocked, backTwice)
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         Body(l, retry) { d ->
             // the chapters in the list, in order; each takes its pages + its end as items. Items are keyed by chapter + page:
@@ -355,6 +356,7 @@ fun MangaReaderScreen(cid: String, nav: Nav, title: String = "", chapter: String
             // auto-scroll (scroll mode, manga.js autoScroll): the pages glide down at 0.5x-10x (40dp/s per 1x, remembered). A long
             // press on its button opens the speed row; it runs until that button stops it (or another chapter opens)
             var auto by remember(cid) { mutableStateOf(false) }
+            BackHandler(auto && !horiz, backTwice)
             var speedOpen by remember { mutableStateOf(false) }
             var speed by remember { mutableFloatStateOf(Store["prefs"].optDouble("mangaSpeed", 3.0).toFloat()) }
             val setSpeed = { v: Float -> speed = (Math.round(v * 2) / 2f).coerceIn(.5f, 10f); Store["prefs"].put("mangaSpeed", speed.toDouble()); Store.persist("prefs", true) }
@@ -368,8 +370,8 @@ fun MangaReaderScreen(cid: String, nav: Nav, title: String = "", chapter: String
                 while (auto) {
                     val now = withFrameNanos { it }
                     val dy = (now - last) / 1e9f * 40f * speed * dens; last = now
-                    // a finger dragging the pages takes the scroll over meanwhile: the glide goes on after it
-                    try { list.scrollBy(dy) } catch (e: kotlinx.coroutines.CancellationException) { if (!kotlinx.coroutines.currentCoroutineContext().isActive) throw e }
+                    // a finger takes the scroll over, its fling too: the glide goes on after it. Same priority as a fling, so a scrollBy now would cancel it
+                    if (!list.isScrollInProgress) try { list.scrollBy(dy) } catch (e: kotlinx.coroutines.CancellationException) { if (!kotlinx.coroutines.currentCoroutineContext().isActive) throw e }
                 }
             }
             // zoom, 1x-4x (manga.js readerZoom): pinched around the fingers; zoomed, one finger also pans sideways while the

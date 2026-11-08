@@ -254,6 +254,9 @@ fun NovelReaderScreen(novel: String, start: String, nav: Nav, title0: String = "
             Net.activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
     }
+    // auto-scrolling: the first back only warns, a second one within 2s leaves. Before find's: the last one composed goes first, so back still closes find
+    var autoBackAt by remember { mutableLongStateOf(0L) }
+    BackHandler(r.auto && !look.paged) { if (System.currentTimeMillis() - autoBackAt < 2000) nav.back() else { autoBackAt = System.currentTimeMillis(); toast(t("backAgain")) } }
     BackHandler(findOpen) { r.find = null }
 
     // pages are laid out once, so theirs run under the bars: opened without them, or the first page would start hidden
@@ -417,7 +420,8 @@ private fun ScrollText(r: Rd, l: Look, p: Paper, setLook: (Look) -> Unit, nav: N
         while (r.auto) {
             val now = withFrameNanos { it }
             val dy = (now - last) / 1e9f * 8f * look.speed * dens; last = now
-            try { list.scrollBy(dy) } catch (e: kotlinx.coroutines.CancellationException) { if (!kotlinx.coroutines.currentCoroutineContext().isActive) throw e }
+            // a finger's fling goes on to its end: same priority as this, so a scrollBy now would cancel it
+            if (!list.isScrollInProgress) try { list.scrollBy(dy) } catch (e: kotlinx.coroutines.CancellationException) { if (!kotlinx.coroutines.currentCoroutineContext().isActive) throw e }
         }
     }
     Store.version.intValue // a mark added or removed

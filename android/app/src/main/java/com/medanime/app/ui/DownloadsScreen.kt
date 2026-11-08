@@ -153,14 +153,15 @@ fun DownloadsScreen(show: String, nav: Nav) {
             if (v == "seen" || v == "unseen") { Store.persist("seen"); Store.persist("mangaSeen"); Store.persist("novelSeen") }
             if (v == "delete") ask = t("confirmDelN", ds.size) to { ds.forEach { Downloads.delete(it.optString("id")) } }
         }
-        LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Box(Modifier.weight(1f)) {
+        LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 88.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { // bottom: the last row clear of the button
             items(items, { it.optString("id") }) { d ->
                 Downloads.tick.intValue; Store.version.intValue // d is mutated in place: read state here so strong skipping redraws the row
                 val st = d.optString("state")
                 val id = d.optString("id")
                 Row(Modifier.fillMaxWidth().picked(picks.has(id)).clip(RoundedCornerShape(6.dp)).background(CardC)
                     .combinedClickable(onLongClick = { if (picks.on) picks.toggle(id) else picks.start(id) }) { // a tap reads or plays it: its download once done, else from the site
-                        if (picks.on) picks.toggle(id) else nav.go(if (d.novel()) d.readScreen() else if (d.manga()) Screen.MangaRead(d.optString("chapterId"), d.optString("title"), d.optString("ep")) else if (st == "done") Screen.Offline(d.optString("epPath")) else playScreen(d.optString("epPath")))
+                        if (picks.on) picks.toggle(id) else nav.go(d.opens())
                     }
                     .padding(start = 14.dp, end = 4.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -172,7 +173,7 @@ fun DownloadsScreen(show: String, nav: Nav) {
                             Modifier.fillMaxWidth().padding(vertical = 4.dp), color = Red, trackColor = Color(0x22FFFFFF))
                         Text(status(d), color = Muted, fontSize = 12.sp)
                     }
-                    if (st == "done") IconButton({ nav.go(if (d.novel()) d.readScreen() else if (d.manga()) Screen.MangaRead(d.optString("chapterId"), d.optString("title"), d.optString("ep")) else Screen.Offline(d.optString("epPath"))) }) { Icon(Ic.play, t("play"), Modifier.size(20.dp), tint = Red) }
+                    if (st == "done") IconButton({ nav.go(d.opens()) }) { Icon(Ic.play, t("play"), Modifier.size(20.dp), tint = Red) }
                     if (st == "error" || st == "cancelled") IconButton({ Downloads.retry(id) }) { Icon(Ic.refresh, t("retry"), Modifier.size(20.dp)) }
                     if (st == "paused") IconButton({ Downloads.resume(id) }) { Icon(Ic.download, t("showResume"), Modifier.size(20.dp), tint = Red) }
                     if (st == "active" || st == "queued") IconButton({ Downloads.pause(id) }) { Icon(Ic.pause, t("showPause"), Modifier.size(20.dp)) }
@@ -180,6 +181,11 @@ fun DownloadsScreen(show: String, nav: Nav) {
                     else IconButton({ ask = t("confirmDel", "${d.optString("title")} · ${t(if (d.book()) "chapter" else "episode")} ${d.optString("ep")}") to { Downloads.delete(id) } }) { Icon(Ic.trash, t("del"), Modifier.size(20.dp)) }
                 }
             }
+        }
+        if (!picks.on) carryOn(show, items)?.let { (to, what) ->
+            ExtendedFloatingActionButton({ Text(what, fontWeight = FontWeight.Bold) }, { Icon(Ic.play, null, Modifier.size(18.dp)) }, { nav.go(to) },
+                Modifier.align(Alignment.BottomEnd).padding(16.dp), shape = RoundedCornerShape(99.dp), containerColor = Red, contentColor = Color.White)
+        }
         }
     }
     if (stats) StatsSheet(groups.map { it.key to it.value }, nav) { stats = false }
@@ -190,6 +196,24 @@ fun DownloadsScreen(show: String, nav: Nav) {
 }
 
 private fun JSONObject.readScreen() = Screen.NovelRead(optString("show").substringAfterLast('/'), optString("ch"), optString("title"), optString("ep"))
+// a download's reader or player; an episode not finished yet: Offline hands it to the site's player
+private fun JSONObject.opens() = if (novel()) readScreen() else if (manga()) Screen.MangaRead(optString("chapterId"), optString("title"), optString("ep")) else Screen.Offline(optString("epPath"))
+/**
+ * the button over a show's downloads (items in order): where it was left, if that one's saved; gone (never saved, or deleted
+ * once watched): the next saved after it, so it still works offline; none: where it was left, from the site. Not started: the first saved
+ */
+private fun carryOn(show: String, items: List<JSONObject>): Pair<Screen, String>? {
+    val d0 = items.first()
+    val id = show.substringAfterLast('/')
+    val saved = items.filter { it.optString("state") == "done" }
+    val left = resumeOf(Card("", "", d0.optString("title"), "", "", "", "", null, show))
+        ?: return saved.firstOrNull()?.let { it.opens() to t(if (it.book()) "read" else "play") }
+    val at = if (d0.manga()) Manga.chNum(Store["manga"].optJSONObject(id)?.opt("n")) else if (d0.novel()) Novels.resumeOf(id)?.second?.optString("n").orEmpty() else Store["history"].optJSONObject(show)?.optString("ep").orEmpty()
+    val n = at.toDoubleOrNull()
+    val d = saved.find { it.optString("ep") == at } ?: n?.let { saved.find { s -> (s.optString("ep").toDoubleOrNull() ?: -1.0) >= it } } ?: return left
+    val ep = d.optString("ep")
+    return d.opens() to if (d.book()) t("resumeCh", ep) else if (ep.toDoubleOrNull() != null) t("resume", ep) else t("play") // a film's "ep" is its label
+}
 private fun JSONObject.seen() = if (book()) Store[seenKey()].optInt(optString("chapterId")) == 2 else Store["seen"].has(optString("epPath"))
 
 /**
