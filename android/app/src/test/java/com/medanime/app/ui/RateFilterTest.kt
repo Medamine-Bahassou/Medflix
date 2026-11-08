@@ -194,4 +194,17 @@ class RateFilterTest {
         assertEquals(67.0, rows[0].a!!, 0.0); assertTrue(rows[0].series); assertEquals("2025", rows[0].year)
         assertNull(rows[1].a); assertFalse(rows[1].series)
     }
+    @Test fun `the slider's picture is a wide frame of the right title`() {
+        fun title(name: String, year: Int, type: String, genre: String, stills: String, poster: String = "") = """{"node":{"entity":{"titleType":{"id":"$type"},"titleText":{"text":"$name"},"releaseYear":{"year":$year},"titleGenres":{"genres":[{"genre":{"text":"$genre"}}]},"primaryImage":{"url":"$poster"},"images":{"edges":[$stills]}}}}"""
+        fun still(url: String, w: Int, h: Int) = """{"node":{"url":"$url","width":$w,"height":$h}}"""
+        fun rows(vararg t: String) = HeroArt.titles("""{"data":{"mainSearch":{"edges":[${t.joinToString(",")}]}}}""")
+        val odyssey = rows(title("The Odyssey", 1997, "movie", "Drama", still("https://i/old._V1_.jpg", 1920, 1080)),
+            title("The Odyssey", 2026, "movie", "Drama", listOf(still("https://i/tall._V1_.jpg", 4160, 6240), still("https://i/small._V1_.jpg", 600, 400), still("https://i/new._V1_.jpg", 6240, 4160)).joinToString(",")))
+        assertEquals("https://i/new._V1_QL75_UX1920_.jpg", HeroArt.filmArt(odyssey, film("The Odyssey", "2026")))
+        assertEquals("", HeroArt.filmArt(odyssey, film("The Odyssey", ""))) // two of that name, no year: neither
+        assertEquals("https://i/p._V1_QL75_UY1500_.jpg", HeroArt.filmArt(rows(title("The Odyssey", 2026, "movie", "Drama", "", "https://i/p._V1_.jpg")), film("The Odyssey", "2026"))) // no frame: its large poster
+        val onePiece = rows(title("One Piece", 2023, "tvSeries", "Adventure", still("https://i/live.jpg", 1920, 1080)), title("One Piece", 1999, "tvSeries", "Animation", still("https://i/ani.jpg", 1920, 1080)))
+        assertEquals("https://i/ani.jpg", HeroArt.animeStill(onePiece, setOf(EpisodeRatings.spelled("One Piece"))))
+        assertNull(HeroArt.animeStill(onePiece, setOf(EpisodeRatings.spelled("Two Piece"))))
+    }
 }

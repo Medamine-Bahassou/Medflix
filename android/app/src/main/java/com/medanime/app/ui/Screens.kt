@@ -45,10 +45,11 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 
 private fun animeSlides(d: HomePage) = d.hero.map { Slide(it.banner, it.title, it.desc, Screen.Title(it.path), it.watch.takeIf { w -> w.isNotEmpty() }?.let { w -> Screen.Play(w) }) }
-fun mangaSlides(top: List<MSeries>) = top.filter { it.cover.isNotEmpty() }.map { s ->
-    Slide(s.cover, s.title, s.story, Screen.MangaSeries(s.id), Store["manga"].optJSONObject(s.id)?.optString("chapterId")?.let { Screen.MangaRead(it, s.title) })
+fun mangaSlides(top: List<MSeries>) = top.filter { it.poster.isNotEmpty() || it.cover.isNotEmpty() }.map { s ->
+    // the poster, not its wide cover: those are 229-400px pictures the site blows up to 1200x800, and this slider is portrait anyway
+    Slide(s.poster.ifEmpty { s.cover }, s.title, s.story, Screen.MangaSeries(s.id), Store["manga"].optJSONObject(s.id)?.optString("chapterId")?.let { Screen.MangaRead(it, s.title) })
 }
-fun filmSlides(items: List<Card>) = items.filter { it.poster.isNotEmpty() }.map { Slide(it.poster, it.title, it.desc, screenFor(it), Screen.CinemaPlay(it.path.removePrefix("/cinema/"))) }
+fun filmSlides(items: List<Card>) = items.filter { it.poster.isNotEmpty() }.map { Slide(it.poster, it.title, it.desc, screenFor(it), Screen.CinemaPlay(it.path.removePrefix("/cinema/")), film = it) }
 suspend fun mangaTop(items: List<Card>) = coroutineScope { items.map { async { runCatching { Manga.seriesOf(it.path.substringAfterLast('/')) }.getOrNull() } }.map { it.await() }.filterNotNull() }
 
 /** Home: a bit of every section; a site that doesn't answer just leaves its rows out (app.js home) */

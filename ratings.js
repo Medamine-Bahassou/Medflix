@@ -290,9 +290,43 @@ const Ratings = (() => {
     if (r?.length && target.isConnected) { target.innerHTML = r.map(x => badge(x.source, x.value)).join(''); target.title = r.map(x => x.source).join(' · '); }
   }), {rootMargin:'100px'});
   new MutationObserver(() => document.querySelectorAll('[data-rating]:not([data-rating-ready])').forEach(el => { el.dataset.ratingReady = '1'; observer.observe(el); })).observe(document.documentElement, {childList:true, subtree:true});
+  // ---------- the slider's picture ----------
+  // a title's frames on IMDb: the sites only have small posters. Its own files run to 10000px: amazon's image service sizes them by address
+  const sized = (url, by) => url.replace(/\._V1_.*\.(\w+)$/, `._V1_QL75_${by}_.$1`);
+  const frames = async name => {
+    const query = 'query{mainSearch(first:6,options:{searchTerm:' + JSON.stringify(name) + ',type:TITLE}){edges{node{entity{... on Title{titleType{id} titleText{text} originalTitleText{text} releaseYear{year} titleGenres{genres{genre{text}}} primaryImage{url} images(first:20,filter:{types:["still_frame"]}){edges{node{url width height}}}}}}}}}';
+    const j = JSON.parse(await api.fetch('https://caching.graphql.imdb.com/', { query }, false, true));
+    return (j.data?.mainSearch?.edges || []).map(e => e.node?.entity).filter(h => /^(movie|tvMovie|tvSeries|tvMiniSeries)$/.test(h?.titleType?.id)).map(h => ({
+      names: [h.titleText?.text, h.originalTitleText?.text], year: h.releaseYear?.year, series: h.titleType.id !== 'movie' && h.titleType.id !== 'tvMovie',
+      anime: !!h.titleGenres?.genres?.some(g => g.genre?.text === 'Animation'), poster: h.primaryImage?.url,
+      still: h.images?.edges.map(e => e.node).find(i => i.width >= 1280 && i.width / i.height >= 1.3)?.url, // its portraits and small old ones would blur again
+    }));
+  };
+  // the sharpest picture of a slide, '' if it has none better: only a film's or an anime's, as nothing has more than the sites' covers for manga
+  // and novels (AniList's largest is 460px, its banners 400px high: the slider's own blur). Kept with the page cache, a miss too
+  const art = h => scraper.remember('art:' + h.title + '|' + (h.year || ''), async () => {
+    const name = filmName(h.title);
+    if (!name) return ''; // only an Arabic name: IMDb has it under another
+    if (/^#\/cinema\//.test(h.info)) { // by name, kind and year: two 2026 films are called The Odyssey
+      const hit = filmPick(await frames(name), { title: h.title, year: h.year, path: decodeURIComponent(h.info.slice(1)) });
+      return hit?.still ? sized(hit.still, 'UX1920') : hit?.poster ? sized(hit.poster, 'UY1500') : '';
+    }
+    if (!/^#\/title\//.test(h.info)) return '';
+    // the animated one (One Piece has a live action of its name). A romaji name is often not IMDb's: AniList knows its English one
+    const still = async (ask, want) => (await frames(ask)).find(r => r.anime && r.still && r.names.some(n => want.includes(filmName(n))))?.still;
+    let url = await still(name, [name]);
+    if (!url) {
+      const query = `{Page(perPage:6){media(search:${JSON.stringify(name)},type:ANIME,sort:SEARCH_MATCH){title{romaji english} synonyms}}}`;
+      const media = JSON.parse(await api.fetch('https://graphql.anilist.co', { query })).data?.Page?.media || [];
+      const hit = media.find(m => [...Object.values(m.title), ...m.synonyms].some(n => filmName(n) === name));
+      for (const other of new Set(hit ? [hit.title.english, hit.title.romaji].filter(Boolean).map(filmName).filter(n => n && n !== name) : [])) if ((url = await still(other, [name, other]))) break;
+    }
+    return url ? sized(url, 'UX1920') : '';
+  });
   return {
     // a supplied IMDb score is shown immediately; the other sources are still looked up
     slot: c => `<span class="source-rating" data-rating="${esc(JSON.stringify({title:c.title, alt:c.alt || '', type:c.type, path:c.path || '', year:c.year || '', imdb:c.imdb || ''}))}">${c.imdb ? badge('IMDb', c.imdb) : ''}</span>`,
     graph,
+    art,
   };
 })();

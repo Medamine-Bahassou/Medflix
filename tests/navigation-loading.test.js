@@ -44,7 +44,7 @@ function playbackRoute(){
  const node=()=>({style:{},classList:{contains:()=>false,toggle(){}},querySelector(){return node();},addEventListener(){},getBoundingClientRect:()=>({x:0,y:0,width:800,height:450})});
  const view={style:{},classList:{toggle(){}},querySelectorAll:()=>[],firstElementChild:null,get innerHTML(){return html;},set innerHTML(s){html=s;this.firstElementChild={};nodes=new Map([...s.matchAll(/id="([^"]+)"/g)].map(m=>['#'+m[1],node()]));if(s.includes('class="stage"'))nodes.set('.stage',node());}};
  view.innerHTML='<div class="previous">Previous page</div>';
- const nav=node(),c={view,location:{hash:'#/play/show/1',replace(){}},history:{length:1},api:{web:true,player:(...args)=>players.push(args),sources:()=>sources.promise,awSources:async()=>[],stream:async()=>({url:'https://example.invalid/player',native:true})},
+ const nav=node(),c={view,location:{hash:'#/play/show/1',replace(){}},history:{length:1},document:{body:{classList:{remove(){}}}},api:{web:true,player:(...args)=>players.push(args),sources:()=>sources.promise,awSources:async()=>[],stream:async()=>({url:'https://example.invalid/player',native:true})},
   scraper:{newView(){},details:()=>details.promise,animerco:async()=>[],wecima:async()=>[],ristoanime:async()=>[]},
   store:{downloads:{},history:{},seen:{},streams:{},prefs:{}},$:sel=>sel==='#nav'?nav:nodes.get(sel)||null,console:{error:e=>errors.push(e)},failed:e=>errors.push(e),spinner:()=>view.innerHTML='<div class="center"><div class="spin"></div></div>',
   setTimeout:f=>{timers.set(++timerId,f);return timerId;},clearTimeout:id=>timers.delete(id),clearInterval(){},scrollTo(){},heroTimer:null,cardData:new Map(),pageRefresh:null,pagePress:null,picks:null,playerObs:null,
@@ -69,4 +69,17 @@ test('delayed route spinner still appears while the next page has not rendered',
  const s=playbackRoute(),pending=s.c.route();s.flushSpinner();assert.match(s.c.view.innerHTML,/class="spin"/);
  s.details.resolve({title:'Show',episodes:[{path:'/watch/show/1',ep:'1'}]});s.sources.resolve([]);await pending;
  assert.deepEqual(s.errors.map(e=>e.message),[]);assert.match(s.c.view.innerHTML,/id="srv"/);
+});
+test('show page head: names escaped, play in the row and floating, its menu holds what it is given',()=>{
+ const app=fs.readFileSync('app.js','utf8'),c={t:(k,v)=>v===undefined?k:k+':'+v,esc:s=>String(s??'').replaceAll('<','&lt;').replaceAll('"','&quot;'),ICON:new Proxy({},{get:(_,k)=>'['+String(k)+']'})};
+ vm.createContext(c);vm.runInContext(app.slice(app.indexOf('const detTabs ='),app.indexOf('// the ⋮ menu: any tap'))+'\nglobalThis.detHead=detHead;',c);
+ const page=c.detHead({list:['chapters',951],banner:"it's.jpg",poster:'p.jpg',title:'<Demon>',alt:'Other',kinds:['Manhua','Ongoing'],views:'249,053',chips:['Action'],desc:'Story',rating:'<i class="r"></i>',play:{href:'#/read/1',label:'Read'},actions:'<button id="fav"></button>',more:'<button id="grf"></button>',refresh:true});
+ assert.doesNotMatch(page,/<Demon>/);
+ assert.match(page,/url\('it%27s\.jpg'\)/); // a quote in an address can't end the url()
+ assert.equal(page.match(/href="#\/read\/1"/g).length,2);assert.match(page,/class="btn red det-fab" data-pane="eps"/); // the list tab keeps its play button
+ assert.match(page,/class="det-tabs"/);assert.match(page,/class="det-kinds"><span>Manhua<\/span><span>Ongoing<\/span>/);assert.match(page,/class="det-stat"/);
+ assert.match(page,/class="det-more"><button id="grf"><\/button><button class="icon-btn det-rf" id="rf"/);
+ // a film: no tabs, no poster, no play, no refresh
+ const bare=c.detHead({title:'Film'});
+ assert.doesNotMatch(bare,/det-tabs|det-fab|class="poster"|id="rf"|det-stat|det-kinds/);assert.match(bare,/class="det bare"/);
 });

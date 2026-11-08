@@ -877,8 +877,8 @@ fun CardsGrid(all: List<Card>, nav: Nav, grid: androidx.compose.foundation.lazy.
 fun CardGrid(base: String, nav: Nav, header: @Composable () -> Unit = {}) =
     PagedGrid(base, { Witanime.list(base, 1, it) }, { Witanime.list(base, it).first() }, nav, header)
 
-/** a cover slide: info opens the title, play starts it */
-class Slide(val banner: String, val title: String, val desc: String, val info: Screen, val play: Screen? = null)
+/** a cover slide: info opens the title, play starts it. film: its card, when it's one, for HeroArt to find it by */
+class Slide(val banner: String, val title: String, val desc: String, val info: Screen, val play: Screen? = null, val film: Card? = null)
 
 /** the cover slider: Ken Burns slides, one every 8s, swiped the way pages turn */
 @Composable
@@ -890,7 +890,12 @@ fun HeroPager(hero: List<Slide>, nav: Nav) {
     Box(Modifier.fillMaxWidth().height(480.dp).clipToBounds()) { // the zoomed slide stays inside
         HorizontalPager(pager) { i ->
             Box(Modifier.fillMaxSize()) {
-                NetImage(hero[i].banner, Modifier.fillMaxSize().graphicsLayer { scaleX = zoom; scaleY = zoom }, icon = when (hero[i].info) { is Screen.MangaSeries -> Ic.manga; is Screen.NovelTitle -> Ic.novel; is Screen.CinemaTitle -> Ic.cinema; else -> Ic.series }) // its title is drawn over it
+                // asked only as its page comes up. Loaded before it's swapped in, so the poster stays until then (a failed one stays too)
+                val art by produceState(HeroArt.ready(hero[i]), hero[i].title) {
+                    val url = HeroArt.of(hero[i]) ?: return@produceState
+                    if (url != value && SingletonImageLoader.get(Net.app).execute(coil3.request.ImageRequest.Builder(Net.app).data(url).build()) is coil3.request.SuccessResult) value = url
+                }
+                NetImage(art, Modifier.fillMaxSize().graphicsLayer { scaleX = zoom; scaleY = zoom }, icon = when (hero[i].info) { is Screen.MangaSeries -> Ic.manga; is Screen.NovelTitle -> Ic.novel; is Screen.CinemaTitle -> Ic.cinema; else -> Ic.series }) // its title is drawn over it
                 Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Transparent, .45f to Color(0x33000000), 1f to Bg)))
             }
         }

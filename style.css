@@ -79,6 +79,14 @@ input:focus-visible, select:focus-visible { outline: none; }
   .hero .info { top: 50%; bottom: auto; transform: translateY(-40%); max-width: min(560px, 38%); }
   .hero h2 { font-size: clamp(30px, 3.4vw, 54px); }
   .dots { inset-inline: var(--gutter) auto; bottom: 19%; } /* under the buttons, clear of the chips row below the slider */
+  /* a portrait cover: whole, about its own size, on a blurred copy of itself. no zoom: it's what shows its pixels (app.js heroPage) */
+  .hero .slide.tall::before { content: ""; position: absolute; inset: -40px; background: var(--art) center / cover; filter: blur(36px) brightness(.55);
+    -webkit-mask-image: linear-gradient(to right, #0000 8%, #000 55%), linear-gradient(to top, #0000 6%, #000 34%); -webkit-mask-composite: source-in;
+    mask-image: linear-gradient(to right, #0000 8%, #000 55%), linear-gradient(to top, #0000 6%, #000 34%); mask-composite: intersect; }
+  [dir=rtl] .hero .slide.tall::before { -webkit-mask-image: linear-gradient(to left, #0000 8%, #000 55%), linear-gradient(to top, #0000 6%, #000 34%);
+    mask-image: linear-gradient(to left, #0000 8%, #000 55%), linear-gradient(to top, #0000 6%, #000 34%); }
+  .hero .slide.tall img, [dir=rtl] .hero .slide.tall img { inset-block: 7% auto; inset-inline-end: 9%; width: auto; height: 78%; border-radius: 8px; box-shadow: 0 14px 44px #000a; transform: none; animation: none;
+    -webkit-mask-image: none; mask-image: none; }
 }
 .dots i { width: 22px; height: 3px; background: #fff5; border-radius: 2px; cursor: pointer; transition: all .3s; }
 .dots i.on { background: var(--red); width: 38px; }
@@ -168,15 +176,16 @@ input:focus-visible, select:focus-visible { outline: none; }
 .section h2 { font-size: 22px; margin-bottom: 16px; display: flex; align-items: center; gap: 14px; }
 .section h2 small { color: var(--muted); font-weight: 400; font-size: 14px; }
 .det-tabs { display: none; } /* phones only: wide screens show details and the list one under the other */
+.det-bar, .det-kinds, .det-stat, .det-fab, .det-rf span { display: none; } /* phones only too (their block at the end of this file) */
+.det-names, .det-story, .det-do, .det-more { display: contents; } /* wide screens: groups only phones lay out, the parts one under the other */
 @media (max-width: 760px) {
-  /* a title's page as the app has it: details or its list (episodes, chapters), picked from tabs held under the nav */
-  .det-tabs { display: flex; position: sticky; top: var(--nav-h, 64px); z-index: 20; margin-top: calc(var(--nav-h, 64px)); background: var(--bg); border-bottom: 1px solid #ffffff1a; }
+  /* a title's page as the app has it: details or its list (episodes, chapters), picked from tabs held under its bar */
+  .det-tabs { display: flex; position: sticky; top: var(--bar-h); z-index: 20; background: var(--bg); border-bottom: 1px solid #ffffff1a; }
   .det-tabs button { flex: 1; min-height: 48px; background: none; color: var(--muted); font: inherit; font-weight: 600; border-bottom: 2px solid transparent; transition: color .2s var(--ease); }
   .det-tabs button small { font-weight: 400; }
   .det-tabs button[aria-selected=true] { color: #fff; border-color: var(--red); }
-  .det-tabs + .det-hero { padding-top: 24px; } /* the tabs already clear the nav */
-  .det-page[data-tab=det] > [data-pane=eps], .det-page[data-tab=eps] > :not(.det-tabs, [data-pane=eps]) { display: none !important; }
-  .det-page[data-tab=eps] > [data-pane=eps] { padding-top: 16px; }
+  .det-page[data-tab=det] > [data-pane=eps]:not(.det-fab), .det-page[data-tab=eps] > :not(.det-bar, .det-tabs, [data-pane=eps]) { display: none !important; }
+  .det-page[data-tab=eps] > [data-pane=eps]:not(.det-fab) { padding-top: 16px; }
 }
 .eps { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
 .ep { position: relative; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 48px; padding: 10px 8px; border-radius: 12px;
@@ -1045,3 +1054,61 @@ img.broken:not(.rd-pages img) { content: url("data:image/gif;base64,R0lGODlhAQAB
 .nv-paged { position:fixed; inset:0; z-index:51; }
 html:has(.nv-paged) { overflow:hidden; }
 .nv-status { direction:ltr; unicode-bidi:isolate; }
+
+/* phones: a title's page as the native app has it (Screens.kt DetailPage). last in this file: it undoes the wide layout's rules above */
+@media (max-width: 760px) {
+  body.det-open #nav { display: none; } /* its own bar takes the nav's place, and the dock goes with it (it's inside the nav) */
+  body.det-open #view { padding-bottom: 96px; } /* clear of the play button */
+  .det-page { --bar-h: calc(56px + env(safe-area-inset-top, 0px)); }
+  .det-bar { display: flex; align-items: center; gap: 4px; position: sticky; top: 0; z-index: 21; height: var(--bar-h); padding: env(safe-area-inset-top, 0px) 4px 0; background: var(--bg); }
+  .det-bar b { flex: 1; min-width: 0; font-size: 18px; font-weight: 700; text-align: start; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .det-bar .icon-btn { width: 44px; height: 44px; background: none; }
+  .det-bar .icon-btn[hidden] { display: none; }
+
+  /* the banner, faded, behind the poster and names only */
+  .det-hero { display: block; min-height: 0; padding: 16px 16px 24px; }
+  /* it fades by its own mask: with the .det below free of a z-index, the wide layout's overlay would have to paint under this picture */
+  .det-hero::before, [dir=rtl] .det-hero::before { display: none; }
+  .det-hero .bg { inset: 0 0 auto; height: 240px; opacity: .4; transform: none; animation: none; -webkit-mask-image: linear-gradient(#000, #0000); mask-image: linear-gradient(#000, #0000); }
+  /* no animation or z-index: either would trap the fixed ⋮ menu inside the page's top */
+  .det { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 8px 14px; align-items: start; z-index: auto; text-align: start; animation: none; }
+  .det.bare { grid-template-columns: minmax(0, 1fr); }
+  .det-main { display: contents; }
+  .det .poster { width: 100%; border-radius: 6px; }
+  .det-names { display: block; padding-top: 8px; }
+  .det h1 { font-size: 20px; line-height: 24px; font-weight: 800; }
+  .det .alt { margin: 4px 0 0; font-size: 13px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .det-meta { justify-content: flex-start; margin: 6px 0 0; font-size: 13px; }
+  .det-meta span:first-child { color: var(--red); }
+  .det-kinds { display: block; }
+  .det-kinds span { display: block; margin-top: 6px; color: var(--red); font-size: 13px; font-weight: 600; }
+  .chips .kind { display: none; } /* said under the names */
+
+  /* the icon row: each an icon over its label. Play floats instead, the rest is in the ⋮ menu */
+  .det-do { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-around; gap: 4px; grid-column: 1 / -1; order: 1; padding-block: 8px; }
+  .det .actions { display: contents; }
+  .det-do .btn.red { display: none; }
+  .det .source-rating { justify-content: center; align-self: center; gap: 4px; margin: 0; }
+  .det-do .btn.ghost, .det-stat { display: flex; flex: 1 1 0; flex-direction: column; align-items: center; gap: 6px; min-width: 72px; min-height: 0; padding: 6px 4px; border: 0; border-radius: 8px; background: none; color: #ddd; font-size: 12px; font-weight: 500; text-align: center; }
+  .det-do .btn.ghost svg, .det-stat svg { width: 24px; height: 24px; }
+  .det-do .btn.ghost svg { color: var(--red); }
+  .det-stat b { color: var(--muted); font-weight: 400; }
+
+  .det-do .det-more { display: none; position: fixed; top: calc(var(--bar-h) - 4px); inset-inline-end: 8px; z-index: 22; min-width: 200px; padding: 6px; border-radius: 12px; background: #181818f5; box-shadow: 0 10px 30px #000c; }
+  .det-do .det-more.open { display: block; }
+  .det-do .det-more > .btn.ghost, .det-do .det-more > .det-rf { display: flex; flex-direction: row; justify-content: flex-start; gap: 10px; width: 100%; height: 44px; min-height: 44px; padding: 0 12px; border: 0; border-radius: 8px; background: none; color: #fff; font-size: 14px; font-weight: 500; }
+  .det-do .det-more > .btn.ghost svg { width: 20px; height: 20px; color: #fff; }
+  .det-rf span { display: inline; }
+
+  /* the story and its tags in a card: five lines, the rest on a tap */
+  .det-story { display: flex; flex-direction: column; grid-column: 1 / -1; order: 2; margin-top: 8px; padding: 14px; border-radius: 12px; background: var(--card); }
+  .det .desc { max-width: none; margin: 0; color: #ccc; font-size: 14px; line-height: 22px; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+  .det .desc.more { display: block; }
+  .det .chips { order: 1; justify-content: flex-start; gap: 6px; margin: 12px 0 0; }
+  .det .chips:empty { display: none; }
+  .det .chip { padding: 3px 10px; font-size: 12px; }
+  .infos { margin: 8px 16px 24px; padding: 14px; border: 0; border-radius: 12px; background: var(--card); }
+
+  /* over the page, not in the row: the same on both tabs */
+  .det-page > .det-fab { display: inline-flex; position: fixed; inset-inline-end: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 20; min-height: 52px; box-shadow: 0 6px 20px #0009; }
+}

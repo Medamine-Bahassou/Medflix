@@ -179,3 +179,28 @@ test('anilist score: the English name when the title finds nothing, the exact na
   assert.equal(await score({ title: 'Kokoro', alt: 'Dangers: The Movie' }, { Kokoro: [media('Kokoro', 83), media('Kokoro Movie', 81, 'MOVIE', ['Dangers: The Movie'])] }), '8.1');
   assert.equal(await score({ title: 'Show Season 2' }, { 'Show Season 2': [media('Show', 70), media('Show Season 2 Part', 60)] }), undefined); // only the season's own name: no guess
 });
+test('slider picture: a film by its name and year, the animated one of a name, an English name by AniList, none for manga', async () => {
+  const still = (url, width = 1920, height = 1080) => ({ node: { url, width, height } });
+  const title = (text, year, id, genre, stills, poster) => ({ node: { entity: { titleType: { id }, titleText: { text }, releaseYear: { year }, titleGenres: { genres: [{ genre: { text: genre } }] }, primaryImage: poster && { url: poster }, images: { edges: stills } } } });
+  const art = (slide, imdb, anilist = []) => {
+    const asked = [];
+    const r = ratings(async (url, form) => {
+      asked.push(url);
+      if (url.includes('anilist')) return JSON.stringify({ data: { Page: { media: anilist } } });
+      return JSON.stringify({ data: { mainSearch: { edges: imdb[form.query.match(/searchTerm:"([^"]+)"/)[1]] || [] } } });
+    });
+    return r.art(slide).then(url => ({ url, asked }));
+  };
+  const film = { title: 'The Odyssey', year: '2026', info: '#/cinema/movie/x' };
+  const odyssey = { 'the odyssey': [title('The Odyssey', 1997, 'movie', 'Drama', [still('https://i/old._V1_.jpg')]), title('The Odyssey', 2026, 'movie', 'Drama', [still('https://i/tall._V1_.jpg', 4160, 6240), still('https://i/small._V1_.jpg', 600, 400), still('https://i/new._V1_.jpg', 6240, 4160)])] };
+  assert.equal((await art(film, odyssey)).url, 'https://i/new._V1_QL75_UX1920_.jpg');
+  // no frame: its large poster, sized, rather than the card's
+  assert.equal((await art(film, { 'the odyssey': [title('The Odyssey', 2026, 'movie', 'Drama', [], 'https://i/p._V1_.jpg')] })).url, 'https://i/p._V1_QL75_UY1500_.jpg');
+  assert.equal((await art({ ...film, year: '' }, odyssey)).url, ''); // two of that name, no year: neither
+  const anime = { title: 'One Piece', info: '#/title/anime/one-piece' };
+  assert.equal((await art(anime, { 'one piece': [title('One Piece', 2023, 'tvSeries', 'Adventure', [still('https://i/live._V1_.jpg')]), title('One Piece', 1999, 'tvSeries', 'Animation', [still('https://i/ani._V1_.jpg')])] })).url, 'https://i/ani._V1_QL75_UX1920_.jpg');
+  const slayer = await art({ title: 'Kimetsu no Yaiba', info: '#/title/anime/k' }, { 'demon slayer kimetsu no yaiba': [title('Demon Slayer: Kimetsu no Yaiba', 2019, 'tvSeries', 'Animation', [still('https://i/ds._V1_.jpg')])] }, [{ title: { romaji: 'Kimetsu no Yaiba', english: 'Demon Slayer: Kimetsu no Yaiba' }, synonyms: [] }]);
+  assert.equal(slayer.url, 'https://i/ds._V1_QL75_UX1920_.jpg');
+  for (const info of ['#/manga/series/1', '#/novels/series/1']) { const r = await art({ title: 'Solo Leveling', info }, odyssey); assert.equal(r.url, ''); assert.equal(r.asked.length, 0); }
+  assert.equal((await art({ title: 'المؤسس عثمان', info: '#/cinema/serie/x' }, odyssey)).url, '');
+});

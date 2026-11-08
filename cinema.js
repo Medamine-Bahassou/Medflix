@@ -342,7 +342,7 @@ async function cinemaHome(force) {
   const hash=location.hash;
   const lists = await firstSections(ECATS.map(c => () => edList(c[0],1,force)));
   if(location.hash!==hash)return;
-  const slides=lists.find(Boolean).items.slice(0,5).map(c=>({banner:c.poster,title:c.title,desc:c.desc || '',info:edHref(c.path.slice('/cinema/'.length))}));
+  const slides=lists.find(Boolean).items.slice(0,5).map(c=>({banner:c.poster,title:c.title,year:c.year,desc:c.desc || '',info:edHref(c.path.slice('/cinema/'.length))}));
   heroPage(slides, `
       ${chips(ECATS.slice(1).map(c => [eCatName(c), '#/cinema/browse/' + c[0]]))}
       ${row(t('continueWatching'), continued(['cinema']))}
@@ -375,27 +375,12 @@ async function cinemaTitle(slug, force) {
   const meta = [...m.cat, ...m.tags.filter(x => /^(19|20)\d\d$/.test(x)), ...m.tags.filter(x => /ساع|دقيق/.test(x)).map(runtime),
     ...m.tags.filter(x => /^(blu-?ray|web-?dl|web-?rip|hd-?rip|hdtv|hd-?cam|cam|dvd\w*|hd|4k|\d{3,4}p)$/i.test(x))];
   const desc = /^مشاهدة\s+(و\s*)?تحميل/.test(m.desc) ? '' : m.desc; // pages saved before the plot was read: the site's line, not shown
-  view.innerHTML = `<div class="det-page">${eps.length ? detTabs(t('episodes'), eps.length) : ''}
-    <div class="det-hero"><div class="bg" style="background-image:url('${esc(img(m.banner))}')"></div>
-      <div class="det">
-        ${m.poster ? `<img class="poster" src="${esc(img(m.poster))}" alt="">` : ''}
-        <div>
-          <h1 dir="auto">${esc(m.title)}</h1>
-          ${meta.length ? `<div class="det-meta">${meta.map(x => `<span><bdi>${esc(x)}</bdi></span>`).join('')}</div>` : ''}
-          ${m.genres.length ? `<div class="chips">${m.genres.map(g => `<span class="chip">${esc(g)}</span>`).join('')}</div>` : ''}
-          ${Ratings.slot({title:m.title, type:"cinema", path, year:m.year, imdb:m.imdb})}
-          ${desc ? `<p class="desc" dir="auto">${esc(desc)}</p>` : ''}
-          <div class="actions">
-            ${play ? `<a class="btn red" href="${play.href}">${ICON.play} ${esc(play.label)}</a>` : ''}
-            ${api.web && !eps.length ? `<button class="btn ghost" id="web-cinema-dl">${ICON.download} ${t('downloadShort')}</button>` : ''}
-            <button class="btn ghost" id="fav">${inList(path) ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList')}</button>
-            ${m.trailer ? `<button class="btn ghost" id="trl">${ICON.play} ${t('trailer')}</button>` : ''}
-            ${slug.includes('/') ? `<button class="btn ghost" id="grf">${ICON.star} ${t('epRatings')}</button>` : ''}
-            <button class="icon-btn det-rf" id="rf" title="${t('refresh')}" aria-label="${t('refresh')}">${ICON.refresh}</button>
-          </div>
-        </div>
-      </div>
-    </div>
+  view.innerHTML = `<div class="det-page">${detHead({ list: eps.length && [t('episodes'), eps.length], banner: img(m.banner), poster: m.poster && img(m.poster), title: m.title, meta, chips: m.genres, desc,
+      rating: Ratings.slot({title:m.title, type:"cinema", path, year:m.year, imdb:m.imdb}), refresh: true, play: play || null,
+      actions: `${api.web && !eps.length ? `<button class="btn ghost" id="web-cinema-dl">${ICON.download} ${t('downloadShort')}</button>` : ''}
+            <button class="btn ghost" id="fav">${inList(path) ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList')}</button>`,
+      more: `${m.trailer ? `<button class="btn ghost" id="trl">${ICON.play} ${t('trailer')}</button>` : ''}
+            ${slug.includes('/') ? `<button class="btn ghost" id="grf">${ICON.star} ${t('epRatings')}</button>` : ''}` })}
     ${m.seasons.length > 1 ? `<div class="section" data-pane="eps"><h2>${t('seasons')}</h2><div class="fchips">${m.seasons.map(s => `<a class="fchip ${s.path === path ? 'on' : ''}" href="#${s.path}" dir="auto">${esc(s.title.match(/(الموسم|الجزء)\s+\S+/)?.[0] || s.title)}</a>`).join('')}</div></div>` : ''}
     ${eps.length ? `<div class="section" data-pane="eps"><h2>${t('episodes')} <small>${eps.length}</small><div class="ep-tools">${selBtn('btn ghost small')}</div></h2>
       ${selBar()}<div class="eps list" id="eps"></div></div>` : ''}

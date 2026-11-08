@@ -46,7 +46,7 @@ internal object EpisodeRatings {
     private val AR = Regex("[\\u0600-\\u06FF\\u0750-\\u077F\\uFB50-\\uFDFF\\uFE70-\\uFEFF]+") // spelled out: \p{IsArabic} isn't on every Android
     private fun objects(a: org.json.JSONArray?) = (0 until (a?.length() ?: 0)).mapNotNull { a?.optJSONObject(it) }
     // what's asked: the name without its season words or arabic (ratings.js filmName)
-    private fun latin(s: String) = s.replace(Regex("(?:الموسم|الجزء|الحلقة)\\s+.*|\\bseason\\s+\\d+.*", RegexOption.IGNORE_CASE), " ").replace(AR, " ")
+    internal fun latin(s: String) = s.replace(Regex("(?:الموسم|الجزء|الحلقة)\\s+.*|\\bseason\\s+\\d+.*", RegexOption.IGNORE_CASE), " ").replace(AR, " ")
         .lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
     /** for comparing, not asking ("Tokyo Ghoul" isn't "tokyo ghol" to a search): the sites spell a name their own way, "Shippuuden", "Shippūden", "Shippuden" */
     fun spelled(s: String) = latin(java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD).replace(Regex("\\p{M}"), "")).replace(Regex("([ou])u"), "$1")
@@ -471,10 +471,63 @@ internal data class RateFilter(val mins: Map<String, Double> = emptyMap(), val a
 internal class Hit(val names: List<String>, val year: String, val series: Boolean, val a: Double?, val b: Double? = null)
 internal class Ranked(val hits: List<Hit>, val next: String?) // next: where its following page starts, if it has one
 
+/**
+ * the slider's picture (ratings.js art): a real frame of a film or an anime from IMDb, as the sites only have small posters and 720p banners.
+ * None for manga and novels: nothing has more than their sites' covers (AniList's largest is 460px, its banners 400px high)
+ */
+internal object HeroArt {
+    internal class Title(val hit: Hit, val anime: Boolean, val still: String, val poster: String)
+    private val found = java.util.concurrent.ConcurrentHashMap<String, String>()
+    /** what a slide starts on: a redraw (the page came back changed) has no flash of the poster */
+    fun ready(s: Slide) = found[s.title] ?: s.banner
+    // its own files run to 10000px: amazon's image service sizes them by address
+    internal fun sized(url: String, by: String) = url.replace(Regex("\\._V1_.*\\.(\\w+)$"), "._V1_QL75_${by}_.\$1")
+    internal fun titles(json: String) = Scores.objs(JSONObject(json).optJSONObject("data")?.optJSONObject("mainSearch")?.optJSONArray("edges")).mapNotNull { row ->
+        val e = row.optJSONObject("node")?.optJSONObject("entity") ?: return@mapNotNull null
+        val hit = Scores.titleHit(e) ?: return@mapNotNull null
+        val stills = Scores.objs(e.optJSONObject("images")?.optJSONArray("edges")).mapNotNull { it.optJSONObject("node") }
+        Title(hit, Scores.objs(e.optJSONObject("titleGenres")?.optJSONArray("genres")).any { it.optJSONObject("genre")?.optString("text") == "Animation" },
+            stills.firstOrNull { it.optInt("width") >= 1280 && it.optInt("width") >= it.optInt("height") * 1.3 }?.optString("url").orEmpty(), // its portraits and small old ones would blur again
+            e.optJSONObject("primaryImage")?.optString("url").orEmpty())
+    }
+    private suspend fun search(name: String): List<Title> {
+        val query = "query{mainSearch(first:6,options:{searchTerm:${JSONObject.quote(name)},type:TITLE}){edges{node{entity{... on Title{titleType{id} titleText{text} originalTitleText{text} releaseYear{year} titleGenres{genres{genre{text}}} primaryImage{url} images(first:20,filter:{types:[\"still_frame\"]}){edges{node{url width height}}}}}}}}}"
+        return titles(Pages.load("https://caching.graphql.imdb.com/", body = JSONObject().put("query", query).toString(), headers = mapOf("x-imdb-client-name" to "imdb-web-next-localized"), every = Pages.DAY, interactive = false))
+    }
+    // by name, kind and year: two 2026 films are called The Odyssey
+    internal fun filmArt(rows: List<Title>, c: Card): String {
+        val hit = Scores.pick(rows.map { it.hit }, c)?.let { h -> rows.first { it.hit === h } } ?: return ""
+        return if (hit.still.isNotEmpty()) sized(hit.still, "UX1920") else if (hit.poster.isNotEmpty()) sized(hit.poster, "UY1500") else ""
+    }
+    // the animated one: One Piece has a live action of its name
+    internal fun animeStill(rows: List<Title>, want: Set<String>) = rows.firstOrNull { t -> t.anime && t.still.isNotEmpty() && t.hit.names.any { EpisodeRatings.spelled(it) in want } }?.still
+    private suspend fun anime(title: String): String? {
+        val name = EpisodeRatings.latin(title).takeIf { it.isNotEmpty() } ?: return null // only an Arabic name: IMDb has it under another
+        val own = EpisodeRatings.spelled(title)
+        animeStill(search(name), setOf(own))?.let { return it }
+        // a romaji name is often not IMDb's: AniList knows its English one
+        val query = "{Page(perPage:6){media(search:${JSONObject.quote(name)},type:ANIME,sort:SEARCH_MATCH){title{romaji english} synonyms}}}"
+        val media = Scores.objs(JSONObject(Pages.load("https://graphql.anilist.co", body = JSONObject().put("query", query).toString(), every = Pages.DAY, interactive = false)).optJSONObject("data")?.optJSONObject("Page")?.optJSONArray("media"))
+        fun named(m: JSONObject) = m.optJSONObject("title").let { t -> listOf(t?.optString("english").orEmpty(), t?.optString("romaji").orEmpty()) }
+        val hit = media.firstOrNull { m -> (named(m) + (m.optJSONArray("synonyms")?.let { a -> (0 until a.length()).map(a::optString) }.orEmpty())).any { EpisodeRatings.spelled(it) == own } } ?: return null
+        for (other in named(hit).filter { it.isNotEmpty() && it != "null" && EpisodeRatings.spelled(it) != own }.distinct())
+            animeStill(search(EpisodeRatings.latin(other)), setOf(own, EpisodeRatings.spelled(other)))?.let { return it }
+        return null
+    }
+    /** the sharper picture, null if it has none: offline or a miss, its own stays */
+    suspend fun of(s: Slide): String? = runCatching {
+        when {
+            s.film != null -> Scores.term(s.film)?.let { filmArt(search(it), s.film).ifEmpty { null } }
+            s.info is Screen.Title -> anime(s.title)?.let { sized(it, "UX1920") }
+            else -> null
+        }
+    }.getOrNull()?.also { found[s.title] = it }
+}
+
 internal object Scores {
     // a title in both ("سجين Siccin 9"): these sites know the Latin part, and the Arabic words only spoil their search
     private fun latin(s: String) = s.replace(Regex("\\p{IsArabic}+"), " ").trim().takeIf { Regex("[a-zA-Z0-9]").containsMatchIn(it) } ?: s
-    private fun term(c: Card) = Credits.clean(latin(c.title)).takeIf { Regex("[a-zA-Z0-9]").containsMatchIn(it) } // these sites know titles in Latin letters: an Arabic one finds nothing
+    internal fun term(c: Card) = Credits.clean(latin(c.title)).takeIf { Regex("[a-zA-Z0-9]").containsMatchIn(it) } // these sites know titles in Latin letters: an Arabic one finds nothing
     private fun isSeries(c: Card) = Regex("^/cinema/(serie|season|episode)/").containsMatchIn(c.path)
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8").replace("+", "%20")
 
@@ -489,13 +542,13 @@ internal object Scores {
         val rows = JSONObject(json).optJSONObject("data")?.optJSONObject("mainSearch")?.optJSONArray("edges") ?: return emptyList()
         return (0 until rows.length()).mapNotNull { rows.getJSONObject(it).optJSONObject("node")?.optJSONObject("entity")?.let(::titleHit) }
     }
-    private fun titleHit(e: JSONObject): Hit? {
+    internal fun titleHit(e: JSONObject): Hit? {
         val type = e.optJSONObject("titleType")?.optString("id").orEmpty()
         if (type !in setOf("movie", "tvMovie", "tvSeries", "tvMiniSeries")) return null // its shorts, videos and episodes share their show's name
         return Hit(listOfNotNull(e.optJSONObject("titleText")?.optString("text"), e.optJSONObject("originalTitleText")?.optString("text")), e.optJSONObject("releaseYear")?.optInt("year")?.toString().orEmpty(), type == "tvSeries" || type == "tvMiniSeries",
             e.optJSONObject("ratingsSummary")?.optDouble("aggregateRating")?.takeIf { it > 0 }, e.optJSONObject("metacritic")?.optJSONObject("metascore")?.optDouble("score")?.takeIf { it > 0 })
     }
-    private fun objs(a: org.json.JSONArray?) = (0 until (a?.length() ?: 0)).map { a!!.getJSONObject(it) }
+    internal fun objs(a: org.json.JSONArray?) = (0 until (a?.length() ?: 0)).map { a!!.getJSONObject(it) }
     internal fun imdbRanked(json: String): Ranked {
         val a = JSONObject(json).getJSONObject("data").getJSONObject("advancedTitleSearch")
         return Ranked(objs(a.optJSONArray("edges")).mapNotNull { it.optJSONObject("node")?.optJSONObject("title")?.let(::titleHit) }, a.optJSONObject("pageInfo")?.takeIf { it.optBoolean("hasNextPage") }?.optString("endCursor"))

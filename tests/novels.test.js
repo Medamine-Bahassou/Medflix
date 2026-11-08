@@ -7,7 +7,7 @@ function setup(load) {
   const ctx={parsers:{},api:{web:true,get:async()=>null,set:async()=>{}},load,URL,URLSearchParams,location:{hash:'#/novels'},lang:'en',
     store:{novels:{},novelSeen:{},prefs:{}},t:(k,n)=>k+(n===undefined?'':':'+n),esc:s=>String(s??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),
     view:{innerHTML:''},grid:cs=>'<div class="grid">'+cs.map(c=>c.title).join('')+'</div>',row:()=>'',card:c=>c.title,
-    NovelReader:{mount:()=>null},picks:null,pagePress:null,selBtn:()=>'',selBar:()=>'',selectable:()=>()=>{},pageRefresh:null,CHEVRON:'',openMenu:()=>{},closeMenu:()=>{},pickSheet:()=>{},heroPage:()=>{},chips:()=>'',inList:()=>false,toggleList:()=>{},ICON:{back:'',search:'',x:'',sort:'',novel:'',plus:'',check:''},toast:()=>{},persist:k=>writes.push(k),requestAnimationFrame:f=>f(),scrollTo:()=>{},
+    NovelReader:{mount:()=>null},detHead:()=>'',wireDetTabs(){},picks:null,pagePress:null,selBtn:()=>'',selBar:()=>'',selectable:()=>()=>{},pageRefresh:null,CHEVRON:'',openMenu:()=>{},closeMenu:()=>{},pickSheet:()=>{},heroPage:()=>{},chips:()=>'',inList:()=>false,toggleList:()=>{},ICON:{back:'',search:'',x:'',sort:'',novel:'',plus:'',check:''},toast:()=>{},persist:k=>writes.push(k),requestAnimationFrame:f=>f(),scrollTo:()=>{},
     document:{documentElement:{scrollHeight:2000}},innerHeight:1000,scrollY:0,clearTimeout,setTimeout,
     addEventListener:(k,f)=>events[k]=f,removeEventListener:(k,f)=>{if(events[k]===f)delete events[k];},
     $:sel=>{if(!nodes.has(sel))nodes.set(sel,{style:{setProperty(){}},dataset:{},isConnected:true,insertAdjacentHTML(_,html){this.html=(this.html||'')+html;}});return nodes.get(sel);},nodes,events,writes};

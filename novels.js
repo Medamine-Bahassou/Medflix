@@ -81,12 +81,15 @@ async function novelDetails(id) {
   if (location.hash !== hash) return;
   const d = j.data, n = d.novel, c = nvCard(n), saved = store.novels[id], first = chapters.data[0];
   const start = saved?.slug ? nvReadHash(id, saved.slug) : first ? nvReadHash(id, first.slug) : '';
-  view.innerHTML = `<div class="det-hero"><div class="bg" style="background-image:url('${esc(c.poster.replaceAll("'",'%27'))}')"></div><div class="det">${c.poster ? `<img class="poster" src="${esc(c.poster)}" alt="">` : ''}<div><h1 dir="auto">${esc(n.title)}</h1>
-    ${(n.alternativeTitles || []).length ? `<div class="alt" dir="auto">${esc(n.alternativeTitles.join(' · '))}</div>` : ''}
-    <div class="chips"><span class="chip">${t(n.completionStatus==='COMPLETED'?'nvDone':'nvOngoing')}</span>${(n.genres || []).map(g=>`<span class="chip">${esc(nvGenre(g))}</span>`).join('')}${d.author ? `<span class="chip">${t('nvAuthor')}: ${esc(d.author.displayName || d.author.username || '')}</span>` : ''}</div>
-    <p class="desc" dir="auto">${esc(n.descriptionLong || n.descriptionShort || '')}</p><div class="actions">${start?`<a class="btn red" href="${esc(start)}">${ICON.novel} ${t(saved?.slug?'resumeCh':'read',saved?.n)}</a>`:''}<button class="btn ghost" id="nv-list">${inList(c.path)?ICON.check:ICON.plus} ${t(inList(c.path)?'inList':'myList')}</button></div></div></div></div>
-    <div class="section"><h2>${t('chapters')} <small>${esc(n.stats?.chapterCount || chapters.data.length)}</small><div class="ep-tools"><input id="nv-jump" placeholder="${t('jumpCh')}" aria-label="${t('jumpCh')}" type="number"><button class="btn ghost small" id="nv-reverse" aria-label="${t('reverse')}" title="${t('reverse')}">${ICON.sort}</button>${selBtn('btn ghost small')}</div></h2>${selBar()}<div class="eps nv-chapters"></div><button class="btn ghost nv-more" id="nv-ch-more" ${chapters.meta?.hasMore?'':'hidden'}>${t('more')}</button></div>
-    <div class="rows">${row('nvSimilar',(d.similar || []).map(nvCard))}</div>`;
+  const count = n.stats?.chapterCount || chapters.data.length;
+  view.innerHTML = `<div class="det-page">${detHead({ list: [t('chapters'), esc(count)], banner: c.poster, poster: c.poster, title: n.title, alt: (n.alternativeTitles || []).join(' · '),
+      kinds: [t(n.completionStatus==='COMPLETED'?'nvDone':'nvOngoing')], desc: n.descriptionLong || n.descriptionShort || '',
+      chips: [...(n.genres || []).map(nvGenre), ...(d.author ? [`${t('nvAuthor')}: ${d.author.displayName || d.author.username || ''}`] : [])],
+      play: start && { href: start, label: t(saved?.slug?'resumeCh':'read',saved?.n), icon: ICON.novel },
+      actions: `<button class="btn ghost" id="nv-list">${inList(c.path)?ICON.check:ICON.plus} ${t(inList(c.path)?'inList':'myList')}</button>` })}
+    <div class="section" data-pane="eps"><h2>${t('chapters')} <small>${esc(count)}</small><div class="ep-tools"><input id="nv-jump" placeholder="${t('jumpCh')}" aria-label="${t('jumpCh')}" type="number"><button class="btn ghost small" id="nv-reverse" aria-label="${t('reverse')}" title="${t('reverse')}">${ICON.sort}</button>${selBtn('btn ghost small')}</div></h2>${selBar()}<div class="eps nv-chapters"></div><button class="btn ghost nv-more" id="nv-ch-more" ${chapters.meta?.hasMore?'':'hidden'}>${t('more')}</button></div>
+    <div class="rows">${row('nvSimilar',(d.similar || []).map(nvCard))}</div></div>`;
+  wireDetTabs();
   let reversed = false;
   const allChapters = [...chapters.data];
   const shown = () => { const filter=$('#nv-jump').value;return (reversed?[...allChapters].reverse():allChapters).filter(c=>!filter || +c.order===+filter); };

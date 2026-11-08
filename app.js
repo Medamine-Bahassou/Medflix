@@ -762,9 +762,10 @@ function continued(kinds) {
 
 // a page under a cover slider of { banner, title, desc, info: hash, play?: hash }; refresh redraws it with fresh data
 let heroTimer;
+const heroArt = new Map(); // a redraw (the page came back changed) starts on the sharp picture, with no flash of the poster
 function heroPage(hero, rows, refresh) {
   view.innerHTML = `
-    <div class="hero">${hero.map((h, i) => `<div class="slide ${i ? '' : 'on'}"><img src="${esc(img(h.banner))}" alt=""></div>`).join('')}
+    <div class="hero">${hero.map((h, i) => `<div class="slide ${i ? '' : 'on'}"><img src="${esc(img(heroArt.get(h.info) || h.banner))}" alt=""></div>`).join('')}
       <div class="info"></div><div class="dots">${hero.map((_, i) => `<i data-i="${i}" class="${i ? '' : 'on'}"></i>`).join('')}</div></div>
     <div class="rows">${rows}
       <div style="padding:0 4%"><button class="btn ghost small refresh" id="rf">${ICON.refresh} ${t('refreshSite')}</button></div>
@@ -773,10 +774,28 @@ function heroPage(hero, rows, refresh) {
   $('#rf').onclick = () => pageRefresh().then(() => toast(t('updated')));
   if (!hero.length) $('.hero').style.height = '120px';
   let cur = 0;
+  const pics = [...view.querySelectorAll('.hero .slide img')];
+  // a portrait cover on a wide screen shows whole, on a blurred copy of itself (style.css): stretched across it, it was the blur
+  const fit = p => { const tall = p.naturalWidth < p.naturalHeight * 1.1; p.parentNode.classList.toggle('tall', tall); p.parentNode.style.setProperty('--art', tall ? `url("${p.src}")` : 'none'); };
+  pics.forEach(p => { p.addEventListener('load', () => fit(p)); if (p.complete) fit(p); });
+  // only as a slide comes up: a page of them at full size is megabytes. Swapped in once loaded, so nothing goes blank
+  const asked = new Set();
+  const sharpen = i => {
+    if (asked.has(i)) return;
+    asked.add(i);
+    Ratings.art(hero[i]).then(url => {
+      if (!url) return;
+      const next = new Image();
+      next.onload = () => { heroArt.set(hero[i].info, url); pics[i].src = next.src; };
+      next.src = img(url);
+    }).catch(() => {}); // offline, or the site's down: its own picture stays
+  };
   const show = i => {
     const was = cur;
     cur = (i + hero.length) % hero.length;
     const h = hero[cur];
+    sharpen(cur);
+    sharpen((cur + 1) % hero.length);
     // the one leaving keeps its zoom going while it fades (dropping it snapped the picture back mid-fade: a flicker)
     document.querySelectorAll('.hero .slide').forEach((s, j) => { s.classList.toggle('on', j === cur); s.classList.toggle('out', j === was && j !== cur); });
     document.querySelectorAll('.dots i').forEach((s, j) => s.classList.toggle('on', j === cur));
@@ -818,7 +837,7 @@ async function home(force) {
   if (location.hash !== hash) return;
   // posters are already available on the cards: title-page requests must not hold up navigation.
   const m = (hot?.items || []).slice(0,3).map(c=>({banner:c.poster,title:c.title,desc:c.desc || '',info:'#'+c.path}));
-  const f = (films?.items || []).slice(0,3).map(c=>({banner:c.poster,title:c.title,desc:c.desc || '',info:edHref(c.path.slice('/cinema/'.length))}));
+  const f = (films?.items || []).slice(0,3).map(c=>({banner:c.poster,title:c.title,year:c.year,desc:c.desc || '',info:edHref(c.path.slice('/cinema/'.length))}));
   // the slider takes turns: anime, manga, film, anime…
   const a = d ? animeHero(d).slice(0, 3) : [];
   const hero = [...Array(3)].flatMap((_, i) => [a[i], m?.[i], f?.[i]]).filter(Boolean);
@@ -1465,12 +1484,50 @@ function hiddenView() {
 let detTab = ['', 'det']; // the tab open and its page's address: a redraw (route(true)) keeps it
 const detTabs = (list, n) => `<div class="det-tabs" role="tablist">${[['det', t('details')], ['eps', `${list} <small>${n}</small>`]]
   .map(([k, s]) => `<button role="tab" data-tab="${k}">${s}</button>`).join('')}</div>`;
+// a title's top, all four kinds, one part after another: wide screens show them beside the poster, phones lay them out as the native app's
+// page (style.css, Screens.kt DetailPage). kinds: its type and status, red under the names there. more: its ⋮ menu there, the same buttons
+const detHead = ({ list, banner, poster, title, alt, meta = [], kinds = [], views, chips = [], desc, rating = '', play, actions = '', more = '', refresh }) => `
+  <div class="det-bar"><button class="icon-btn" id="det-back" aria-label="${t('back')}">${ICON.back}</button><b dir="auto">${esc(title)}</b><button class="icon-btn" id="det-dots" aria-label="${t('more')}">${ICON.dots}</button></div>
+  ${list ? detTabs(...list) : ''}
+  <div class="det-hero"><div class="bg" style="background-image:url('${esc(String(banner || '').replaceAll("'", '%27'))}')"></div>
+    <div class="det ${poster ? '' : 'bare'}">
+      ${poster ? `<img class="poster" src="${esc(poster)}" alt="">` : ''}
+      <div class="det-main">
+        <div class="det-names">
+          <h1 dir="auto">${esc(title)}</h1>${alt ? `<div class="alt" dir="auto">${esc(alt)}</div>` : ''}
+          ${meta.length ? `<div class="det-meta">${meta.map(x => `<span><bdi>${esc(x)}</bdi></span>`).join('')}</div>` : ''}
+          ${kinds.length ? `<div class="det-kinds">${kinds.map(x => `<span>${esc(x)}</span>`).join('')}</div>` : ''}
+        </div>
+        <div class="det-story">
+          <div class="chips">${kinds.map(x => `<span class="chip kind">${esc(x)}</span>`).join('')}${views ? `<span class="chip kind">${t('views', views)}</span>` : ''}${chips.map(x => `<span class="chip">${esc(x)}</span>`).join('')}</div>
+          ${desc ? `<p class="desc" dir="auto">${esc(desc)}</p>` : ''}
+        </div>
+        <div class="det-do">
+          ${rating}
+          ${views ? `<span class="det-stat">${ICON.eye}<b>${views}</b></span>` : ''}
+          <div class="actions">
+            ${play ? `<a class="btn red" href="${esc(play.href)}">${play.icon || ICON.play} ${esc(play.label)}</a>` : ''}
+            ${actions}
+            <div class="det-more">${more}${refresh ? `<button class="icon-btn det-rf" id="rf" title="${t('refresh')}" aria-label="${t('refresh')}">${ICON.refresh}<span>${t('refresh')}</span></button>` : ''}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  ${play ? `<a class="btn red det-fab" data-pane="eps" href="${esc(play.href)}">${play.icon || ICON.play} ${esc(play.label)}</a>` : ''}`;
+// the ⋮ menu: any tap closes it, on an entry too (toggled by its own button)
+document.addEventListener('click', e => e.target.closest('#det-dots') || $('.det-more.open')?.classList.remove('open'));
 function wireDetTabs() {
+  document.body.classList.add('det-open'); // on phones its bar takes the nav's place and the dock goes: route() brings them back
+  $('#det-back').onclick = () => history.length > 1 ? history.back() : (location.hash = '#/');
+  const more = $('.det-more'), dots = $('#det-dots');
+  dots.hidden = ![...more.children].some(b => getComputedStyle(b).display !== 'none'); // refresh is hidden on touch screens (they pull down): it alone is no menu
+  dots.onclick = () => more.classList.toggle('open');
+  $('.det .desc')?.addEventListener('click', e => e.currentTarget.classList.toggle('more')); // five lines on a phone, the rest on a tap
   const p = $('.det-page'), bs = [...document.querySelectorAll('.det-tabs button')];
   if (!p || !bs.length) return;
   const set = k => { p.dataset.tab = k; detTab = [location.hash, k]; bs.forEach(b => b.setAttribute('aria-selected', b.dataset.tab === k)); };
   set(detTab[0] === location.hash ? detTab[1] : 'det');
-  document.documentElement.style.setProperty('--nav-h', $('#nav').offsetHeight + 'px'); // the tabs stick under the nav, whose height wraps on a phone
   bs.forEach(b => b.onclick = () => { set(b.dataset.tab); scrollTo(0, 0); });
 }
 
@@ -1480,26 +1537,13 @@ async function title(path, force) {
   const h = store.history[path];
   const type = path.startsWith('/movie') ? 'movie' : 'anime';
   const first = h?.epPath || d.episodes[0]?.path, hasEps = d.episodes.length > 1 || type === 'anime';
-  view.innerHTML = `<div class="det-page">${hasEps ? detTabs(t('episodes'), d.episodes.length) : ''}
-    <div class="det-hero"><div class="bg" style="background-image:url('${esc(img(d.banner))}')"></div>
-      <div class="det">
-        ${d.poster ? `<img class="poster" src="${esc(img(d.poster))}" alt="">` : ''}
-        <div>
-          <h1>${esc(d.title)}</h1>${d.alt ? `<div class="alt">${esc(d.alt)}</div>` : ''}
-          <div class="chips">${d.tags.filter(x => !/^\d+\.\d+$/.test(x)).map(x => `<span class="chip">${esc(x)}</span>`).join('')}${d.genres.map(g => `<span class="chip">${esc(g)}</span>`).join('')}</div>
-          <p class="desc" dir="auto">${esc(d.desc)}</p>
-          ${Ratings.slot({title:d.title, alt:d.alt, type:"anime", path})}
-          <div class="actions">
-            ${first ? `<a class="btn red" href="${playHash(first)}">${ICON.play} ${h ? esc(t('resume', h.ep)) : t('play')}</a>` : ''}
-            ${api.web && type==='movie' && first ? `<button class="btn ghost" id="web-film-dl">${ICON.download} ${t('downloadShort')}</button>` : ''}
-            <button class="btn ghost" id="fav">${inList(path) ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList')}</button>
-            ${d.trailer ? `<button class="btn ghost" id="trl">${ICON.play} ${t('trailer')}</button>` : ''}
-            ${type === 'anime' ? `<button class="btn ghost" id="grf">${ICON.star} ${t('epRatings')}</button>` : ''}
-            <button class="icon-btn det-rf" id="rf" title="${t('refresh')}" aria-label="${t('refresh')}">${ICON.refresh}</button>
-          </div>
-        </div>
-      </div>
-    </div>
+  view.innerHTML = `<div class="det-page">${detHead({ list: hasEps && [t('episodes'), d.episodes.length], banner: img(d.banner), poster: d.poster && img(d.poster), title: d.title, alt: d.alt,
+      chips: [...d.tags.filter(x => !/^\d+\.\d+$/.test(x)), ...d.genres], desc: d.desc, rating: Ratings.slot({title:d.title, alt:d.alt, type:"anime", path}), refresh: true,
+      play: first && { href: playHash(first), label: h ? t('resume', h.ep) : t('play') },
+      actions: `${api.web && type==='movie' && first ? `<button class="btn ghost" id="web-film-dl">${ICON.download} ${t('downloadShort')}</button>` : ''}
+            <button class="btn ghost" id="fav">${inList(path) ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList')}</button>`,
+      more: `${d.trailer ? `<button class="btn ghost" id="trl">${ICON.play} ${t('trailer')}</button>` : ''}
+            ${type === 'anime' ? `<button class="btn ghost" id="grf">${ICON.star} ${t('epRatings')}</button>` : ''}` })}
     ${d.info.length ? `<div class="infos">${d.info.map(([k, v]) => `<div><span>${esc(k)}</span>${esc(v)}</div>`).join('')}</div>` : ''}
     ${hasEps ? `<div class="section" data-pane="eps"><h2>${t('episodes')} <small>${d.episodes.length}</small>
       <div class="ep-tools"><input id="epf" placeholder="${t('jump')}" type="number"><button class="btn ghost small ${store.prefs.hideFiller ? 'on' : ''}" id="hfl" aria-label="${t('hideFiller')}" title="${t('hideFiller')}" aria-pressed="${!!store.prefs.hideFiller}" hidden>${ICON.eyeSlash}</button><button class="btn ghost small" id="rev" aria-label="${t('reverse')}" title="${t('reverse')}">${ICON.sort}</button>
@@ -1958,6 +2002,7 @@ async function route(soft) {
   CastInfo.dispose();
   scraper.newView();
   clearInterval(heroTimer);
+  document.body.classList.remove('det-open');
   cardData.clear();
   pageRefresh = pagePress = null;
   if (!soft) picks = null;

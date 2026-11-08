@@ -230,7 +230,8 @@ async function mangaRoute([what, arg], force) {
 // slider slides for series cards: their covers and stories (one cached request each)
 async function mangaHero(items, keep = false) {
   const top = await Promise.all(items.map(c => load('mangaSeries', mUrl(`series/${c.path.split('/').pop()}/`), false, keep).catch(() => null)));
-  return top.filter(s => s?.cover).map(s => ({ banner: s.cover, title: s.title, desc: s.story, info: '#/manga/series/' + s.id,
+  // the poster, not its wide cover: those are 229-400px pictures the site blows up to 1200x800
+  return top.filter(s => s?.cover).map(s => ({ banner: s.poster || s.cover, title: s.title, desc: s.story, info: '#/manga/series/' + s.id,
     play: store.manga[s.id] && '#/manga/read/' + store.manga[s.id].chapterId }));
 }
 
@@ -329,28 +330,11 @@ async function mangaSeries(id, force) {
   const path = '/manga/series/' + id, r = store.manga[id];
   const rCh = r && (chs.find(c => c.id === r.chapterId) || chs.find(c => c.n === chNum(r.n)));
   const start = rCh ? { id: rCh.id, label: t('resumeCh', chNum(r.n)) } : chs.length ? { id: chs[chs.length - 1].id, label: t('read') } : null;
-  view.innerHTML = `<div class="det-page">${detTabs(t('chapters'), chs.length)}
-    <div class="det-hero"><div class="bg" style="background-image:url('${esc(img(s.cover))}')"></div>
-      <div class="det">
-        ${s.poster ? `<img class="poster" src="${esc(img(s.poster))}" alt="">` : ''}
-        <div>
-          <h1>${esc(s.title)}</h1>${s.alt ? `<div class="alt">${esc(s.alt)}</div>` : ''}
-          <div class="chips">
-            ${s.type ? `<span class="chip">${esc(mTypeName(s.type))}</span>` : ''}${s.status ? `<span class="chip">${esc(mLabel(MSTATUS, s.status))}</span>` : ''}
-            <span class="chip">${t('views', s.views.toLocaleString(lang))}</span>
-            ${s.genres.map(g => `<span class="chip">${esc(g)}</span>`).join('')}
-          </div>
-          <p class="desc" dir="auto">${esc(s.story)}</p>
-          ${Ratings.slot({title:s.title, alt:s.alt, type:"manga"})}
-          <div class="actions">
-            ${start ? `<a class="btn red" href="#/manga/read/${start.id}">${ICON.play} ${esc(start.label)}</a>` : ''}
-            <button class="btn ghost" id="fav">${inList(path) ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList')}</button>
-            <button class="btn ghost" id="grf">${ICON.star} ${t('titleRatings')}</button>
-            <button class="icon-btn det-rf" id="rf" title="${t('refresh')}" aria-label="${t('refresh')}">${ICON.refresh}</button>
-          </div>
-        </div>
-      </div>
-    </div>
+  view.innerHTML = `<div class="det-page">${detHead({ list: [t('chapters'), chs.length], banner: img(s.cover), poster: s.poster && img(s.poster), title: s.title, alt: s.alt,
+      kinds: [s.type && mTypeName(s.type), s.status && mLabel(MSTATUS, s.status)].filter(Boolean), views: s.views.toLocaleString(lang), chips: s.genres, desc: s.story,
+      rating: Ratings.slot({title:s.title, alt:s.alt, type:"manga"}), refresh: true, play: start && { href: `#/manga/read/${start.id}`, label: start.label },
+      actions: `<button class="btn ghost" id="fav">${inList(path) ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList')}</button>`,
+      more: `<button class="btn ghost" id="grf">${ICON.star} ${t('titleRatings')}</button>` })}
     <div class="section" data-pane="eps"><h2>${t('chapters')} <small>${chs.length}</small>
       <div class="ep-tools"><input id="epf" placeholder="${t('jumpCh')}" type="number"><button class="btn ghost small" id="rev" aria-label="${t('reverse')}" title="${t('reverse')}">${ICON.sort}</button>
         ${selBtn('btn ghost small')}</div></h2>
