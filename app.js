@@ -1945,8 +1945,8 @@ async function route(soft) {
   playerObs?.disconnect();
   api.player(null);
   const h = decodeURIComponent(location.hash.slice(1) || '/');
-  const [, section, ...rest] = h.split('/');
-  const a = section.split('?')[0];
+  const [, head, ...rest] = h.split('/');
+  const a = head.split('?')[0];
   markActive();
   if (!soft) closeDrawer(); // a background redraw (fresher site data, often just after launch) happens behind it
   api.scrollbar?.(!(a === 'manga' && rest[0] === 'read')); // phones: the reader has its own scrollbar
