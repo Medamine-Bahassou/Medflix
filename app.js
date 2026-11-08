@@ -641,11 +641,16 @@ function askOrGo(d) {
   requestAnimationFrame(() => w.classList.add('open'));
   w.onclick = e => { if (e.target === w || e.target.closest('a')) closeSheet(); }; // a link goes on by itself (no return false: that would stop it)
 }
-// desktop: a row dragged with the mouse, as a finger does on phones (touch keeps its own scrolling). It follows the cursor,
-// glides on a little after a quick release, and the click that ends a drag doesn't open the card under it
+// desktop: anything that scrolls sideways (card rows, the cast, chip strips) dragged with the mouse, as a finger does on
+// phones (touch keeps its own scrolling). It follows the cursor, glides on a little after a quick release, and the click
+// that ends a drag doesn't open what's under it. The manga reader keeps its own page swipes and zoom
 let drag = null;
+const sideScroller = el => {
+  for (; el && el !== document.body; el = el.parentElement)
+    if (el.scrollWidth > el.clientWidth + 1 && /auto|scroll/.test(getComputedStyle(el).overflowX)) return el;
+};
 document.addEventListener('pointerdown', e => {
-  const tr = e.pointerType === 'mouse' && !e.button && !e.target.closest('.arrow') && e.target.closest('.track');
+  const tr = e.pointerType === 'mouse' && !e.button && !e.target.closest('.arrow, .reader, input, textarea, select') && sideScroller(e.target);
   if (tr) drag = { tr, x: e.clientX, left: tr.scrollLeft, moved: false, v: 0, at: e.timeStamp, last: e.clientX };
 });
 addEventListener('pointermove', e => {

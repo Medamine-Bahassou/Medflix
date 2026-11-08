@@ -104,11 +104,11 @@ input:focus-visible, select:focus-visible { outline: none; }
 .row { margin: 0 0 38px; animation: rise .7s var(--ease) both; }
 .row h3 { padding: 0 var(--gutter); margin-bottom: 4px; font-size: 21px; font-weight: 700; }
 .track-wrap { position: relative; }
-/* desktop: a row dragged with the mouse (app.js); while dragging it follows the cursor (no smooth scrolling) and its cards
-   don't light up or open */
-@media (hover: hover) { .track { cursor: grab; } }
-.track.dragging { cursor: grabbing; scroll-behavior: auto; user-select: none; }
-.track.dragging .card { pointer-events: none; }
+/* desktop: anything scrolling sideways dragged with the mouse (app.js sideScroller); while dragging it follows the cursor (no
+   smooth scrolling) and what's in it doesn't light up or open */
+@media (hover: hover) { .track, .fchips, .cast-track { cursor: grab; } }
+.dragging { cursor: grabbing; scroll-behavior: auto !important; user-select: none; }
+.dragging > * { pointer-events: none; } /* cards, chips, cast: no hover or opening mid-drag */
 .track { display: flex; gap: 10px; overflow-x: auto; overflow-y: hidden; /* cards rising in would otherwise flash a vertical scrollbar */ scroll-behavior: smooth; padding: 24px var(--gutter) 28px; scroll-padding: 0 var(--gutter); } /* top: room for a hovered card (scaled, raised, ringed) */
 .arrow { position: absolute; top: 24px; bottom: 28px; width: 4%; min-width: 44px; z-index: 4; display: grid; place-items: center; background: #000a; color: #fff; opacity: 0; transition: opacity .25s, background .2s; }
 .arrow svg { width: 30px; height: 30px; }
