@@ -42,9 +42,16 @@ if (!window.api) (() => {
   };
 
   const frame = () => document.querySelector('.player > iframe.mplayer');
+  // the popup ads of each host's player, measured in Chrome without an ad blocker: videa and mp4upload's a sandbox stops, and they play
+  // on (videa first: 1080p from the start, where ok.ru stayed at 240p); ok.ru and vk open none. share4max/megamax's script takes every
+  // click until its popup opens, so in a sandbox the video never starts; dood looks for a sandbox too (see mobile.js). Those can't be
+  // stopped from here: the last choice, never the default
+  const SERVER_RANK = { videa: 0, ok: 1, vk: 1, vkvideo: 1, mp4upload: 1, share4max: 3, megamax: 3, leech: 3, dood: 3, doodstream: 3 };
+  const SANDBOXED = /(^|\.)(videa\.hu|mp4upload\.com)$/;
 
   window.api = {
     web: true, // risto.js: anime from RistoAnime
+    serverRank: label => SERVER_RANK[String(label).toLowerCase().split(' ')[0]] ?? 2, // 3: opens popups nothing here can stop
     // form: POST these fields (see main.js for each site's quirk)
     async fetch(url, form) {
       const u = new URL(url, SITE);
@@ -116,6 +123,8 @@ if (!window.api) (() => {
       const key = `${native}:${url}`;
       if (f.dataset.playerKey !== key) {
         f.removeAttribute('srcdoc');
+        // takes effect on the next load, so before it. No allow-popups: that's the point
+        if (!native && SANDBOXED.test(new URL(url).hostname)) f.sandbox = 'allow-scripts allow-same-origin allow-forms allow-presentation'; else f.removeAttribute('sandbox');
         if (native) f.srcdoc = MediaHosts.videoHtml(url); else f.src = url;
         f.dataset.playerKey = key;
         f.dataset.src = url;

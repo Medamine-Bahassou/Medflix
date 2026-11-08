@@ -1598,6 +1598,7 @@ document.addEventListener('click', e => {
 // Sites list one host several times in different qualities: keep the first (best) one of each.
 const QUALITY = ['4K', 'FHD', 'HD', 'SD'];
 const STREAMS_KEEP = 90 * 24 * HOUR; // store.streams: servers' answers, anime episodes' (play) and films' (cinema.js)
+const serverRank = s => api.serverRank?.(s.label) ?? 0; // the website: hosts without popup ads first (web.js)
 const bestPerHost = list => { const seen = new Set(); return list.filter(s => { const h = (s.label || '').toLowerCase().split(' ')[0]; return !seen.has(h) && seen.add(h); }); };
 
 async function play(epPath) {
@@ -1666,8 +1667,8 @@ async function play(epPath) {
   ]).then(l => l.flat());
   // witanime servers played before: the host's link they led to stays put (witanime's tokens die with the session), so they
   // play straight away and witanime's fresh list is only merged in behind them. Forgotten after STREAMS_KEEP.
-  const known = Object.fromEntries(Object.entries(store.streams[epPath]?.list || {}).filter(([k]) => !k.split('|')[0].endsWith(' · AW'))), key = s => s.label + '|' + s.quality;
-  const fresh = api.sources(epPath).then(l => bestPerHost(l.sort((a, b) => QUALITY.indexOf(a.quality) - QUALITY.indexOf(b.quality))));
+  const known = Object.fromEntries(Object.entries(store.streams[epPath]?.list || {}).filter(([k]) => !k.split('|')[0].endsWith(' · AW') && serverRank({ label: k.split('|')[0] }) < 3)), key = s => s.label + '|' + s.quality;
+  const fresh = api.sources(epPath).then(l => bestPerHost(l.sort((a, b) => QUALITY.indexOf(a.quality) - QUALITY.indexOf(b.quality)).sort((a, b) => serverRank(a) - serverRank(b))));
   let servers = Object.entries(known).map(([k, st]) => ({ label: k.split('|')[0], quality: k.split('|')[1], st }));
   let limited = false, why = ''; // witanime is rate-limiting this session: say so instead of "no servers"; why: what refused it
   if (servers.length) fresh.then(l => { // after the remembered ones, before animerco's
@@ -1757,12 +1758,12 @@ async function play(epPath) {
     else api.openDownloadPage(l.token).then(() => toast(t('openedBrowser')), () => toast(t('dlFailed'), true));
   };
   srv.querySelector('.dd-menu').onclick = e => { const b = e.target.closest('.dd-item'); if (b) { closeMenu(); picked = true; tryFrom(+b.dataset.i); } };
-  if (servers.length) tryFrom([store.prefs.showServer?.[show], store.prefs.server].map(l => servers.findIndex(s => s.label === l)).find(i => i >= 0) ?? 0); // this show's, else the last one anywhere
+  if (servers.length) tryFrom([store.prefs.showServer?.[show], store.prefs.server].filter(l => serverRank({ label: l }) < 3).map(l => servers.findIndex(s => s.label === l)).find(i => i >= 0) ?? 0); // this show's, else the last one anywhere
   else stage.innerHTML = '<div class="spin"></div>'; // nothing on witanime: wait for animerco
   const all = await backup, extra = bestPerHost([...servers, ...all]).filter(s => all.includes(s)); // a host already listed isn't offered twice
   if (!here()) return;
   const from = servers.length;
-  servers.push(...extra);
+  servers.push(...extra.sort((a, b) => serverRank(a) - serverRank(b)));
   draw();
   if (dead && extra.length) tryFrom(from); // witanime had nothing that worked: switch to animerco
   else if (!servers.length) stage.innerHTML = limited
