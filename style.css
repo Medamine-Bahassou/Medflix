@@ -922,8 +922,11 @@ img.broken:not(.rd-pages img) { content: url("data:image/gif;base64,R0lGODlhAQAB
 @media(max-width:760px) { .nv-reader { padding-bottom:150px; } .nv-reader .rd-head .ttl { align-items:start; flex-direction:column; gap:4px; } .nv-reader .rd-head .ttl small { margin:0; } }
 /* chapter actions share the app's icon buttons and selection bar. */
 .nv-chapter { position:relative; min-width:0; }
-.nv-chapter > .ep { height:100%; padding-bottom:50px; }
-.nv-chapter-actions { position:absolute; inset-inline-end:8px; bottom:8px; display:flex; gap:4px; }
+.nv-chapter > .ep { height:100%; padding-right:50px; padding-bottom:50px; }
+.nv-chapter > .ep.seen::after, .nv-chapter > .ep.dld::before { display:none; }
+.nv-chapter-actions { position:absolute; inset:0; pointer-events:none; }
+.nv-chapter-actions .icon-btn { position:absolute; right:8px; bottom:8px; pointer-events:auto; }
+.nv-chapter-actions [data-nv-act=read], .nv-chapter-actions [data-nv-act=unread] { top:8px; bottom:auto; }
 .nv-chapter-actions .icon-btn { width:30px; height:30px; background:#ffffff0a; color:var(--muted); }
 .nv-chapter-actions .icon-btn svg { width:16px; height:16px; }
 .nv-chapter-actions .icon-btn.on { color:#46d369; }
