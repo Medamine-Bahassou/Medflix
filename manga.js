@@ -351,12 +351,12 @@ async function mangaSeries(id, force) {
         </div>
       </div>
     </div>
-    <section class="section" id="title-cast" hidden></section>
     <div class="section"><h2>${t('chapters')} <small>${chs.length}</small>
       <div class="ep-tools"><input id="epf" placeholder="${t('jumpCh')}" type="number"><button class="btn ghost small" id="rev" aria-label="${t('reverse')}" title="${t('reverse')}">${ICON.sort}</button>
         ${selBtn('btn ghost small')}</div></h2>
       ${selBar()}
-      <div class="eps" id="eps"></div></div>`;
+      <div class="eps" id="eps"></div></div>
+    <section class="section" id="title-cast" hidden></section>`;
   let rev = false;
   const shown = (f = $('#epf').value) => (rev ? [...chs].reverse() : chs).filter(c => !f || parseFloat(c.n) === +f); // the number itself: 1 is chapter 1, not 10-19
   const drawChs = () => {
