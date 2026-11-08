@@ -11,7 +11,7 @@ function setup(load) {
     document:{documentElement:{scrollHeight:2000}},innerHeight:1000,scrollY:0,clearTimeout,setTimeout,
     addEventListener:(k,f)=>events[k]=f,removeEventListener:(k,f)=>{if(events[k]===f)delete events[k];},
     $:sel=>{if(!nodes.has(sel))nodes.set(sel,{style:{setProperty(){}},dataset:{},isConnected:true,insertAdjacentHTML(_,html){this.html=(this.html||'')+html;}});return nodes.get(sel);},nodes,events,writes};
-  vm.createContext(ctx);vm.runInContext(fs.readFileSync('novels.js','utf8'),ctx);return ctx;
+  vm.createContext(ctx);vm.runInContext(fs.readFileSync('manga.js','utf8').split('// Optional provider')[0],ctx);ctx.scraper={changed:()=>{}};vm.runInContext(fs.readFileSync('novels.js','utf8'),ctx);return ctx;
 }
 test('novel catalogue uses Arabic search and sort and appends cursor results without duplicates',async()=>{
   const calls=[];

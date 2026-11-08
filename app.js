@@ -761,18 +761,18 @@ const animeRows = d => d.rows.map(r => row(r.title, r.items, '#/section/' + enco
 
 // Home: a bit of every section. A site that doesn't answer just leaves its rows out.
 async function home(force) {
-  const hotP = load('mangaList', mUrl('series/', { is_hot: true, page_size: 30 }), force).catch(e => (console.error(e), null));
-  const filmsP = edList('all', 1, force).catch(e => (console.error(e), null));
-  const [d, hot, latest, films, oLatest, m, f] = await Promise.all([
-    scraper.home(force),
-    hotP,
-    load('mangaLatest', mUrl('chapters/', { page_size: 60, order_by: '-created_at' }), force),
-    filmsP,
-    olyLatest(force),
-    hotP.then(h => mangaHero(h?.items.slice(0, 3) || [])),
-    filmsP.then(fl => cinemaHero(fl?.items.slice(0, 3) || [])),
-  ].map(p => p.catch(e => (console.error(e), null))));
-  if (!d && !hot && !films) throw new Error(t('unreachable'));
+  const hash = location.hash;
+  const [d, hot, latest, films, oLatest] = await firstSections([
+    () => scraper.home(force),
+    () => load('mangaList', mUrl('series/', { is_hot:true, page_size:30 }), force),
+    () => load('mangaLatest', mUrl('chapters/', { page_size:60, order_by:'-created_at' }), force),
+    () => edList('all',1,force),
+    () => olyLatest(force),
+  ]);
+  if (location.hash !== hash) return;
+  // posters are already available on the cards: title-page requests must not hold up navigation.
+  const m = (hot?.items || []).slice(0,3).map(c=>({banner:c.poster,title:c.title,desc:c.desc || '',info:'#'+c.path}));
+  const f = (films?.items || []).slice(0,3).map(c=>({banner:c.poster,title:c.title,desc:c.desc || '',info:edHref(c.path.slice('/cinema/'.length))}));
   // the slider takes turns: anime, manga, film, anime…
   const a = d ? animeHero(d).slice(0, 3) : [];
   const hero = [...Array(3)].flatMap((_, i) => [a[i], m?.[i], f?.[i]]).filter(Boolean);
@@ -1867,10 +1867,13 @@ let pageRefresh = null;
 })();
 
 // ---------- router ----------
+let routeVersion = 0;
 async function route(soft) {
   // background redraws wait while a video plays or a search/sheet/menu is open, rather than reset them
   // (and while a pull-to-refresh runs: a redraw would drop its loads, and its spinner would never stop)
   if (soft && (/^#\/novels\/read\//.test(location.hash) || /^#\/(play|offline|manga\/read)\/|^#\/cinema\/([^/]+\/watch|episode\/)/.test(location.hash) || $('.sheet-wrap, .dd.open, body.searching, #ptr.busy'))) return;
+  const version = ++routeVersion;
+  let spinnerT;
   CastInfo.dispose();
   scraper.newView();
   clearInterval(heroTimer);
@@ -1891,7 +1894,7 @@ async function route(soft) {
   api.keepAwake?.(watching); // phones: the video is in an iframe, which doesn't stop the screen locking mid-episode
   immersed = watching || (['manga', 'novels'].includes(a) && rest[0] === 'read');
   $('#nav').style.display = immersed ? 'none' : '';
-  if (!soft) { scrollTo(0, 0); spinner(); }
+  if (!soft) { scrollTo(0, 0); spinnerT = setTimeout(() => { if (version === routeVersion) spinner(); }, 120); }
   view.classList.toggle('still', !!soft); // a redraw with fresher data: no entrance animations, no poster fade-in
   try {
     if (!a) await home();
@@ -1913,12 +1916,15 @@ async function route(soft) {
     else if (a === 'characters') await CastInfo.page(JSON.parse(rest.join('/')));
     else if (a === 'title') await title('/' + rest.join('/'));
     else if (a === 'play') await play('/watch/' + rest.join('/'));
-  } catch (e) { console.error(e); failed(e); }
+  } catch (e) { if (version === routeVersion) { console.error(e); failed(e); } }
+  clearTimeout(spinnerT);
+  if (version !== routeVersion) return;
   if (soft) view.querySelectorAll('img').forEach(i => i.complete && i.naturalWidth && i.classList.add('ok')); // already cached
   syncBar();
   if (!soft) { view.style.animation = 'none'; view.offsetHeight; view.style.animation = ''; }
 }
-scraper.watch(() => route(true)); // the site had something newer than the saved copy
+let redrawTimer;
+scraper.watch(() => { clearTimeout(redrawTimer); const hash=location.hash; redrawTimer=setTimeout(() => { if (location.hash===hash) route(true); }, 80); }); // the site had something newer than the saved copy
 // a page left open is asked again every 5 minutes, quietly: the sites post new episodes, films and chapters several times an
 // hour, and sooner mostly finds nothing new. not while the app is hidden; back on screen after that, at once
 const QUIET_EVERY = 5 * 60e3;
@@ -1929,7 +1935,7 @@ document.addEventListener('visibilitychange', quietCheck);
 addEventListener('hashchange', () => route()); // not `route` directly: the event would arrive as the `soft` flag and skip the redraw
 
 (async () => {
-  for (const k of Object.keys(store)) store[k] = (await api.get(k)) || {};
+  await Promise.all(Object.keys(store).map(async k => { store[k] = (await api.get(k)) || {}; }));
   for (const [p, s] of Object.entries(store.streams)) if (!(Date.now() - s.at < STREAMS_KEEP)) delete store.streams[p];
   lang = store.prefs.lang || 'ar';
   const ran = (await api.downloadStatus?.().catch(() => null)) || {}; // phones: downloads kept going after the app was swiped away

@@ -339,9 +339,11 @@ async function cinemaHero(items) {
 }
 
 async function cinemaHome(force) {
-  const lists = await Promise.all(ECATS.map(c => edList(c[0], 1, force).catch(() => null)));
-  if (!lists.some(Boolean)) throw new Error('egydead');
-  heroPage(await cinemaHero(lists.find(Boolean).items.slice(0, 5)), `
+  const hash=location.hash;
+  const lists = await firstSections(ECATS.map(c => () => edList(c[0],1,force)));
+  if(location.hash!==hash)return;
+  const slides=lists.find(Boolean).items.slice(0,5).map(c=>({banner:c.poster,title:c.title,desc:c.desc || '',info:edHref(c.path.slice('/cinema/'.length))}));
+  heroPage(slides, `
       ${chips(ECATS.slice(1).map(c => [eCatName(c), '#/cinema/browse/' + c[0]]))}
       ${row(t('continueWatching'), continued(['cinema']))}
       ${ECATS.map((c, i) => row(eCatName(c), dubbed(lists[i]?.items), '#/cinema/browse/' + c[0])).join('')}`, () => cinemaHome(true));

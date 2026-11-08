@@ -97,6 +97,7 @@ if (window.api?.web) (() => {
     return names.map((_, i) => { const m = d[`a${i}`]?.media[0] || d[`b${i}`]?.media[0]; return m?.bannerImage || m?.coverImage?.extraLarge || ''; });
   });
   // several late rows landing together: one redrawing
+  const homeExtras = new Map();
   let redrawT;
   const redraw = () => { clearTimeout(redrawT); redrawT = setTimeout(() => scraper.changed(), 300); };
   const watched = () => Object.values(store.history).filter(h => h.show?.startsWith('/anime/')).sort((a, b) => b.at - a.at).slice(0, 5);
@@ -105,16 +106,18 @@ if (window.api?.web) (() => {
     // the feed: what's new, then rows picked from what the visitor watches (their last show's suggestions, their genres),
     // shows they already watch moved to the end of those rows
     async home(force) {
+      const hash=location.hash;
       const mine = watched(), seen = new Set(mine.map(h => h.title));
+      const extraKey=mine.map(h=>h.show).join('|');
       const fresh = items => [...items.filter(c => !seen.has(c.title)), ...items.filter(c => seen.has(c.title))];
       const core = list(RA + '/', force);
-      // the other rows get until a moment after the latest episodes: a slower one is left out of this drawing, and the page
-      // is drawn again once it's in (it's cached by then), so one slow list never holds the whole feed
-      const ready = core.then(() => new Promise(r => setTimeout(r, 1200)), () => {});
-      const soon = p => {
-        let got = false;
-        p = p.then(v => (got = true, v), () => (got = true, null));
-        return Promise.race([p, ready.then(() => { if (!got) p.then(v => v && redraw()); return null; })]);
+      // no artificial wait after the core list: cached rows join at once, slower ones redraw when ready.
+      const ready = core.then(() => Promise.resolve(), () => {});
+      const soon = (name,p) => {
+        const key=extraKey+':'+name;
+        let got=false,changed=false;
+        p=p.then(v=>{got=true;changed=JSON.stringify(homeExtras.get(key))!==JSON.stringify(v);homeExtras.set(key,v);if(homeExtras.size>40)homeExtras.delete(homeExtras.keys().next().value);return v;},()=>{got=true;return null;});
+        return Promise.race([p,ready.then(()=>{if(!got)p.then(v=>v&&changed&&location.hash===hash&&redraw());return homeExtras.get(key)||null;})]);
       };
       const tastes = Promise.all(mine.map(h => details(h.show).catch(() => null))).then(l => l.filter(Boolean)); // cached pages, mostly
       const genres = tastes.then(l => {
@@ -123,9 +126,9 @@ if (window.api?.web) (() => {
         return [...new Set([...Object.keys(count).sort((a, b) => count[b] - count[a]), ...TASTE])].slice(0, 3);
       });
       const slides = core.then(h => byShow(h.slides).slice(0, 8));
-      const [h, views, films, last, byGenre, pics] = await Promise.all([core, soon(mostViewed()), soon(list(`${RA}/movies/`, force)), soon(tastes.then(l => l[0])),
-        soon(genres.then(gs => Promise.all(gs.map(async g => ({ g, d: await list(genreUrl(g), force).catch(() => null) }))))),
-        soon(slides.then(l => art(l.map(c => latin(c.title)))))]);
+      const [h, views, films, last, byGenre, pics] = await Promise.all([core, soon('views',mostViewed()), soon('films',list(`${RA}/movies/`, force)), soon('last',tastes.then(l => l[0])),
+        soon('genres',genres.then(gs => Promise.all(gs.map(async g => ({ g, d: await list(genreUrl(g), force).catch(() => null) }))))),
+        soon('art',slides.then(l => art(l.map(c => latin(c.title)))))]);
       const genreRow = i => byGenre?.[i]?.d && { title: t('genreRow', byGenre[i].g), items: fresh(shows(byGenre[i].d.items)), base: '/genre/' + byGenre[i].g };
       return { hero: (await slides).map((c, i) => ({ path: c.showPath || c.path, watch: c.type === 'episode' ? c.path : '', title: c.title, desc: '', banner: pics?.[i] || c.poster })),
         rows: [

@@ -54,12 +54,11 @@ async function novelsRoute(rest) {
 async function novelsHome(force = false) {
   const hash = location.hash;
   const sections = [['trending','mHot'],['views','mPopular'],['latest','mNew']];
-  const results = await Promise.allSettled(sections.map(([sort]) => nvLoad('/novels', { language:'ar', limit:24, sort }, force)));
+  const results = await firstSections(sections.map(([sort]) => () => nvLoad('/novels', {language:'ar',limit:24,sort},force)));
   if (location.hash !== hash) return;
-  const good = results.find(r => r.status === 'fulfilled');
-  if (!good) throw results[0].reason;
-  const lists = results.map(r => r.status === 'fulfilled' ? r.value.data : []);
-  const slides = (lists[0].length ? lists[0] : good.value.data).filter(n => n.coverURL).slice(0,5).map(n => ({ banner:nvCover(n.coverURL), title:n.title, desc:n.descriptionShort || '', info:'#' + nvCard(n).path }));
+  const good = results.find(Boolean);
+  const lists = results.map(r => r?.data || []);
+  const slides = (lists[0].length ? lists[0] : good.data).filter(n => n.coverURL).slice(0,5).map(n => ({ banner:nvCover(n.coverURL), title:n.title, desc:n.descriptionShort || '', info:'#' + nvCard(n).path }));
   heroPage(slides, `${chips([[t('browseAll'),'#/novels/browse'], ...NV_GENRES.slice(0,5).map(([g]) => [nvGenre(g),'#/novels/browse?genre='+g])])}
     ${row('continueReading',nvContinued())}
     ${sections.map(([sort,label],i) => row(label,lists[i].map(nvCard),'#/novels/browse?sort='+sort)).join('')}`, () => novelsHome(true));

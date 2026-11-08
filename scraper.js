@@ -315,7 +315,7 @@ const filler = names => remember('filler:' + names.map(foldName).join(), async (
 // every visit (at most once a minute per page); a changed page is saved and the current view redrawn.
 // force=true waits for the site instead.
 const KEEP = 90 * 24 * HOUR, RECHECK = 60e3;
-let cache = null, saveT = null, onChange = null;
+let cache = null, cacheReady = null, saveT = null, onChange = null;
 const used = new Set(), checking = new Set(), inflight = new Map(); // URLs the current view was built from; background checks in flight; deduplicated live fetches
 const viewed = new Map(); // the current view's own pages (url -> kind), asked again by recheck(); not keep's extras (kitsu's 20-episode pages)
 // bumped by newView(): a load started for a page the user already left never settles, so a slow page can't draw
@@ -342,8 +342,10 @@ function fetchPage(kind, url, background = false) {
 async function load(kind, url, force = false, keep = false) {
   const g = gen, fresh = data => (keep || g === gen ? data : never);
   if (!cache) { // drop what wasn't confirmed by the site in 90 days
-    cache = (await api.get('pages')) || {};
-    for (const [u, e] of Object.entries(cache)) if (!(Date.now() - e.at < KEEP)) delete cache[u];
+    await (cacheReady ||= api.get('pages').then(data => {
+      cache = data || {};
+      for (const [u,e] of Object.entries(cache)) if (!(Date.now() - e.at < KEEP)) delete cache[u];
+    }).catch(e => { cacheReady=null; throw e; }));
     if (!keep && g !== gen) return never;
   }
   used.add(url);

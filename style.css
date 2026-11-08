@@ -46,7 +46,7 @@ input:focus-visible, select:focus-visible { outline: none; }
 .search .search-clr svg { width: 12px; height: 12px; color: inherit; }
 .search input:placeholder-shown + .search-clr { display: none; }
 
-#view { min-height: 100vh; animation: fade .5s var(--ease); }
+#view { min-height: 100vh; animation: fade .15s var(--ease); }
 .page { padding: 100px var(--gutter) 60px; }
 .page h1 { font-size: 30px; margin-bottom: 24px; display: flex; align-items: center; gap: 12px; }
 .page h1::before { content: ""; width: 5px; height: 30px; background: var(--red); border-radius: 3px; }

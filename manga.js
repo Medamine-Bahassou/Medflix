@@ -1,3 +1,27 @@
+// render ready rows immediately; slow sources enrich only the page that requested them.
+const sectionSnapshots = new Map();
+async function firstSections(tasks) {
+  const hash = location.hash, key = lang + ':' + hash;
+  let values = sectionSnapshots.get(key);
+  if (!values) {
+    values = tasks.map(() => null); sectionSnapshots.set(key,values);
+    if (sectionSnapshots.size > 16) sectionSnapshots.delete(sectionSnapshots.keys().next().value);
+  }
+  let shown = false;
+  const requests = tasks.map((task,i) => Promise.resolve().then(task).then(value => {
+    const changed = JSON.stringify(values[i]) !== JSON.stringify(value);
+    values[i] = value;
+    if (shown && changed && location.hash === hash) scraper.changed();
+    return value;
+  }));
+  // all requests handle rejection, including when the last visit already supplied usable rows.
+  const ready = Promise.any(requests);
+  ready.catch(() => {});
+  if (!values.some(Boolean)) await ready;
+  shown = true;
+  return [...values];
+}
+
 // Optional provider lookups enrich the visible page after its own source is ready.
 const mOptionalCache = new Map();
 function mOptional(key, work, fallback) {
