@@ -113,7 +113,7 @@ const WebDownloads=(()=>{
     const selectFrom=selectable($('.dls'),()=>all.map(i=>i.id),()=>[['zip',t('wbZip')],['retry',t('retry')],['cancel',t('cancel')],['delete',t('delDownloads')]],run);
     pagePress=['.dl',el=>{const item=byId.get(el.dataset.pick);if(!item)return;pickSheet(item.title,[[item.state==='done'?'save':['active','queued'].includes(item.state)?'cancel':'retry',t(item.state==='done'?'wbSave':['active','queued'].includes(item.state)?'cancel':'retry')],item.state==='done'&&['zip',t('wbZip')],['select',t('select')],['delete',t('delDownload')]].filter(Boolean),'',v=>v==='select'?selectFrom(item.id):run(v,[item.id]));}];
     $('.dls').onclick=e=>{const btn=e.target.closest('[data-wb]');if(btn)run(btn.dataset.wb,[btn.closest('[data-pick]').dataset.pick]);};
-    $('#wb-zip').onclick=()=>exportZip(all.filter(i=>i.state==='done'));
+    $('#wb-zip').onclick=()=>exportZip(picks?.size?all.filter(i=>picks.has(i.id)):all.filter(i=>i.state==='done'));
     $('#wb-cancel').onclick=()=>all.forEach(i=>cancel(i.id));
   }
   async function init(){for(const job of Object.values(jobs()))if(['active','queued'].includes(job.state)){for(const f of job.files||[])await api.set(f.key,null);job.files=[];job.state='cancelled';job.error='dlCancelled';}await persist('webDownloads');}
