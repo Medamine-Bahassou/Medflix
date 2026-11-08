@@ -112,12 +112,15 @@ async function novelDetails(id) {
   $('#nv-reverse').onclick = () => { reversed=!reversed;drawChapters(); };
   $('#nv-list').onclick = e => { const on=toggleList(c); e.currentTarget.innerHTML=(on?ICON.check:ICON.plus)+' '+t(on?'inList':'myList'); };
   const picked = ids => allChapters.filter(c=>ids.includes(String(c.id)));
-  const acts = (ids,one) => { const xs=picked(ids);return [['read',t('markRead')],['unread',t('markUnread')],one && ['prev',t('markPrevRead')],xs.some(c=>!store.novelDownloads[nvKey(id,c.slug)]) && ['dl',t('downloadShort')],xs.some(c=>store.novelDownloads[nvKey(id,c.slug)]) && ['del',t('delDownload')],one && ['select',t('select')]].filter(Boolean); };
+  const acts = (ids,one) => { const xs=picked(ids);return [['read',t('markRead')],['unread',t('markUnread')],one && ['prev',t('markPrevRead')],xs.some(c=>!store.novelDownloads[nvKey(id,c.slug)]) && ['dl',t('downloadShort')],xs.some(c=>store.novelDownloads[nvKey(id,c.slug)]) && ['del',t('delDownload')],ids.length>1 && ['zip',t('wbZip')],one && ['select',t('select')]].filter(Boolean); };
   const run = async (act,ids) => {
     const xs=picked(ids);
     if(act==='select')return selectFrom(ids[0]);
     if(act==='read'||act==='unread')nvMark(ids,act==='read'?2:0);
     if(act==='prev'&&xs[0])nvMark(allChapters.filter(c=>+c.order<+xs[0].order).map(c=>c.id),2);
+    if(act==='zip') {
+      try { for(const c of xs)await nvDownload(id,c.slug,n);await WebDownloads.exportZip(WebDownloads.records().filter(r=>r.kind==='novel'&&r.novelId===id&&xs.some(c=>c.slug===r.slug))); }catch{toast(t('dlFailed'),true);}return;
+    }
     if(act==='dl') {
       let failed=false;
       for(const c of xs.filter(c=>!store.novelDownloads[nvKey(id,c.slug)])) {

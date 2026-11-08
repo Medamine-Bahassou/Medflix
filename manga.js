@@ -166,7 +166,7 @@ const byNum = chs => [...chs].sort((a, b) => (parseFloat(b.n) || 0) - (parseFloa
 // found, and opened (it works offline)
 const savedChs = ids => {
   const shows = new Set(ids.filter(Boolean).map(i => '/manga/series/' + i));
-  return new Map(Object.values(store.downloads).filter(d => d.kind === 'manga' && d.state === 'done' && shows.has(d.show))
+  return new Map([...Object.values(store.downloads),...(api.web?Object.values(store.webDownloads):[])].filter(d => d.kind === 'manga' && d.state === 'done' && shows.has(d.show))
     .map(d => [String(chNum(d.ep)), String(d.chapterId)]));
 };
 // a series as shown, chapters newest first: MangaSwat's (plus its Olympus twin's extra chapters), or Olympus's alone.
@@ -199,6 +199,7 @@ async function mSeriesFull(id, force) {
 // one chapter from either site: { id, n, prev, next, serie: { id, title, poster }, images }
 async function mChapter(cid, keep) {
   cid = String(cid);
+  if (api.web) { const saved=await WebDownloads.chapter(cid); if(saved)return saved; }
   if (cid.startsWith('s:')) return slayerChapter(cid, keep);
   if (/^t\d+$/.test(cid)) { // a chapter saved under a removed source's id: resolved by its series and number
     const r = Object.values(store.manga).find(m => String(m.chapterId) === cid), d = store.downloads['manga:' + cid];
@@ -385,7 +386,8 @@ async function mangaSeries(id, force) {
       (!one || !read) && ['read', t('markRead')],
       (!one || read) && ['unread', t('markUnread')],
       one && chs.indexOf(xs[0]) < chs.length - 1 && ['prev', t('markPrevRead')], // chs: newest first, the earlier ones after it
-      !api.web && xs.some(x => !copies.has(String(x.n))) && ['dl', t('downloadShort')], // the website can't download
+      xs.some(x => !copies.has(String(x.n))) && ['dl', t('downloadShort')],
+      api.web && cids.length>1 && ['zip', t('wbZip')],
       xs.some(x => copies.has(String(x.n))) && ['del', t(one ? 'delDownload' : 'delDownloads')],
       one && ['select', t('select')],
     ].filter(Boolean);
@@ -395,8 +397,10 @@ async function mangaSeries(id, force) {
     if (v === 'select') return selectFrom(cids[0]);
     if (v === 'read' || v === 'unread') mark(xs, v === 'read' ? 2 : 0);
     if (v === 'prev') mark(chs.slice(chs.indexOf(xs[0]) + 1), 2);
+    if(api.web && (v==='dl'||v==='zip')){const here=location.hash;await WebDownloads.queueManga({id:s.id,title:s.title,poster:s.poster},xs,v==='zip');if(location.hash===here)drawChs();return;}
     if (v === 'dl') queueChapters({ id: s.id, title: s.title, poster: s.poster }, xs.filter(x => !copies.has(String(x.n))).reverse()); // oldest first
     if (v === 'del') {
+      if(api.web){for(const x of xs){const item=store.webDownloads['manga:'+x.id];if(item)await WebDownloads.remove(item);}drawChs();return;}
       const ds = xs.map(x => store.downloads['manga:' + copies.get(String(x.n))]).filter(Boolean);
       const what = ds.length > 1 ? t('confirmDelN', ds.length) : t('confirmDel', `${s.title} · ${t('chapter')} ${ds[0]?.ep}`);
       if (!ds.length || !await confirmSheet(what, t('confirmDelHint'), t('del'))) return;

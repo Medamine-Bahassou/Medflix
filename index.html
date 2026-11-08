@@ -5,7 +5,7 @@
   <!-- images.witanime.site rejects hotlinks: the Android app's https://localhost referer gets a 403 -->
   <meta name="referrer" content="no-referrer">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https: data: medimg: file:; style-src 'self' 'unsafe-inline'; frame-src 'self' https: about:; media-src 'self' https: file: blob:; connect-src 'self' https:">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https: blob: data: medimg: file:; style-src 'self' 'unsafe-inline'; frame-src 'self' https: about:; media-src 'self' https: file: blob:; connect-src 'self' https:">
   <title>Medflix</title>
   <link rel="icon" type="image/png" href="assets/icon.png">
   <link rel="apple-touch-icon" href="assets/icon.png"> <!-- a phone's home-screen shortcut -->
@@ -45,6 +45,8 @@
   <script defer src="ratings.js"></script>
   <script defer src="risto.js"></script> <!-- the website: anime from RistoAnime (needs web.js) -->
   <script defer src="novels.js"></script>
+  <script defer src="zip.js"></script>
+  <script defer src="web-downloads.js"></script>
   <script defer src="app.js"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 // Website (Vercel) stand-in for the Electron / Android api: the sites are asked through api/proxy.js, user data is kept in
-// IndexedDB, and the player is an iframe (as mobile.js). No downloads: every host's page opens in a new tab instead.
+// IndexedDB, and the player is an iframe (as mobile.js). Browser file transfers use web-downloads.js and api/file.js.
 // Anime comes from RistoAnime here (risto.js): Cloudflare refuses witanime to Vercel's servers.
 if (!window.api) (() => {
   const SITE = 'https://witanime.site', AR = 'https://eva.animerco.org';
@@ -82,11 +82,17 @@ if (!window.api) (() => {
       if (!inner) throw new Error('not embeddable');
       return new URL(inner, url).href;
     },
-    // no downloads in a browser tab: the host's page opens in a new one (inAppHost is false here, see app.js)
+    // fallback for host pages that cannot supply a downloadable file here
     async openDownloadPage(token) {
       const url = token.replace(/^aw:/, '');
       if (!/^https:\/\//.test(url)) throw new Error('bad token');
       window.open(url, '_blank', 'noopener');
+    },
+    async downloadUrl(token) {
+      const url=token.replace(/^stream:/,'').replace(/^(aw:|ra:)/,'');
+      if(!/^https:\/\//.test(url))throw Error('bad token');
+      if(/\.(mp4|mkv|zip)(?:\?|$)/i.test(new URL(url).pathname)||/^download\d*\.mediafire\.com$/.test(new URL(url).hostname))return url;
+      return MediaHosts.resolve(url,hostRequest);
     },
     onDownload() {},
     downloadCancel() {},

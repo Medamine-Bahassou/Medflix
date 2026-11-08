@@ -97,6 +97,7 @@ homeHotManga: 'Trending manga', homeLatestManga: 'Latest manga chapters', homeHo
 };
 let lang = 'ar';
 // t('key') or t('key', args…); unknown keys (e.g. untranslated site text) come back as-is
+if (api.web) { Object.assign(STR.ar,WebDownloads.strings.ar); Object.assign(STR.en,WebDownloads.strings.en); }
 const t = (k, ...a) => { const v = STR[lang][k] ?? k; return typeof v === 'function' ? v(...a) : v; };
 function applyLang() {
   document.documentElement.lang = lang;
@@ -126,7 +127,7 @@ const NAV = [
   ...(api.web ? [{ id: 'novels', href: '#/novels' }] : []),
   { id: 'schedule', href: '#/schedule' },
   { id: 'myList', href: '#/list' },
-  ...(api.web ? [] : [{ id: 'downloads', href: '#/downloads' }]), // the website can't download (web.js): no page for it, nor a dock button
+  { id: 'downloads', href: '#/downloads' },
 ];
 const DOCK_MAX = 5, DOCK_DEFAULT = ['home', 'anime', 'manga', 'cinema']; // novels is also available through the drawer on phones
 const dockLabel = id => t(id === 'schedule' ? 'scheduleShort' : id === 'cinema' ? 'cinemaShort' : id); // a fifth of the screen
@@ -409,7 +410,7 @@ $('.nav-gear').addEventListener('click', e => { // the gear shows on wide screen
 });
 
 // the website keeps everything in the browser (web.js): a copy of it as a file, put back from one; and the saved pages cleared
-const BACKUP = ['list', 'history', 'seen', 'prefs', 'manga', 'mangaSeen', 'hidden', 'novels', 'novelSeen']; // not downloads (none here) nor streams (a cache)
+const BACKUP = ['list', 'history', 'seen', 'prefs', 'manga', 'mangaSeen', 'hidden', 'novels', 'novelSeen']; // payloads and download indexes stay local; streams are only a cache
 function webData() {
   $('#bk').onclick = () => {
     const a = document.createElement('a');
@@ -433,7 +434,7 @@ function webData() {
 }
 
 // ---------- user state (persisted in main process JSON) ----------
-const store = { ...(api.web ? { novels: {}, novelSeen: {}, novelDownloads: {} } : {}), list: {}, history: {}, seen: {}, prefs: {}, downloads: {}, manga: {}, mangaSeen: {}, hidden: {}, streams: {} }; // hidden: cards long-pressed away, by path; streams: see play()
+const store = { ...(api.web ? { novels: {}, novelSeen: {}, novelDownloads: {}, webDownloads: {} } : {}), list: {}, history: {}, seen: {}, prefs: {}, downloads: {}, manga: {}, mangaSeen: {}, hidden: {}, streams: {} }; // hidden: cards long-pressed away, by path; streams: see play()
 const persist = k => api.set(k, store[k]);
 const inList = p => !!store.list[p];
 function toggleList(item) {
@@ -1092,6 +1093,7 @@ const inAppHost = label => !!(api.download || api.downloadEnqueue) && MediaHosts
 // different shows download side by side. A show can be paused on its own; Pause all holds every show.
 const held = show => store.prefs.dlHeld?.[show] ?? !!store.prefs.dlPaused; // a show's own choice beats Pause all
 function startDownload(item, quality = item.quality || store.prefs.dlQuality) {
+  if (api.web) return WebDownloads.queueVideo([{...item,quality}]);
   const cur = store.downloads[item.id];
   if (cur?.state === 'active' || cur?.state === 'done') return toast(t(cur.state === 'done' ? 'dlDone' : 'dlActive'));
   const wait = held(item.show), busy = Object.values(store.downloads).some(d => d.show === item.show && d.state === 'active');
@@ -1134,6 +1136,7 @@ async function runEpisode(d) {
 // manga chapters: page images (see download-pages in main.js)
 const isManga = d => d.kind === 'manga';
 function queueChapters(serie, chapters) { // serie {id, title, poster}, chapters [{id, n}] oldest first
+  if (api.web) return WebDownloads.queueManga(serie,chapters);
   let added = 0;
   const show = '/manga/series/' + serie.id;
   for (const c of chapters) {
@@ -1459,6 +1462,7 @@ async function title(path, force) {
           ${Ratings.slot({title:d.title, alt:d.alt, type:"anime"})}
           <div class="actions">
             ${first ? `<a class="btn red" href="${playHash(first)}">${ICON.play} ${h ? esc(t('resume', h.ep)) : t('play')}</a>` : ''}
+            ${api.web && type==='movie' && first ? `<button class="btn ghost" id="web-film-dl">${ICON.download} ${t('downloadShort')}</button>` : ''}
             <button class="btn ghost" id="fav">${inList(path) ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList')}</button>
             ${d.trailer ? `<button class="btn ghost" id="trl">${ICON.play} ${t('trailer')}</button>` : ''}
             ${type === 'anime' ? `<button class="btn ghost" id="grf">${ICON.star} ${t('epRatings')}</button>` : ''}
@@ -1495,6 +1499,7 @@ async function title(path, force) {
     epActions(eps, d.episodes.map(e => ({ id: e.path, ep: e.ep })), () => shown().map(e => e.path), drawEps,
       e => ({ id: e.id, epPath: e.id, show: showOf(e.id), title: d.title, ep: e.ep, poster: d.poster }), d.title);
   }
+  $('#web-film-dl')?.addEventListener('click',()=>WebDownloads.queueVideo([{id:first,epPath:first,show:path,title:d.title,ep:'',poster:d.poster}]));
   $('#fav').onclick = e => { const on = toggleList({ path, title: d.title, poster: d.poster, type }); e.currentTarget.innerHTML = on ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList'); };
   pageRefresh = () => title(path, true);
   $('#rf').onclick = () => pageRefresh().then(() => toast(t('updated')));
@@ -1515,7 +1520,7 @@ async function nextAir(names) {
 }
 // an episode's row (anime, series): its still (else the show's picture), its number and, when known, its name
 const epKind = k => (k ? `<em class="ep-kind ${k}">${t(k)}</em>` : ''); // "filler" or "mixed" (scraper.filler)
-const epRow = (n, i, pic, href, seen, last, pick) => `<a class="ep ${seen ? 'seen' : ''} ${last ? 'last' : ''} ${store.downloads[pick]?.state === 'done' ? 'dld' : ''} ${picks?.has(pick) ? 'sel' : ''}"
+const epRow = (n, i, pic, href, seen, last, pick) => `<a class="ep ${seen ? 'seen' : ''} ${last ? 'last' : ''} ${(store.downloads[pick] || (api.web && store.webDownloads[pick]))?.state === 'done' ? 'dld' : ''} ${picks?.has(pick) ? 'sel' : ''}"
   href="${href}"${pick ? ` data-pick="${esc(pick)}"` : ''}>
   <img src="${esc(img(i?.thumb || pic))}" alt="" loading="lazy"><span><b>${/^\d/.test(n) ? t('ep') + ' ' : ''}${esc(n)}${epKind(i?.kind)}</b>${i?.name ? `<small dir="auto">${esc(i.name)}</small>` : ''}</span></a>`;
 // an episode list's actions (anime, series), on one (long-press) or several picked: mark them watched or not, download them or
@@ -1527,7 +1532,8 @@ function epActions(list, eps, ids, redraw, job, title) {
   const acts = (ps, one) => [
     (!one || !store.seen[ps[0]]) && ['seen', t('markWatched')],
     (!one || store.seen[ps[0]]) && ['unseen', t('markUnwatched')],
-    !api.web && pick(ps).some(free) && ['dl', t('downloadShort')], // the website can't download
+    pick(ps).some(free) && ['dl', t('downloadShort')],
+    api.web && ps.length>1 && ['zip', t('wbZip')],
     pick(ps).some(saved) && ['del', t(one ? 'delDownload' : 'delDownloads')],
     one && ['select', t('select')],
   ].filter(Boolean);
@@ -1535,6 +1541,7 @@ function epActions(list, eps, ids, redraw, job, title) {
     const xs = pick(ps);
     if (v === 'select') return selectFrom(ps[0]);
     if (v === 'seen' || v === 'unseen') { for (const e of xs) v === 'seen' ? (store.seen[e.id] = 1) : delete store.seen[e.id]; persist('seen'); }
+    if (api.web && (v==='dl'||v==='zip')) { const here=location.hash;await WebDownloads.queueVideo(xs.map(job),v==='zip');if(location.hash===here)redraw();return; }
     if (v === 'dl') {
       const todo = xs.filter(free);
       for (const e of todo) startDownload(job(e)); // in the quality last picked; each show's queue takes them oldest first
@@ -1724,6 +1731,7 @@ async function play(epPath) {
     if (b.dataset.act === 'list') return location.hash = '#/downloads';
     const l = links[b.dataset.i];
     store.prefs.dlQuality = l.quality; store.prefs.dlHost = l.label; persist('prefs');
+    if (api.web) return WebDownloads.queueVideo([{id:epPath,epPath,show,title:d.title,ep,poster:d.poster,quality:l.quality,host:l.label,token:l.token}]);
     if (inAppHost(l.label)) startDownload({ id: epPath, epPath, show, title: d.title, ep, poster: d.poster }, l.quality);
     else api.openDownloadPage(l.token).then(() => toast(t('openedBrowser')), () => toast(t('dlFailed'), true));
   };
@@ -1904,6 +1912,7 @@ async function route(soft) {
   // (and while a pull-to-refresh runs: a redraw would drop its loads, and its spinner would never stop)
   if (soft && (/^#\/novels\/read\//.test(location.hash) || /^#\/(play|offline|manga\/read)\/|^#\/cinema\/([^/]+\/watch|episode\/)/.test(location.hash) || $('.sheet-wrap, .context-menu, .dd.open, body.searching, #ptr.busy'))) return;
   closeContextMenu();
+  if (api.web) WebDownloads.releaseUrls();
   const version = ++routeVersion;
   let spinnerT;
   CastInfo.dispose();
@@ -1937,7 +1946,7 @@ async function route(soft) {
     else if (a === 'filter') await filterView();
     else if (a === 'list') myList();
     else if (a === 'hidden') hiddenView();
-    else if (a === 'downloads') api.web ? location.replace('#/') : drawDownloads(); // an old link on the website: nothing to show there
+    else if (a === 'downloads') api.web ? WebDownloads.page() : drawDownloads();
     else if (a === 'offline') offline((rest[0] === 'cinema' ? '/' : '/watch/') + rest.join('/'));
     else if (a === 'schedule') await schedule();
     else if (a === 'airing') await airing(rest[0]);
@@ -1969,6 +1978,7 @@ addEventListener('hashchange', () => route()); // not `route` directly: the even
 (async () => {
   await Promise.all(Object.keys(store).map(async k => { store[k] = (await api.get(k)) || {}; }));
   for (const [p, s] of Object.entries(store.streams)) if (!(Date.now() - s.at < STREAMS_KEEP)) delete store.streams[p];
+  if (api.web) await WebDownloads.init();
   lang = store.prefs.lang || 'ar';
   const ran = (await api.downloadStatus?.().catch(() => null)) || {}; // phones: downloads kept going after the app was swiped away
   for (const d of Object.values(store.downloads)) { // what the service did meanwhile, including items it started on its own (see dlSent)
