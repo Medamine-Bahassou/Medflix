@@ -915,6 +915,7 @@ img.broken:not(.rd-pages img) { content: url("data:image/gif;base64,R0lGODlhAQAB
 .nv-text h1 { font-size:1.25em; margin-bottom:32px; line-height:1.6; }
 .nv-text p { margin-block:0 1.2em; white-space:pre-wrap; }
 .nv-reader .rd-head, .nv-reader .rd-bar { color:#fff; }
+.nv-paper { color-scheme:dark; padding-inline:12px; font:inherit; font-size:13px; cursor:pointer; }
 .nv-size-label { display:flex; align-items:center; gap:12px; color:var(--muted); font-size:13px; }
 .nv-size-label input { width:110px; accent-color:var(--red); }
 .nv-page [hidden], #nv-ch-more[hidden] { display:none; }

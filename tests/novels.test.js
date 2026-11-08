@@ -38,6 +38,8 @@ test('reader escapes chapter text, restores progress and saves progress without 
   c.location.hash='#/novels/read/book/chapter-1';c.store.novels.book={slug:'chapter-1',progress:.5};
   let offset;c.scrollTo=(_,y)=>offset=y;
   await c.novelRead('book','chapter-1');
+  c.nodes.get('#nv-paper').onchange({target:{value:'sepia'}});
+  assert.equal(c.store.prefs.nvPaper,'sepia');assert.equal(c.nodes.get('.nv-reader').dataset.paper,'sepia');
   assert.equal(offset,500);assert.match(c.view.innerHTML,/&lt;script>/);assert.doesNotMatch(c.view.innerHTML,/<script>/);
   assert.match(c.view.innerHTML,/#\/novels\/read\/book\/chapter-2/);
   c.scrollY=750;c.events.scroll();c.location.hash='#/novels';c.events.hashchange();
