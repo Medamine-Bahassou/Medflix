@@ -131,6 +131,7 @@ const closeSheet = () => {
 
 // single-choice bottom sheet: opts = [[value, label]], onPick(value)
 function pickSheet(title, opts, cur, onPick) {
+  if (contextPoint) return contextMenu(title, opts, cur, onPick, contextPoint);
   const w = document.createElement('div');
   w.className = 'sheet-wrap';
   w.innerHTML = `<div class="sheet">

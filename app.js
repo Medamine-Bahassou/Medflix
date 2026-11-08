@@ -510,6 +510,34 @@ function cardMenu(d) {
     });
   });
 }
+// right-click actions use the app's dropdown rows, anchored to the pointer instead of a modal.
+let contextPoint = null, contextFocus = null;
+function closeContextMenu() {
+  const menu=$('.context-menu'); if(!menu)return false;
+  menu.remove(); if(contextFocus?.isConnected)contextFocus.focus();contextFocus=null;return true;
+}
+function contextMenu(title,opts,cur,onPick,point) {
+  closeContextMenu();
+  contextFocus=point.target?.matches('a,button') ? point.target : point.target?.querySelector('a,button') || document.activeElement;
+  const menu=document.createElement('div');menu.className='context-menu';menu.setAttribute('role','menu');menu.setAttribute('aria-label',title);
+  menu.innerHTML=`<div class="context-title">${esc(title)}</div>${opts.map(([v,label])=>`<button type="button" class="dd-item ${v===cur?'on':''}" role="menuitem" data-v="${esc(v)}">${esc(label)}</button>`).join('')}`;
+  document.body.append(menu);
+  const box=menu.getBoundingClientRect();
+  menu.style.left=Math.max(8,Math.min(point.x,innerWidth-box.width-8))+'px';menu.style.top=Math.max(8,Math.min(point.y,innerHeight-box.height-8))+'px';
+  const buttons=[...menu.querySelectorAll('button')];buttons[0]?.focus();
+  menu.onclick=e=>{const btn=e.target.closest('[data-v]');if(!btn)return;const v=btn.dataset.v;closeContextMenu();onPick(v);};
+  menu.onkeydown=e=>{const at=buttons.indexOf(document.activeElement);let next;
+    if(e.key==='ArrowDown')next=(at+1)%buttons.length;
+    if(e.key==='ArrowUp')next=(at-1+buttons.length)%buttons.length;
+    if(e.key==='Home')next=0;if(e.key==='End')next=buttons.length-1;
+    if(next!=null){e.preventDefault();buttons[next]?.focus();}if(e.key==='Tab')closeContextMenu();
+  };
+}
+document.addEventListener('pointerdown',e=>{const menu=$('.context-menu');if(menu&&!menu.contains(e.target))closeContextMenu();},true);
+addEventListener('scroll',e=>{const menu=$('.context-menu');if(menu&&!menu.contains(e.target))closeContextMenu();},true);
+addEventListener('resize',closeContextMenu);
+addEventListener('hashchange',closeContextMenu);
+
 // Long-press (or right-click) menus: cards' above; a page sets pagePress = [selector, open(el)] for its own elements
 // (chapter tiles, download rows). pressOf: [the pressed element, its menu (none: a card without data)]
 let pressT, pressAt, pressed = null, pagePress = null; // pressed: the element whose menu opened
@@ -519,12 +547,13 @@ const pressOf = e => {
   const el = pagePress && e.target.closest(pagePress[0]), open = pagePress?.[1];
   return el && [el, () => open(el)];
 };
-function pressMenu([el, open]) {
+function pressMenu([el, open], point = null) {
   if (pressed || !open) return; // the timer and the browser's own long-press (contextmenu) both fire: one menu
   pressed = el;
   clearTimeout(pressT);
-  navigator.vibrate?.(20);
-  open();
+  if (!point) navigator.vibrate?.(20);
+  contextPoint = point;
+  try { open(); } finally { contextPoint = null; }
 }
 document.addEventListener('pointerdown', e => {
   pressed = null;
@@ -541,7 +570,9 @@ document.addEventListener('contextmenu', e => {
   const p = pressOf(e);
   if (!p) return;
   e.preventDefault();
-  pressMenu(p);
+  const mouse=e.pointerType!=='touch' && (e.button===2 || (!e.clientX&&!e.clientY));
+  const box=p[0].getBoundingClientRect();
+  pressMenu(p,mouse?{x:e.clientX || box.left,y:e.clientY || box.bottom,target:p[0]}:null);
 });
 // a held link or image never turns into a drag (Android starts one on long-press, cancelling the press and its menu): nothing here is dragged
 document.addEventListener('dragstart', e => e.preventDefault());
@@ -1800,7 +1831,7 @@ document.addEventListener('click', e => {
   }, e => /cancelled/.test(e.message) || toast(t(/no video/.test(e.message) ? 'castPlayFirst' : /no wifi/.test(e.message) ? 'castWifi' : /not castable/.test(e.message) ? 'castHost' : 'castFailed'), true));
 });
 const closeTrailer = () => { const m = $('.trailer'); m?.remove(); return !!m; };
-const back = () => closeSettings() || closeDrawer() || closeSheet() || closeSelect() || closeSearch() || closeMenu() || closeTrailer() || ($('.player') && $('#back').click());
+const back = () => closeContextMenu() || closeSettings() || closeDrawer() || closeSheet() || closeSelect() || closeSearch() || closeMenu() || closeTrailer() || ($('.player') && $('#back').click());
 // Android back button (MainActivity.java): true = handled here, otherwise it goes back a page
 window.androidBack = () => closeDrawer() || closeSheet() || closeSelect() || closeSearch() || closeMenu() || closeTrailer() || lockedBack();
 addEventListener('keydown', e => e.key === 'Escape' && back());
@@ -1871,7 +1902,8 @@ let routeVersion = 0;
 async function route(soft) {
   // background redraws wait while a video plays or a search/sheet/menu is open, rather than reset them
   // (and while a pull-to-refresh runs: a redraw would drop its loads, and its spinner would never stop)
-  if (soft && (/^#\/novels\/read\//.test(location.hash) || /^#\/(play|offline|manga\/read)\/|^#\/cinema\/([^/]+\/watch|episode\/)/.test(location.hash) || $('.sheet-wrap, .dd.open, body.searching, #ptr.busy'))) return;
+  if (soft && (/^#\/novels\/read\//.test(location.hash) || /^#\/(play|offline|manga\/read)\/|^#\/cinema\/([^/]+\/watch|episode\/)/.test(location.hash) || $('.sheet-wrap, .context-menu, .dd.open, body.searching, #ptr.busy'))) return;
+  closeContextMenu();
   const version = ++routeVersion;
   let spinnerT;
   CastInfo.dispose();
