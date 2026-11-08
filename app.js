@@ -637,6 +637,33 @@ function askOrGo(d) {
   requestAnimationFrame(() => w.classList.add('open'));
   w.onclick = e => { if (e.target === w || e.target.closest('a')) closeSheet(); }; // a link goes on by itself (no return false: that would stop it)
 }
+// desktop: a row dragged with the mouse, as a finger does on phones (touch keeps its own scrolling). It follows the cursor,
+// glides on a little after a quick release, and the click that ends a drag doesn't open the card under it
+let drag = null;
+document.addEventListener('pointerdown', e => {
+  const tr = e.pointerType === 'mouse' && !e.button && !e.target.closest('.arrow') && e.target.closest('.track');
+  if (tr) drag = { tr, x: e.clientX, left: tr.scrollLeft, moved: false, v: 0, at: e.timeStamp, last: e.clientX };
+});
+addEventListener('pointermove', e => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x;
+  if (!drag.moved && Math.abs(dx) < 6) return; // a click, not a drag
+  if (!drag.moved) { drag.moved = true; drag.tr.classList.add('dragging'); clearTimeout(pressT); } // no long-press menu either
+  drag.v = (e.clientX - drag.last) / Math.max(1, e.timeStamp - drag.at); drag.last = e.clientX; drag.at = e.timeStamp; // px per ms, for the glide
+  drag.tr.scrollLeft = drag.left - dx;
+});
+addEventListener('pointerup', () => {
+  if (!drag) return;
+  const { tr, moved, v } = drag;
+  drag = null;
+  if (!moved) return;
+  tr.classList.remove('dragging'); // smooth scrolling back on: the glide below eases out
+  if (Math.abs(v) > .3) tr.scrollBy({ left: -v * 280 });
+  // the drag's own click (it comes right after this, if at all: released off the row, none does, and the next real one stays)
+  const eat = e => { e.preventDefault(); e.stopImmediatePropagation(); };
+  addEventListener('click', eat, { capture: true, once: true });
+  setTimeout(() => removeEventListener('click', eat, true));
+});
 document.addEventListener('load', e => e.target.tagName === 'IMG' && e.target.classList.add('ok'), true);
 document.addEventListener('error', e => e.target.tagName === 'IMG' && e.target.classList.add('ok', 'broken'), true); // broken: offline posters etc.
 let barColor;

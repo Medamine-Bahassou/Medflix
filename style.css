@@ -104,6 +104,11 @@ input:focus-visible, select:focus-visible { outline: none; }
 .row { margin: 0 0 38px; animation: rise .7s var(--ease) both; }
 .row h3 { padding: 0 var(--gutter); margin-bottom: 4px; font-size: 21px; font-weight: 700; }
 .track-wrap { position: relative; }
+/* desktop: a row dragged with the mouse (app.js); while dragging it follows the cursor (no smooth scrolling) and its cards
+   don't light up or open */
+@media (hover: hover) { .track { cursor: grab; } }
+.track.dragging { cursor: grabbing; scroll-behavior: auto; user-select: none; }
+.track.dragging .card { pointer-events: none; }
 .track { display: flex; gap: 10px; overflow-x: auto; overflow-y: hidden; /* cards rising in would otherwise flash a vertical scrollbar */ scroll-behavior: smooth; padding: 24px var(--gutter) 28px; scroll-padding: 0 var(--gutter); } /* top: room for a hovered card (scaled, raised, ringed) */
 .arrow { position: absolute; top: 24px; bottom: 28px; width: 4%; min-width: 44px; z-index: 4; display: grid; place-items: center; background: #000a; color: #fff; opacity: 0; transition: opacity .25s, background .2s; }
 .arrow svg { width: 30px; height: 30px; }
@@ -113,12 +118,14 @@ input:focus-visible, select:focus-visible { outline: none; }
 
 /* ---------- cards ---------- */
 .card { position: relative; flex: 0 0 auto; width: 190px; border-radius: 6px; overflow: hidden; background: var(--card); cursor: pointer;
-  transition: transform .35s var(--ease), box-shadow .35s var(--ease); animation: rise .6s var(--ease) both; animation-delay: calc(var(--i, 0) * 35ms); }
+  transition: transform .4s var(--ease), box-shadow .4s var(--ease); animation: rise .6s var(--ease) backwards; animation-delay: calc(var(--i, 0) * 35ms); }
+/* backwards, not both: a finished animation that still held transform made the hover jump instead of easing */
 .card .img { position: relative; aspect-ratio: 2/3; overflow: hidden; background: linear-gradient(110deg, #1a1a1a 30%, #262626 50%, #1a1a1a 70%) 0 0/300% 100%; animation: shimmer 1.4s infinite; }
 /* a cover still not here after 4s (or never coming): its title in place of the shimmer. the img carries on loading, and covers it when it lands */
 .card .img[data-ph]::before { content: attr(data-ph); position: absolute; inset: 0; display: grid; place-items: center; padding: 12px; text-align: center; font-size: 13px; color: var(--muted); background: linear-gradient(#262626, var(--card)); opacity: 0; animation: img-late 0s 4s forwards; }
 @keyframes img-late { to { opacity: 1 } }
-.card img { position: relative; width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .6s var(--ease), opacity .4s; opacity: 0; }
+.card img { position: relative; width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .4s var(--ease), opacity .4s; opacity: 0; } /* .4s: in step with the card's lift */
+@media (hover: hover) { .card, .card img { will-change: transform; } } /* the hover's scaling on the GPU: no repaint each frame */
 .card img.ok { opacity: 1; }
 .card:hover { transform: scale(1.08) translateY(-6px); z-index: 3; box-shadow: 0 18px 40px #000c, 0 0 0 2px var(--red); }
 .card:hover img { transform: scale(1.06); }
