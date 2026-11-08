@@ -92,12 +92,10 @@ const Ratings = (() => {
     const v = matches.length === 1 && matches[0].averageScore;
     return v > 0 ? { source: 'AniList', value: (v / 10).toFixed(1) } : null;
   }
-  const logo = source => source === 'MyAnimeList' ? '<svg viewBox="0 0 64 30" aria-label="MyAnimeList" role="img"><rect width="64" height="30" rx="4" fill="#2e51a2"/><text x="32" y="22" text-anchor="middle" font-family="Arial" font-weight="900" font-size="20" fill="#fff">MAL</text></svg>' : source === 'IMDb' ? '<svg viewBox="0 0 64 30" aria-label="IMDb" role="img"><rect width="64" height="30" rx="4" fill="#f5c518"/><text x="5" y="22" font-family="Arial" font-weight="900" font-size="22" fill="#000">IMDb</text></svg>' : '<svg viewBox="0 0 40 30" aria-label="AniList" role="img"><path fill="#02a9ff" d="M0 30 9 0h8l9 30h-8l-2-7H9l-2 7zm11-14h3l-1.5-6z"/><path fill="#9fcdff" d="M25 0h7v23h8v7H25z"/></svg>';
-  // one badge per source, its full name on hover: IMDb's and MAL's logos with the score out of 10; Rotten Tomatoes' red tomato (green
-  // splat under 60, as the site shows it) and Metacritic's green / yellow / red box by score, as theirs do
-  const badge = (source, value) => source === 'Rotten Tomatoes' ? `<span class="rb rb-rt${+value < 60 ? ' low' : ''}" title="${source}"><i>RT</i><b>${esc(value)}%</b></span>`
-    : source === 'Metacritic' ? `<span class="rb rb-mc${+value < 40 ? ' bad' : +value < 61 ? ' mixed' : ''}" title="${source}"><i>MC</i><b>${esc(value)}</b></span>`
-    : `<span class="rb" title="${esc(source)}">${logo(source)}<b>${esc(value)}</b><small>/10</small></span>`;
+  // the sites' own logos, the same files the app shows (android's drawable-nodpi/logo_*.png)
+  const LOGO = { IMDb: 'imdb', 'Rotten Tomatoes': 'rt', Metacritic: 'mc', MyAnimeList: 'mal', AniList: 'anilist' };
+  // one badge per source, its full name on hover: a percent for Rotten Tomatoes, Metacritic's score out of 100, the rest out of 10
+  const badge = (source, value) => `<span class="rb" title="${esc(source)}"><img src="assets/ratings/${LOGO[source] || 'anilist'}.png" alt="${esc(source)}"><b>${esc(value)}${source === 'Rotten Tomatoes' ? '%' : ''}</b>${source === 'Rotten Tomatoes' || source === 'Metacritic' ? '' : '<small>/10</small>'}</span>`;
   // ---------- the show page's graph: each episode's rating, as [season, episode, score] ----------
   // the sites spell a name their own way: "Shippuuden", "Shippūden", "Shippuden"
   const spelled = s => filmName(String(s || '').normalize('NFD').replace(/\p{M}/gu, '')).replace(/([ou])u/g, '$1');

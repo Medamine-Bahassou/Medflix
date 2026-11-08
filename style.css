@@ -895,15 +895,9 @@ img.broken:not(.rd-pages img) { content: url("data:image/gif;base64,R0lGODlhAQAB
 .source-rating:empty { display: none; }
 /* a source's badge (ratings.js badge): its logo or coloured mark, the score, "/10"; read left to right in either language */
 .rb { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding-inline: 5px 12px; border-radius: 9px; background: #ffffff10; border: 1px solid #ffffff1f; font-size: 15px; white-space: nowrap; direction: ltr; backdrop-filter: blur(6px); }
-.rb svg { height: 22px; width: auto; border-radius: 4px; }
+.rb img { height: 22px; width: auto; border-radius: 4px; }
 .rb b { color: #fff; font-weight: 800; }
 .rb small { margin-inline-start: -5px; color: var(--muted); font-size: 12px; }
-.rb i { display: grid; place-items: center; height: 22px; padding-inline: 6px; border-radius: 4px; font-style: normal; font-size: 11px; font-weight: 900; letter-spacing: .02em; color: #fff; }
-.rb-rt i { background: #fa320a; }
-.rb-rt.low i { background: #0ac855; }
-.rb-mc i { background: #66cc33; color: #000; }
-.rb-mc.mixed i { background: #ffcc33; color: #000; }
-.rb-mc.bad i { background: #ff0000; }
 /* the facts line under a title (cinema.js): "category · year · running time · quality" */
 .det-meta { display: flex; flex-wrap: wrap; align-items: center; margin: 12px 0 14px; color: #cfcfcf; font-size: 15px; font-weight: 500; }
 .det-meta span + span::before { content: "·"; margin-inline: 10px; color: var(--muted); }
