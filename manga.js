@@ -435,7 +435,7 @@ async function mangaReader(cid) {
   store.mangaSeen[c.id] ||= 1; // 1: opened, 2: read to the last page (see markRead)
   persist('manga'); persist('mangaSeen');
   const horiz = !!store.prefs.mangaH; // horizontal: one page per screen, swiped sideways
-  view.innerHTML = `<div class="reader ${horiz ? 'horiz' : ''}">
+  view.innerHTML = `<div class="reader ${api.web ? 'web-reader' : ''} ${horiz ? 'horiz' : ''}">
     <header class="rd-head">
       <button class="icon-btn" id="back" title="${t('back')}" aria-label="${t('back')}">${ICON.back}</button>
       <div class="ttl"><a href="#/manga/series/${s.id}">${esc(s.title)}</a><small>${t('chapter')} ${esc(c.n)}</small></div>
@@ -449,7 +449,7 @@ async function mangaReader(cid) {
         <b id="rspdN"></b>
       </div>
       ${horiz ? '' : `<button class="icon-btn" id="rauto" title="${t('autoScroll')}" aria-label="${t('autoScroll')}">${ICON.play}</button>`}
-      <button class="icon-btn" id="rlock" title="${t('lockUi')}" aria-label="${t('lockUi')}">${ICON.lock}</button>
+      ${api.web ? '' : `<button class="icon-btn" id="rlock" title="${t('lockUi')}" aria-label="${t('lockUi')}">${ICON.lock}</button>`}
       <button class="icon-btn ${horiz ? 'on' : ''}" id="rmode" title="${t('readMode')}">${horiz ? ICON.horiz : ICON.vert}</button>
       <span class="rd-sep"></span>
       <div class="rd-nav">
@@ -492,10 +492,10 @@ async function mangaReader(cid) {
   const reader = $('.reader'), ul = $('#runlock');
   // phones: the status bar goes and comes back with the bars (shown again on any other page: route)
   new MutationObserver(() => api.statusBar?.(!reader.matches('.hide-ui, .locked'))).observe(reader, { attributes: true, attributeFilter: ['class'] });
-  const lock = on => { reader.classList.toggle('locked', rdLocked = on); reader.classList.remove('hide-ui'); };
+  const lock = on => { reader.classList.toggle('locked', rdLocked = !api.web && on); reader.classList.remove('hide-ui'); };
   const place = ([x, y] = store.prefs.unlockAt || [.5, .85]) => { ul.style.left = x * 100 + '%'; ul.style.top = y * 100 + '%'; };
   lock(rdLocked); place();
-  $('#rlock').onclick = () => lock(true);
+  $('#rlock')?.addEventListener('click', () => lock(true));
   let p0, moved;
   ul.onpointerdown = e => { p0 = [e.clientX, e.clientY]; moved = false; ul.setPointerCapture(e.pointerId); };
   ul.onpointermove = e => {
@@ -631,7 +631,7 @@ function readerZoom(box, horiz) {
       return set(z > 1 ? 1 : 2.5, e.clientX, e.clientY);
     }
     last = Date.now();
-    if (inMid(e.clientX, innerWidth) && inMid(e.clientY, innerHeight)) tapT = setTimeout(() => reader.classList.toggle('hide-ui'), 300);
+    if (!api.web && inMid(e.clientX, innerWidth) && inMid(e.clientY, innerHeight)) tapT = setTimeout(() => reader.classList.toggle('hide-ui'), 300);
   };
 }
 
@@ -651,7 +651,7 @@ const lockedBack = () => {
 let readerY = 0, readerSave, readerPos, rdLocked = false, sbIdle;
 addEventListener('scroll', () => {
   const r = document.querySelector('.reader');
-  if (r && scrollY !== readerY) r.classList.toggle('hide-ui', scrollY > 80);
+  if (!api.web && r && scrollY !== readerY) r.classList.toggle('hide-ui', scrollY > 80);
   r?.style.setProperty('--sp', scrollY / Math.max(1, document.documentElement.scrollHeight - innerHeight)); // scrollbar thumb
   if (r) { r.classList.add('scrolling'); clearTimeout(sbIdle); sbIdle = setTimeout(() => r.classList.remove('scrolling'), 1500); } // the thumb fades once scrolling stops
   readerY = scrollY;

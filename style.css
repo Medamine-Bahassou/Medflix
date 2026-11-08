@@ -944,3 +944,10 @@ img.broken:not(.rd-pages img) { content: url("data:image/gif;base64,R0lGODlhAQAB
 
 .wb-toolbar { margin-block:20px; }
 .dl-info small { display:block; color:var(--muted); margin-top:6px; }
+
+/* website reader controls stay visible in both reading directions. Native apps keep their immersive gestures. */
+.reader.web-reader { padding-top:calc(env(safe-area-inset-top,0px) + 60px); padding-bottom:calc(env(safe-area-inset-bottom,0px) + 76px); }
+.reader.web-reader .rd-head { position:fixed; inset:0 0 auto; transform:none; }
+.reader.web-reader .rd-bar { transform:none; }
+.reader.web-reader .rd-unlock { display:none; }
+.reader.web-reader.horiz .rd-pages { height:calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 136px); }
