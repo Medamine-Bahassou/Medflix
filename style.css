@@ -990,7 +990,8 @@ img.broken:not(.rd-pages img) { content: url("data:image/gif;base64,R0lGODlhAQAB
 .nv-body p.nv-speaking { background:#e509142b; }
 .nv-body p.nv-find-current { outline:2px solid var(--red); outline-offset:3px; }
 .nv-body mark { color:inherit; background:#d9a71270; }
-.nv-enhanced .rd-bar { gap:3px; padding:6px 12px calc(env(safe-area-inset-bottom,0px) + 6px); }
+.nv-enhanced .rd-bar { flex-direction:column; flex-wrap:nowrap; gap:3px; padding:6px 12px calc(env(safe-area-inset-bottom,0px) + 6px); } /* one centred column: wide screens would wrap the rows side by side */
+.nv-tools > button:focus-visible { outline:none; background:#ffffff14; } /* the app's ring is too loud on a bar of tabs */
 .nv-seek, .nv-tools, .nv-status, .nv-auto-speed, .nv-speech { width:100%; max-width:560px; }
 .nv-seek { display:flex; align-items:center; gap:12px; }
 .nv-seek input { flex:1; min-width:0; accent-color:var(--red); }
