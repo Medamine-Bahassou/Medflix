@@ -66,6 +66,20 @@ input:focus-visible, select:focus-visible { outline: none; }
 .hero h2 { font-size: clamp(32px, 4.5vw, 62px); line-height: 1.05; font-weight: 900; text-shadow: 0 4px 30px #000; margin-bottom: 14px; }
 .hero p { color: #ddd; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 22px; text-shadow: 0 2px 8px #000; }
 .dots { position: absolute; z-index: 3; inset-inline-end: var(--gutter); bottom: 24%; display: flex; gap: 6px; }
+/* wide screens: the picture on the end side at a sensible size (a portrait cover across the whole width was blown up and
+   blurry), fading into the page towards the title and at the bottom; the title on the plain side. phones keep it full screen */
+@media (min-width: 761px) {
+  .hero { height: 74vh; min-height: 480px; max-height: 720px; }
+  .hero .slide img { position: absolute; inset-block: 0; inset-inline-end: 0; width: 70%; object-position: center 20%;
+    -webkit-mask-image: linear-gradient(to right, #0000 0%, #000 38%), linear-gradient(to top, #0000 0%, #000 30%); -webkit-mask-composite: source-in;
+    mask-image: linear-gradient(to right, #0000 0%, #000 38%), linear-gradient(to top, #0000 0%, #000 30%); mask-composite: intersect; }
+  [dir=rtl] .hero .slide img { -webkit-mask-image: linear-gradient(to left, #0000 0%, #000 38%), linear-gradient(to top, #0000 0%, #000 30%);
+    mask-image: linear-gradient(to left, #0000 0%, #000 38%), linear-gradient(to top, #0000 0%, #000 30%); }
+  .hero::after, [dir=rtl] .hero::after { background: none; } /* the title sits on the plain side now */
+  .hero .info { top: 50%; bottom: auto; transform: translateY(-40%); max-width: min(560px, 38%); }
+  .hero h2 { font-size: clamp(30px, 3.4vw, 54px); }
+  .dots { inset-inline: var(--gutter) auto; bottom: 19%; } /* under the buttons, clear of the chips row below the slider */
+}
 .dots i { width: 22px; height: 3px; background: #fff5; border-radius: 2px; cursor: pointer; transition: all .3s; }
 .dots i.on { background: var(--red); width: 38px; }
 
