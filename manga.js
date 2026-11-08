@@ -492,7 +492,7 @@ async function mangaReader(cid) {
   const reader = $('.reader'), ul = $('#runlock');
   // phones: the status bar goes and comes back with the bars (shown again on any other page: route)
   new MutationObserver(() => api.statusBar?.(!reader.matches('.hide-ui, .locked'))).observe(reader, { attributes: true, attributeFilter: ['class'] });
-  const lock = on => { reader.classList.toggle('locked', rdLocked = !api.web && on); reader.classList.remove('hide-ui'); };
+  const lock = on => { reader.classList.toggle('locked', rdLocked = !(api.web && matchMedia('(min-width: 761px)').matches) && on); reader.classList.remove('hide-ui'); };
   const place = ([x, y] = store.prefs.unlockAt || [.5, .85]) => { ul.style.left = x * 100 + '%'; ul.style.top = y * 100 + '%'; };
   lock(rdLocked); place();
   $('#rlock')?.addEventListener('click', () => lock(true));
@@ -631,7 +631,7 @@ function readerZoom(box, horiz) {
       return set(z > 1 ? 1 : 2.5, e.clientX, e.clientY);
     }
     last = Date.now();
-    if (!api.web && inMid(e.clientX, innerWidth) && inMid(e.clientY, innerHeight)) tapT = setTimeout(() => reader.classList.toggle('hide-ui'), 300);
+    if (!(api.web && matchMedia('(min-width: 761px)').matches) && inMid(e.clientX, innerWidth) && inMid(e.clientY, innerHeight)) tapT = setTimeout(() => reader.classList.toggle('hide-ui'), 300);
   };
 }
 
@@ -651,7 +651,7 @@ const lockedBack = () => {
 let readerY = 0, readerSave, readerPos, rdLocked = false, sbIdle;
 addEventListener('scroll', () => {
   const r = document.querySelector('.reader');
-  if (!api.web && r && scrollY !== readerY) r.classList.toggle('hide-ui', scrollY > 80);
+  if (!(api.web && matchMedia('(min-width: 761px)').matches) && r && scrollY !== readerY) r.classList.toggle('hide-ui', scrollY > 80); // the website on a wide screen keeps its bars; phones hide them as the app does
   r?.style.setProperty('--sp', scrollY / Math.max(1, document.documentElement.scrollHeight - innerHeight)); // scrollbar thumb
   if (r) { r.classList.add('scrolling'); clearTimeout(sbIdle); sbIdle = setTimeout(() => r.classList.remove('scrolling'), 1500); } // the thumb fades once scrolling stops
   readerY = scrollY;
