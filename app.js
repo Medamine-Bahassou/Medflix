@@ -409,7 +409,7 @@ $('.nav-gear').addEventListener('click', e => { // the gear shows on wide screen
 });
 
 // the website keeps everything in the browser (web.js): a copy of it as a file, put back from one; and the saved pages cleared
-const BACKUP = ['list', 'history', 'seen', 'prefs', 'manga', 'mangaSeen', 'hidden', 'novels']; // not downloads (none here) nor streams (a cache)
+const BACKUP = ['list', 'history', 'seen', 'prefs', 'manga', 'mangaSeen', 'hidden', 'novels', 'novelSeen']; // not downloads (none here) nor streams (a cache)
 function webData() {
   $('#bk').onclick = () => {
     const a = document.createElement('a');
@@ -433,7 +433,7 @@ function webData() {
 }
 
 // ---------- user state (persisted in main process JSON) ----------
-const store = { ...(api.web ? { novels: {} } : {}), list: {}, history: {}, seen: {}, prefs: {}, downloads: {}, manga: {}, mangaSeen: {}, hidden: {}, streams: {} }; // hidden: cards long-pressed away, by path; streams: see play()
+const store = { ...(api.web ? { novels: {}, novelSeen: {}, novelDownloads: {} } : {}), list: {}, history: {}, seen: {}, prefs: {}, downloads: {}, manga: {}, mangaSeen: {}, hidden: {}, streams: {} }; // hidden: cards long-pressed away, by path; streams: see play()
 const persist = k => api.set(k, store[k]);
 const inList = p => !!store.list[p];
 function toggleList(item) {

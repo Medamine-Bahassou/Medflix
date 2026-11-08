@@ -4,10 +4,10 @@ const fs=require('node:fs');
 const vm=require('node:vm');
 function setup(load) {
   const nodes=new Map(), events={}, writes=[];
-  const ctx={parsers:{},api:{web:true},load,URL,URLSearchParams,location:{hash:'#/novels'},lang:'en',
-    store:{novels:{},prefs:{}},t:(k,n)=>k+(n===undefined?'':':'+n),esc:s=>String(s??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),
+  const ctx={parsers:{},api:{web:true,get:async()=>null,set:async()=>{}},load,URL,URLSearchParams,location:{hash:'#/novels'},lang:'en',
+    store:{novels:{},novelSeen:{},novelDownloads:{},prefs:{}},t:(k,n)=>k+(n===undefined?'':':'+n),esc:s=>String(s??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),
     view:{innerHTML:''},grid:cs=>'<div class="grid">'+cs.map(c=>c.title).join('')+'</div>',row:()=>'',card:c=>c.title,
-    pageRefresh:null,CHEVRON:'',openMenu:()=>{},closeMenu:()=>{},pickSheet:()=>{},heroPage:()=>{},chips:()=>'',inList:()=>false,toggleList:()=>{},ICON:{back:'',search:'',x:'',sort:'',novel:'',plus:'',check:''},toast:()=>{},persist:k=>writes.push(k),requestAnimationFrame:f=>f(),scrollTo:()=>{},
+    picks:null,pagePress:null,selBtn:()=>'',selBar:()=>'',selectable:()=>()=>{},pageRefresh:null,CHEVRON:'',openMenu:()=>{},closeMenu:()=>{},pickSheet:()=>{},heroPage:()=>{},chips:()=>'',inList:()=>false,toggleList:()=>{},ICON:{back:'',search:'',x:'',sort:'',novel:'',plus:'',check:''},toast:()=>{},persist:k=>writes.push(k),requestAnimationFrame:f=>f(),scrollTo:()=>{},
     document:{documentElement:{scrollHeight:2000}},innerHeight:1000,scrollY:0,clearTimeout,setTimeout,
     addEventListener:(k,f)=>events[k]=f,removeEventListener:(k,f)=>{if(events[k]===f)delete events[k];},
     $:sel=>{if(!nodes.has(sel))nodes.set(sel,{style:{setProperty(){}},dataset:{},isConnected:true,insertAdjacentHTML(_,html){this.html=(this.html||'')+html;}});return nodes.get(sel);},nodes,events,writes};
@@ -80,4 +80,33 @@ test('novel chapters can be filtered by exact number and reversed across loaded 
   assert.ok(chapters.innerHTML.indexOf('First')<chapters.innerHTML.indexOf('Second'));
   c.nodes.get('#nv-reverse').onclick();assert.ok(chapters.innerHTML.indexOf('Second')<chapters.innerHTML.indexOf('First'));
   c.nodes.get('#nv-jump').value='1';c.nodes.get('#nv-jump').oninput();assert.match(chapters.innerHTML,/First/);assert.doesNotMatch(chapters.innerHTML,/Second/);
+});
+test('read state distinguishes opening a chapter, finishing it, and marking it unread',async()=>{
+  const c=setup(async(_,url)=>url.endsWith('/view')?{data:{novel:{id:'book',title:'Book'}}}:url.endsWith('/context')?{data:{next:null}}:{data:{id:'ch',slug:'one',order:1,content:'Text'}});
+  c.location.hash='#/novels/read/book/one';await c.novelRead('book','one');
+  assert.equal(c.store.novelSeen.ch,1);
+  c.scrollY=990;c.events.scroll();assert.equal(c.store.novelSeen.ch,2);
+  vm.runInContext('nvMark(["ch"],0)',c);assert.equal(c.store.novelSeen.ch,undefined);
+  c.location.hash='#/novels';c.events.hashchange();
+});
+test('chapter download is deduplicated and its saved text opens without any network requests',async()=>{
+  const calls=[],disk=new Map();
+  const c=setup(async(_,url,force,keep)=>{calls.push({url,keep});return url.endsWith('/context')?{data:{next:{slug:'two'}}}:{data:{id:'ch',slug:'one',order:1,content:'Saved text'}};});
+  c.api.get=async key=>disk.get(key);c.api.set=async(key,value)=>disk.set(key,value);
+  const n={id:'book',title:'Book'};c.n=n;
+  await Promise.all([vm.runInContext('nvDownload("book","one",n)',c),vm.runInContext('nvDownload("book","one",n)',c)]);
+  assert.equal(calls.length,2);assert.ok(calls.every(x=>x.keep));assert.equal(c.store.novelDownloads['novel:book/one'].chapterId,'ch');
+  c.load=()=>{throw Error('offline');};c.location.hash='#/novels/read/book/one';
+  await c.novelRead('book','one');assert.match(c.view.innerHTML,/Saved text/);assert.match(c.view.innerHTML,/book\/two/);
+  c.location.hash='#/novels';c.events.hashchange();
+  await vm.runInContext('nvDeleteDownload("book","one")',c);
+  assert.equal(disk.get('novel:book/one'),null);assert.equal(c.store.novelDownloads['novel:book/one'],undefined);
+});
+test('storage failures never mark a chapter as downloaded and a retry can succeed',async()=>{
+  const c=setup(async(_,u)=>u.endsWith('/context')?{data:{}}:{data:{id:'c',slug:'one',content:'Text'}});
+  c.n={id:'book',title:'Book'};c.api.set=async()=>{throw Error('quota');};
+  await assert.rejects(vm.runInContext('nvDownload("book","one",n)',c),/quota/);
+  assert.equal(c.store.novelDownloads['novel:book/one'],undefined);
+  c.api.set=async()=>{};await vm.runInContext('nvDownload("book","one",n)',c);
+  assert.ok(c.store.novelDownloads['novel:book/one']);
 });

@@ -920,3 +920,13 @@ img.broken:not(.rd-pages img) { content: url("data:image/gif;base64,R0lGODlhAQAB
 .nv-size-label input { width:110px; accent-color:var(--red); }
 .nv-page [hidden], #nv-ch-more[hidden] { display:none; }
 @media(max-width:760px) { .nv-reader { padding-bottom:150px; } .nv-reader .rd-head .ttl { align-items:start; flex-direction:column; gap:4px; } .nv-reader .rd-head .ttl small { margin:0; } }
+/* chapter actions share the app's icon buttons and selection bar. */
+.nv-chapter { position:relative; min-width:0; }
+.nv-chapter > .ep { height:100%; padding-bottom:50px; }
+.nv-chapter-actions { position:absolute; inset-inline-end:8px; bottom:8px; display:flex; gap:4px; }
+.nv-chapter-actions .icon-btn { width:30px; height:30px; background:#ffffff0a; color:var(--muted); }
+.nv-chapter-actions .icon-btn svg { width:16px; height:16px; }
+.nv-chapter-actions .icon-btn.on { color:#46d369; }
+.nv-chapter-actions .icon-btn:disabled { opacity:.5; cursor:wait; }
+.nv-chapters.selecting .nv-chapter.sel .ep { opacity:1; background:var(--red); color:#fff; }
+.nv-dl-spin { width:14px; height:14px; border:2px solid #ffffff30; border-top-color:var(--red); border-radius:50%; animation:spin .7s linear infinite; }
