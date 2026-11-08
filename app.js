@@ -514,8 +514,9 @@ function cardMenu(d) {
 // right-click actions use the app's dropdown rows, anchored to the pointer instead of a modal.
 let contextPoint = null, contextFocus = null;
 function closeContextMenu() {
-  const menu=$('.context-menu'); if(!menu)return false;
-  menu.remove(); if(contextFocus?.isConnected)contextFocus.focus();contextFocus=null;return true;
+  const menu=$('.context-menu:not(.closing)'); if(!menu)return false;
+  menu.classList.add('closing');menu.inert=true;setTimeout(()=>menu.remove(),160);
+  if(contextFocus?.isConnected)contextFocus.focus();contextFocus=null;return true;
 }
 function contextMenu(title,opts,cur,onPick,point) {
   closeContextMenu();
@@ -525,6 +526,7 @@ function contextMenu(title,opts,cur,onPick,point) {
   document.body.append(menu);
   const box=menu.getBoundingClientRect();
   menu.style.left=Math.max(8,Math.min(point.x,innerWidth-box.width-8))+'px';menu.style.top=Math.max(8,Math.min(point.y,innerHeight-box.height-8))+'px';
+  menu.classList.add('open');
   const buttons=[...menu.querySelectorAll('button')];buttons[0]?.focus();
   // pointer and keyboard share one active row, rather than showing two competing highlights.
   menu.onpointermove=e=>{const btn=e.target.closest('.dd-item');if(btn&&document.activeElement!==btn)btn.focus({preventScroll:true});};
@@ -536,8 +538,8 @@ function contextMenu(title,opts,cur,onPick,point) {
     if(next!=null){e.preventDefault();buttons[next]?.focus();}if(e.key==='Tab')closeContextMenu();
   };
 }
-document.addEventListener('pointerdown',e=>{const menu=$('.context-menu');if(menu&&!menu.contains(e.target))closeContextMenu();},true);
-addEventListener('scroll',e=>{const menu=$('.context-menu');if(menu&&!menu.contains(e.target))closeContextMenu();},true);
+document.addEventListener('pointerdown',e=>{const menu=$('.context-menu:not(.closing)');if(menu&&!menu.contains(e.target))closeContextMenu();},true);
+addEventListener('scroll',e=>{const menu=$('.context-menu:not(.closing)');if(menu&&!menu.contains(e.target))closeContextMenu();},true);
 addEventListener('resize',closeContextMenu);
 addEventListener('hashchange',closeContextMenu);
 
