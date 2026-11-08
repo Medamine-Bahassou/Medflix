@@ -338,7 +338,7 @@ function settingsView(root = view) {
       <button class="set-row set-link" id="cc"><i class="set-tile">${ICON.trash}</i><span>${t('clearCache')}</span></button></div>` },
     api.web && { id: 'app', icon: ICON.download, title: t('getApp'), hint: t('getAppHint'),
       body: `<div class="set-list"><a class="set-row set-link" href="https://github.com/Medamine-Bahassou/Medflix/releases/latest" target="_blank" rel="noopener"><i class="set-tile">${ICON.download}</i><span>${t('getAppBtn')}</span>${ICON.external}</a></div>` },
-    { id: 'lang', icon: ICON.textAa, title: t('language'), // the label shows only in the desktop card, where the switch sits at the row's end
+    !modal && { id: 'lang', icon: ICON.textAa, title: t('language'), // the modal leaves it to the top bar's switch, beside the gear that opens it; the label shows only in the desktop card
       body: `<div class="set-lang-row"><span>${t('interfaceLang')}</span><div class="lang set-lang"><button data-l="ar" class="${lang === 'ar' ? 'on' : ''}">العربية</button><button data-l="en" class="${lang === 'en' ? 'on' : ''}">English</button></div></div>` },
   ].filter(Boolean);
   if (!secs.some(s => s.id === setTab)) setTab = secs[0].id;
