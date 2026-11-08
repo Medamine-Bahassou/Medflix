@@ -3,8 +3,8 @@
 const WebDownloads=(()=>{
   const active=new Set();
   const strings={
-    en:{wbZip:'Download ZIP',wbZipLimit:'This selection exceeds ZIP limits. Export smaller groups.',wbHostOnly:'Open the provider to download this file.',wbZipBusy:'Preparing browser download…',wbCors:'This source blocks browser access to its files.',wbUnsupported:'This source did not provide a downloadable file.'},
-    ar:{wbZip:'تحميل ZIP',wbZipLimit:'يتجاوز التحديد حدود ZIP. صدّر مجموعات أصغر.',wbHostOnly:'افتح المصدر لتحميل هذا الملف.',wbZipBusy:'جارٍ تجهيز تحميل المتصفح…',wbCors:'يمنع هذا المصدر وصول المتصفح إلى ملفاته.',wbUnsupported:'لم يوفر هذا المصدر ملفًا قابلًا للتحميل.'}
+    en:{wbZip:'Download ZIP',wbNovelBlocked:'This source blocks direct downloads',wbNovelOpen:'Open original chapter in browser',wbNovelOpenMany:'Open first unavailable chapter in browser',wbNovelAvailable:n=>`Download available chapters (${n})`,wbZipLimit:'This selection exceeds ZIP limits. Export smaller groups.',wbHostOnly:'Open the provider to download this file.',wbZipBusy:'Preparing browser download…',wbCors:'This source blocks browser access to its files.',wbUnsupported:'This source did not provide a downloadable file.'},
+    ar:{wbZip:'تحميل ZIP',wbNovelBlocked:'يمنع هذا المصدر التحميل المباشر',wbNovelOpen:'فتح الفصل الأصلي في المتصفح',wbNovelOpenMany:'فتح أول فصل غير متاح في المتصفح',wbNovelAvailable:n=>`تحميل الفصول المتاحة (${n})`,wbZipLimit:'يتجاوز التحديد حدود ZIP. صدّر مجموعات أصغر.',wbHostOnly:'افتح المصدر لتحميل هذا الملف.',wbZipBusy:'جارٍ تجهيز تحميل المتصفح…',wbCors:'يمنع هذا المصدر وصول المتصفح إلى ملفاته.',wbUnsupported:'لم يوفر هذا المصدر ملفًا قابلًا للتحميل.'}
   };
   const check=signal=>{if(signal.aborted)throw new DOMException('Cancelled','AbortError');};
   const extension=type=>/png/.test(type)?'png':/webp/.test(type)?'webp':/gif/.test(type)?'gif':/image/.test(type)?'jpg':/zip/.test(type)?'zip':/matroska/.test(type)?'mkv':'mp4';
@@ -71,14 +71,24 @@ const WebDownloads=(()=>{
   }
   async function downloadNovels(id,chapters,novel,zip=false){
     return run('novel:'+id+':'+chapters.map(c=>c.slug).join('|'),async()=>{
-      toast(t('wbZipBusy'));const items=[];
+      toast(t('wbZipBusy'));const items=[],blocked=[];let sourceDenied=false;
       for(const c of chapters){
         const url=nvUrl(`/novels/${encodeURIComponent(id)}/chapters/by-slug/${encodeURIComponent(c.slug)}`);
         // Reuse content already read in the normal page cache. Otherwise request it on the client, never via our API proxy.
         let data=scraper.cached(url);
-        if(!data){let r;try{r=await ClientTransfer.fetch(url,{mode:'cors',credentials:'omit',referrerPolicy:'no-referrer'});}catch{throw Error('wbCors');}if(!r.ok)throw Error('wbUnsupported');data=await r.json();}
+        if(!data){
+          if(sourceDenied){blocked.push(c);continue;}
+          let r;try{r=await ClientTransfer.fetch(url,{mode:'cors',credentials:'omit',referrerPolicy:'no-referrer'});}catch{sourceDenied=true;blocked.push(c);continue;}
+          if(r.status===403){sourceDenied=true;blocked.push(c);continue;}
+          if(!r.ok)throw Error('wbUnsupported');data=await r.json();
+        }
         const chapter=parsers.novelJSON(data).data,paras=nvParagraphs(chapter);if(!paras.length)throw Error('nvNoText');
         items.push({id:c.slug,title:novel.title,n:c.order,unit:t('chapter'),files:[{name:novel.title+' '+c.order+'.txt',blob:new Blob(['\ufeff'+novel.title+'\n'+chapter.title+'\n\n'+paras.join('\n\n')],{type:'text/plain;charset=utf-8'})}]});
+      }
+      if(blocked.length){
+        const chapter=blocked[0],source=novel.slug?NV_SITE+'/ar/novel/'+encodeURIComponent(novel.slug)+'/chapter/'+encodeURIComponent(chapter.slug):NV_SITE+'/ar';
+        // An explicit choice: never send blocked chapter text through a relay or silently export a partial selection.
+        pickSheet(t('wbNovelBlocked'),[['open',t(blocked.length>1?'wbNovelOpenMany':'wbNovelOpen')],items.length&&['available',t('wbNovelAvailable',items.length)],['cancel',t('cancel')]].filter(Boolean),'',v=>{if(v==='open')return api.openExternal(source);if(v==='available')return save(items,zip||items.length>1).catch(()=>toast(t('dlFailed'),true));});return;
       }
       await save(items,zip||items.length>1);
     });

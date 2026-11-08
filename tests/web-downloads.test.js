@@ -3,14 +3,14 @@ const assert=require('node:assert/strict');
 const vm=require('node:vm');
 const fs=require('node:fs');
 function setup(){
- const exports=[],writes=[],toasts=[],urls=new Map();let serial=0;
+ const exports=[],writes=[],toasts=[],urls=new Map(),choices=[],opened=[];let serial=0;
  const c={Blob,AbortController,DOMException,BrowserZip:require('../zip'),t:k=>k,toast:(...args)=>toasts.push(args),setTimeout:()=>0,
-  api:{downloadUrl:async token=>token,get:async()=>null,set:async(k,value)=>{writes.push({k,value});if(value!==null)throw Error('download must not persist data');}},
+  NV_SITE:'https://novltime.com',pickSheet:(title,opts,cur,onPick)=>choices.push({title,opts,onPick}),api:{openExternal:url=>opened.push(url),downloadUrl:async token=>token,get:async()=>null,set:async(k,value)=>{writes.push({k,value});if(value!==null)throw Error('download must not persist data');}},
   scraper:{cached:()=>null},parsers:{novelJSON:j=>j},nvUrl:path=>'https://novltime.com/api/v1'+path,nvParagraphs:c=>[c.content],
   mChapter:async id=>({id,images:['https://source.test/0001.png','https://source.test/0002.png']}),
   fetch:async()=>new Response(new Uint8Array([137,80,78,71]),{headers:{'Content-Type':'image/png','Content-Length':'4'}}),
   URL:{createObjectURL(blob){const key='blob:'+(++serial);urls.set(key,blob);return key;},revokeObjectURL:key=>urls.delete(key)},
-  document:{body:{append(){}},createElement:()=>({click(){exports.push({name:this.download,href:this.href,target:this.target,blob:urls.get(this.href)});},remove(){}})},exports,writes,toasts};
+  document:{body:{append(){}},createElement:()=>({click(){exports.push({name:this.download,href:this.href,target:this.target,blob:urls.get(this.href)});},remove(){}})},exports,writes,toasts,choices,opened};
  c.ClientTransfer={fetch:(...args)=>c.fetch(...args)};vm.createContext(c);vm.runInContext(fs.readFileSync('web-downloads.js','utf8'),c);c.wb=vm.runInContext('WebDownloads',c);return c;
 }
 test('single video Download hands the source URL straight to the browser without fetching or storing its bytes',async()=>{
@@ -53,4 +53,18 @@ test('manga reader Download uses its displayed pages directly and delivers a ZIP
  const fetch=c.fetch;c.fetch=(url,options)=>{requests.push(url);return fetch(url,options);};
  await c.wb.downloadManga({title:'Manga'},[{id:'216',n:216,images:['https://source.test/reader-page.png']}]);
  assert.deepEqual(requests,['https://source.test/reader-page.png']);assert.equal(c.exports.length,1);assert.match(c.exports[0].name,/216\.zip$/);assert.equal(c.exports[0].blob.type,'application/zip');assert.equal(c.writes.length,0);
+});
+test('blocked unread novel chapters offer the original browser page without a relay or fake file',async()=>{
+ const c=setup(),requests=[];c.fetch=async url=>{requests.push(url);throw new TypeError('CORS');};
+ await c.wb.downloadNovels('book',[{slug:'chapter-6',order:6}],{title:'Novel',slug:'mushoku-tensei-jobless-reincarnation'});
+ assert.equal(c.exports.length,0);assert.equal(c.writes.length,0);assert.equal(requests.length,1);assert.ok(requests[0].startsWith('https://novltime.com/api/'));
+ assert.equal(c.choices.length,1);assert.equal(c.choices[0].title,'wbNovelBlocked');assert.deepEqual(Array.from(c.choices[0].opts,o=>o[0]),['open','cancel']);
+ c.choices[0].onPick('open');assert.equal(c.opened[0],'https://novltime.com/ar/novel/mushoku-tensei-jobless-reincarnation/chapter/chapter-6');
+});
+test('mixed novel selections never silently export a partial ZIP and skip redundant blocked requests',async()=>{
+ const c=setup();let requests=0;c.scraper.cached=url=>url.endsWith('/one')?{success:true,data:{title:'First',content:'Available chapter'}}:null;
+ c.fetch=async()=>{requests++;return new Response('{}',{status:403});};
+ await c.wb.downloadNovels('book',[{slug:'one',order:1},{slug:'two',order:2},{slug:'three',order:3}],{title:'Novel',slug:'novel'},true);
+ assert.equal(requests,1);assert.equal(c.exports.length,0);assert.deepEqual(Array.from(c.choices[0].opts,o=>o[0]),['open','available','cancel']);
+ await c.choices[0].onPick('available');assert.equal(c.exports.length,1);assert.equal(c.exports[0].blob.type,'application/zip');assert.equal(c.writes.length,0);
 });
