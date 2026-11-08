@@ -23,7 +23,8 @@ test('right-click picker uses a cursor menu clamped inside the viewport and pres
 test('menu supports keyboard navigation and outside pointer dismissal',()=>{
  const c=setup();c.contextMenu('Actions',[['read','Read'],['select','Select']],'',()=>{},{x:10,y:10,target:c.source});
  const menu=c.getMenu();assert.equal(c.document.activeElement,menu.buttons[0]);
- menu.onkeydown({key:'ArrowDown',preventDefault(){}});assert.equal(c.document.activeElement,menu.buttons[1]);
+ menu.onpointermove({target:{closest:()=>menu.buttons[1]}});assert.equal(c.document.activeElement,menu.buttons[1]);
+ menu.onkeydown({key:'ArrowUp',preventDefault(){}});assert.equal(c.document.activeElement,menu.buttons[0]);
  c.events.pointerdown({target:{}});assert.equal(c.getMenu(),null);
 });
 test('normal and touch pickers retain their existing sheet behavior',()=>{

@@ -526,6 +526,8 @@ function contextMenu(title,opts,cur,onPick,point) {
   const box=menu.getBoundingClientRect();
   menu.style.left=Math.max(8,Math.min(point.x,innerWidth-box.width-8))+'px';menu.style.top=Math.max(8,Math.min(point.y,innerHeight-box.height-8))+'px';
   const buttons=[...menu.querySelectorAll('button')];buttons[0]?.focus();
+  // pointer and keyboard share one active row, rather than showing two competing highlights.
+  menu.onpointermove=e=>{const btn=e.target.closest('.dd-item');if(btn&&document.activeElement!==btn)btn.focus({preventScroll:true});};
   menu.onclick=e=>{const btn=e.target.closest('[data-v]');if(!btn)return;const v=btn.dataset.v;closeContextMenu();onPick(v);};
   menu.onkeydown=e=>{const at=buttons.indexOf(document.activeElement);let next;
     if(e.key==='ArrowDown')next=(at+1)%buttons.length;
