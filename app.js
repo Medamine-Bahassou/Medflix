@@ -125,7 +125,7 @@ const NAV = [
   { id: 'manga', href: '#/manga' },
   { id: 'schedule', href: '#/schedule' },
   { id: 'myList', href: '#/list' },
-  { id: 'downloads', href: '#/downloads' },
+  ...(api.web ? [] : [{ id: 'downloads', href: '#/downloads' }]), // the website can't download (web.js): no page for it, nor a dock button
 ];
 const DOCK_MAX = 5, DOCK_DEFAULT = ['home', 'anime', 'manga', 'cinema']; // no novels section here yet (Android has it, in the fourth place)
 const dockLabel = id => t(id === 'schedule' ? 'scheduleShort' : id === 'cinema' ? 'cinemaShort' : id); // a fifth of the screen
@@ -1489,7 +1489,7 @@ function epActions(list, eps, ids, redraw, job, title) {
   const acts = (ps, one) => [
     (!one || !store.seen[ps[0]]) && ['seen', t('markWatched')],
     (!one || store.seen[ps[0]]) && ['unseen', t('markUnwatched')],
-    pick(ps).some(free) && ['dl', t('downloadShort')],
+    !api.web && pick(ps).some(free) && ['dl', t('downloadShort')], // the website can't download
     pick(ps).some(saved) && ['del', t(one ? 'delDownload' : 'delDownloads')],
     one && ['select', t('select')],
   ].filter(Boolean);
@@ -1894,7 +1894,7 @@ async function route(soft) {
     else if (a === 'filter') await filterView();
     else if (a === 'list') myList();
     else if (a === 'hidden') hiddenView();
-    else if (a === 'downloads') drawDownloads();
+    else if (a === 'downloads') api.web ? location.replace('#/') : drawDownloads(); // an old link on the website: nothing to show there
     else if (a === 'offline') offline((rest[0] === 'cinema' ? '/' : '/watch/') + rest.join('/'));
     else if (a === 'schedule') await schedule();
     else if (a === 'airing') await airing(rest[0]);
