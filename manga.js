@@ -385,8 +385,7 @@ async function mangaSeries(id, force) {
       (!one || !read) && ['read', t('markRead')],
       (!one || read) && ['unread', t('markUnread')],
       one && chs.indexOf(xs[0]) < chs.length - 1 && ['prev', t('markPrevRead')], // chs: newest first, the earlier ones after it
-      (api.web || xs.some(x => !copies.has(String(x.n)))) && ['dl', t('downloadShort')],
-      api.web && cids.length>1 && ['zip', t('wbZip')],
+      (api.web || xs.some(x => !copies.has(String(x.n)))) && ['dl', t(api.web?'wbZip':'downloadShort')],
       xs.some(x => copies.has(String(x.n))) && ['del', t(one ? 'delDownload' : 'delDownloads')],
       one && ['select', t('select')],
     ].filter(Boolean);
@@ -396,7 +395,7 @@ async function mangaSeries(id, force) {
     if (v === 'select') return selectFrom(cids[0]);
     if (v === 'read' || v === 'unread') mark(xs, v === 'read' ? 2 : 0);
     if (v === 'prev') mark(chs.slice(chs.indexOf(xs[0]) + 1), 2);
-    if(api.web && (v==='dl'||v==='zip')){const here=location.hash;await WebDownloads.downloadManga({id:s.id,title:s.title,poster:s.poster},xs,v==='zip');if(location.hash===here)drawChs();return;}
+    if(api.web && (v==='dl'||v==='zip')){const here=location.hash;await WebDownloads.downloadManga({id:s.id,title:s.title,poster:s.poster},xs);if(location.hash===here)drawChs();return;}
     if (v === 'dl') queueChapters({ id: s.id, title: s.title, poster: s.poster }, xs.filter(x => !copies.has(String(x.n))).reverse()); // oldest first
     if (v === 'del') {
       const ds = xs.map(x => store.downloads['manga:' + copies.get(String(x.n))]).filter(Boolean);
@@ -440,7 +439,7 @@ async function mangaReader(cid) {
     <header class="rd-head">
       <button class="icon-btn" id="back" title="${t('back')}" aria-label="${t('back')}">${ICON.back}</button>
       <div class="ttl"><a href="#/manga/series/${s.id}">${esc(s.title)}</a><small>${t('chapter')} ${esc(c.n)}</small></div>
-      <span class="sp"></span><button class="icon-btn ${saved ? 'on' : ''}" id="rdl" title="${saved ? t('offline') : t('downloadShort')}">${ICON.download}</button>
+      <span class="sp"></span><button class="icon-btn ${!api.web && saved ? 'on' : ''}" id="rdl" title="${api.web ? t('wbZip') : saved ? t('offline') : t('downloadShort')}" aria-label="${api.web ? t('wbZip') : t('downloadShort')}">${ICON.download}</button>
     </header>
     <footer class="rd-bar">
       <div class="rd-spd" id="rspd" hidden>
@@ -488,7 +487,7 @@ async function mangaReader(cid) {
   };
   $('#rmode').onclick = () => { store.prefs.mangaH = !horiz; persist('prefs'); mangaReader(cid); };
   if (!horiz) autoScroll();
-  $('#rdl').onclick = () => saved ? toast(t('dlDone')) : queueChapters(s, [{ id: c.id, n: c.n }]);
+  $('#rdl').onclick = () => api.web ? WebDownloads.downloadManga(s,[{...c,images:pages}]) : saved ? toast(t('dlDone')) : queueChapters(s, [{ id: c.id, n: c.n }]);
   // lock: the bars stay hidden (chapter to chapter); a faint unlock button, dragged anywhere (remembered), brings them back
   const reader = $('.reader'), ul = $('#runlock');
   // phones: the status bar goes and comes back with the bars (shown again on any other page: route)

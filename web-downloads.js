@@ -62,7 +62,7 @@ const WebDownloads=(()=>{
   async function downloadManga(serie,chapters){
     return run('manga:'+chapters.map(c=>c.id).join('|'),async()=>{
       toast(t('wbZipBusy'));const items=[],signal=new AbortController().signal;
-      for(const c of chapters){const chapter=await mChapter(c.id,true);if(!chapter.images.length)throw Error('noImages');const files=[];
+      for(const c of chapters){const chapter=c.images?.length?c:await mChapter(c.id,true);if(!chapter.images.length)throw Error('noImages');const files=[];
         for(let i=0;i<chapter.images.length;i++){const blob=await binary(chapter.images[i],signal);if(!blob.type.startsWith('image/'))throw Error('noImages');files.push({name:String(i+1).padStart(4,'0')+'.'+extension(blob.type),blob});}
         items.push({id:String(c.id),title:serie.title,n:c.n,unit:t('chapter'),files});
       }

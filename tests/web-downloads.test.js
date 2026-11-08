@@ -48,3 +48,9 @@ test('cleanup removes legacy app payloads without creating any new saved downloa
  const c=setup();c.api.get=async key=>key==='webDownloads'?{x:{files:[{key:'web-file:x:0'}]}}:{'novel:b/one':{}};
  await c.wb.cleanupLegacyDownloads();assert.deepEqual(c.writes.map(w=>w.k),['web-file:x:0','novel:b/one','webDownloads','novelDownloads']);assert.ok(c.writes.every(w=>w.value===null));
 });
+test('manga reader Download uses its displayed pages directly and delivers a ZIP without an app download job',async()=>{
+ const c=setup(),requests=[];c.mChapter=()=>{throw Error('reader download must not refetch chapter metadata');};
+ const fetch=c.fetch;c.fetch=(url,options)=>{requests.push(url);return fetch(url,options);};
+ await c.wb.downloadManga({title:'Manga'},[{id:'216',n:216,images:['https://source.test/reader-page.png']}]);
+ assert.deepEqual(requests,['https://source.test/reader-page.png']);assert.equal(c.exports.length,1);assert.match(c.exports[0].name,/216\.zip$/);assert.equal(c.exports[0].blob.type,'application/zip');assert.equal(c.writes.length,0);
+});
