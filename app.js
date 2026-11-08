@@ -1846,9 +1846,11 @@ const watchServer = (still, patient, works, dead) => {
 // would cover a button on it. now / seek: the video's time
 const skipBtn = `<button class="btn red small" id="skip" hidden>${t('skipIntro')}</button>`;
 const skipIntro = async (title, alt, ep, now, seek) => {
+  api.playerIntro?.(null);
   if (store.prefs.skipIntro === false) return; // turned off in settings: nothing asked of AniSkip either
   const b = $('#skip'), [from, to] = await scraper.intro(title, alt, ep).catch(e => console.error(e)) || [];
   if (to === undefined || !b.isConnected) return; // left for another episode meanwhile: its own button is its own
+  if (api.playerIntro) return api.playerIntro([from, to], t('skipIntro')); // the website: in its player. a host's is another site's page: its time can't be read, nor set
   b.onclick = () => { seek(to); b.hidden = true; };
   const tick = setInterval(async () => {
     if (!b.isConnected) return clearInterval(tick);

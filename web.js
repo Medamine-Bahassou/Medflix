@@ -60,14 +60,29 @@ if (!window.api) (() => {
   const PLYR = 'vendor/plyr-3.8.5', playerHead = `<link rel="stylesheet" href="${PLYR}.css"><script src="${PLYR}.js"></script><style>
     :root{--plyr-color-main:#e50914;--plyr-font-family:system-ui,sans-serif}.plyr{height:100%}.plyr video{object-fit:contain}
     .plyr--loading::after{content:"";position:absolute;z-index:1;top:50%;left:50%;width:44px;height:44px;margin:-22px;border:3px solid #fff3;border-top-color:#e50914;border-radius:50%;animation:s .7s linear infinite;pointer-events:none}@keyframes s{to{transform:rotate(360deg)}}
-    .plyr--loading .plyr__control--overlaid{display:none}</style>`;
+    .plyr--loading .plyr__control--overlaid{display:none}
+    .skip-intro{position:absolute;z-index:4;right:16px;bottom:72px;padding:10px 18px;border:0;border-radius:6px;background:#fff;color:#000;font:700 14px system-ui,sans-serif;cursor:pointer}.skip-intro[hidden]{display:none}</style>`;
   const frameVideo = () => { const f = frame(); try { return f?.hasAttribute('srcdoc') ? f.contentDocument?.querySelector('video') : null; } catch { return null; } }; // a host's player is another site's page
+  // over the video, as on Android: the page's header isn't there in the player's fullscreen. a new server's frame gets it too
+  let intro = null;
+  const dressIntro = (f, v) => {
+    const d = f.contentDocument;
+    if (!intro || d.querySelector('.skip-intro')) return;
+    const { from, to, label } = intro, b = d.createElement('button');
+    b.className = 'skip-intro'; b.type = 'button'; b.textContent = label;
+    const tick = () => { b.hidden = !(v.currentTime >= from && v.currentTime < to); };
+    b.onclick = () => { v.currentTime = to; b.hidden = true; };
+    (d.querySelector('.plyr') || d.body).append(b); // in Plyr's own box: that's what goes fullscreen
+    ['timeupdate', 'seeking'].forEach(n => v.addEventListener(n, tick)); // seeking: at once, a slow file takes a while to get there
+    tick();
+  };
   async function dressVideo(f) {
     const v = f.contentDocument?.querySelector('video'), key = 'video:' + location.hash;
     if (!v) return;
     if (f.contentWindow.Plyr) new f.contentWindow.Plyr(v, f.contentWindow.JSON.parse(JSON.stringify({ // through the frame's JSON: Plyr ignores an object from another window. absolute: the frame's own address is about:srcdoc. blankVideo: it would ask Plyr's CDN
       iconUrl: new URL(PLYR + '.svg', location.href).href, blankVideo: '', autoplay: true, seekTime: 10, keyboard: { focused: true, global: true }, tooltips: { controls: true, seek: true }, i18n: t('plyr'),
       controls: ['play-large', 'rewind', 'play', 'fast-forward', 'progress', 'current-time', 'duration', 'mute', 'volume', 'settings', 'pip', 'fullscreen'], settings: ['speed'], speed: { selected: 1, options: [.5, .75, 1, 1.25, 1.5, 2] } })));
+    dressIntro(f, v);
     // back from inside the frame: a remote or Esc would otherwise stop here. in its fullscreen, Esc is the browser's
     f.contentDocument.addEventListener('keydown', e => { if (['Escape', 'GoBack', 'BrowserBack'].includes(e.key) && !f.contentDocument.fullscreenElement) { focus(); back(); } });
     // where it was left, per episode; finished, from the start again
@@ -174,6 +189,7 @@ if (!window.api) (() => {
     playerHealth: async () => { const v = frameVideo(); return !v ? 'works' : v.error ? 'dead' : v.readyState >= 2 ? 'works' : 'waiting'; },
     playerTime: () => frameVideo()?.currentTime,
     playerSeek: at => { const v = frameVideo(); if (v) v.currentTime = at; },
+    playerIntro(span, label) { intro = span && { from: span[0], to: span[1], label }; const v = frameVideo(); if (v) dressIntro(frame(), v); }, // null: a new episode, none known yet
     // a TV (Chromecast, Android TV). A host's player is another site's page, out of reach, so the TV is handed a file of this episode and
     // fetches it by itself, through Google's Cast sender (Chrome, Edge). No bytes pass through here. Asked for when the ⋮ opens: by the
     // tap on Cast it's ready, and the TV picker only opens straight from a tap

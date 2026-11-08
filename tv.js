@@ -106,7 +106,8 @@
 
   function menuOf(el){const free=el.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true}));if(!free){pressed=null;later();}return !free;} // pressed: app.js takes it for a touch, whose click comes next and is ignored
   function ok(el){
-    if(el.matches('.player .stage')){const f=q('.player iframe.mplayer');if(q('#pp')&&!q('.pbar[hidden]'))q('#pp').click();else f?.focus();return;} // a host's player keeps the keys from then on: back leaves it
+    if(el.matches('.player .stage')){const f=q('.player iframe.mplayer');const skip=f?.hasAttribute('srcdoc')&&f.contentDocument?.querySelector('.skip-intro:not([hidden])');if(skip)return skip.click(); // in its frame, out of the arrows' reach
+      if(q('#pp')&&!q('.pbar[hidden]'))q('#pp').click();else f?.focus();return;} // a host's player keeps the keys from then on: back leaves it
     el.click();setTimeout(later,60); // a sheet or menu may have opened
   }
   function onDown(e){
