@@ -39,3 +39,34 @@ test('anime enrichment reuses cached extras and does not keep redrawing unchange
  let slow=deferred();assert.equal(await c.soon('art',slow.promise),null);slow.resolve(['cover']);await tick();assert.equal(c.redraws,1);
  slow=deferred();assert.deepEqual(await c.soon('art',slow.promise),['cover']);slow.resolve(['cover']);await tick();assert.equal(c.redraws,1);
 });
+function playbackRoute(){
+ const app=fs.readFileSync('app.js','utf8'),sources=deferred(),details=deferred(),timers=new Map(),errors=[],players=[];let html='',nodes=new Map(),timerId=0;
+ const node=()=>({style:{},classList:{contains:()=>false,toggle(){}},querySelector(){return node();},addEventListener(){},getBoundingClientRect:()=>({x:0,y:0,width:800,height:450})});
+ const view={style:{},classList:{toggle(){}},querySelectorAll:()=>[],firstElementChild:null,get innerHTML(){return html;},set innerHTML(s){html=s;this.firstElementChild={};nodes=new Map([...s.matchAll(/id="([^"]+)"/g)].map(m=>['#'+m[1],node()]));if(s.includes('class="stage"'))nodes.set('.stage',node());}};
+ view.innerHTML='<div class="previous">Previous page</div>';
+ const nav=node(),c={view,location:{hash:'#/play/show/1',replace(){}},history:{length:1},api:{web:true,player:(...args)=>players.push(args),sources:()=>sources.promise,awSources:async()=>[],stream:async()=>({url:'https://example.invalid/player',native:true})},
+  scraper:{newView(){},details:()=>details.promise,animerco:async()=>[],wecima:async()=>[],ristoanime:async()=>[]},
+  store:{downloads:{},history:{},seen:{},streams:{},prefs:{}},$:sel=>sel==='#nav'?nav:nodes.get(sel)||null,console:{error:e=>errors.push(e)},failed:e=>errors.push(e),spinner:()=>view.innerHTML='<div class="center"><div class="spin"></div></div>',
+  setTimeout:f=>{timers.set(++timerId,f);return timerId;},clearTimeout:id=>timers.delete(id),clearInterval(){},scrollTo(){},heroTimer:null,cardData:new Map(),pageRefresh:null,pagePress:null,picks:null,playerObs:null,
+  closeContextMenu(){},CastInfo:{dispose(){}},closeSearch(){},closeDrawer(){},markActive(){},syncBar(){},immersed:false,
+  showOf:()=>'/anime/show',playHash:p=>'#/play/'+p.replace(/^\/watch\//,''),persist(){},esc:String,t:k=>k,ICON:{},skipBtn:'',playBar:()=>'',skipIntro(){},markFiller(){},showPlayBar(){},bestPerHost:l=>l,QUALITY:['4K','FHD','HD','SD'],CHECK:'',ddSkel:()=>'',watchServer(){},noNames:String,
+  ResizeObserver:class{observe(){}disconnect(){}},openMenu(){},closeMenu(){}};
+ vm.createContext(c);
+ vm.runInContext(app.slice(app.indexOf('async function play(epPath)'),app.indexOf('\nlet playerObs;',app.indexOf('async function play(epPath)'))),c);
+ vm.runInContext(app.slice(app.indexOf('let routeVersion = 0;'),app.indexOf('\nlet redrawTimer;')),c);
+ return {c,sources,details,timers,errors,players,flushSpinner(){for(const [id,f] of timers){timers.delete(id);f();}}};
+}
+test('delayed route spinner cannot erase the anime player while servers are loading',async()=>{
+ const s=playbackRoute(),pending=s.c.route();
+ s.details.resolve({title:'Show',episodes:[{path:'/watch/show/1',ep:'1'}]});await tick();
+ assert.match(s.c.view.innerHTML,/id="srv"/);
+ s.flushSpinner();
+ s.sources.resolve([{label:'Host',quality:'HD',token:'ra:host'}]);await pending;await tick();
+ assert.deepEqual(s.errors.map(e=>e.message),[]);assert.match(s.c.view.innerHTML,/id="srv"/);
+ assert.ok(s.players.some(([url])=>url==='https://example.invalid/player'));
+});
+test('delayed route spinner still appears while the next page has not rendered',async()=>{
+ const s=playbackRoute(),pending=s.c.route();s.flushSpinner();assert.match(s.c.view.innerHTML,/class="spin"/);
+ s.details.resolve({title:'Show',episodes:[{path:'/watch/show/1',ep:'1'}]});s.sources.resolve([]);await pending;
+ assert.deepEqual(s.errors.map(e=>e.message),[]);assert.match(s.c.view.innerHTML,/id="srv"/);
+});

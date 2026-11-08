@@ -1940,7 +1940,10 @@ async function route(soft) {
   api.keepAwake?.(watching); // phones: the video is in an iframe, which doesn't stop the screen locking mid-episode
   immersed = watching || (['manga', 'novels'].includes(a) && rest[0] === 'read');
   $('#nav').style.display = immersed ? 'none' : '';
-  if (!soft) { scrollTo(0, 0); spinnerT = setTimeout(() => { if (version === routeVersion) spinner(); }, 120); }
+  if (!soft) {
+    const waitingView = view.firstElementChild; // the player can render before its servers finish: don't erase it while awaiting them
+    scrollTo(0, 0); spinnerT = setTimeout(() => { if (version === routeVersion && view.firstElementChild === waitingView) spinner(); }, 120);
+  }
   view.classList.toggle('still', !!soft); // a redraw with fresher data: no entrance animations, no poster fade-in
   try {
     if (!a) await home();
