@@ -902,25 +902,20 @@ img.broken:not(.rd-pages img) { content: url("data:image/gif;base64,R0lGODlhAQAB
 .det-rf:hover { background: #ffffff24; }
 .det-rf svg { width: 20px; height: 20px; }
 
-/* novels: flat controls and a text column sized for long reading sessions */
-.nv-filters, .nv-actions, .nv-reader-foot { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-block:20px; }
-.nv-filters input, .nv-filters select, .nv-reader select { background:var(--card); color:#fff; border:1px solid #ffffff30; border-radius:6px; padding:10px; font:inherit; min-width:0; }
-.nv-filters input { flex:1; min-width:180px; }
-.nv-chapters { display:grid; gap:8px; margin-block:20px; }
-.nv-chapters .ep { display:flex; gap:20px; padding:14px; }
-.nv-chapters .ep b { flex:none; }
-.nv-reader { min-height:100dvh; color:#ddd; background:#000; --nv-size:22px; }
-.nv-reader[data-paper=dim] { background:#181818; color:#ddd; }
+/* novels reuse the shared hero, rows, filters, detail header and reader bars. */
+.nv-more { display:flex; margin:24px auto; }
+.nv-chapters { grid-template-columns:repeat(auto-fill,minmax(min(240px,100%),1fr)); }
+.nv-chapters .ep { flex-direction:column; align-items:start; text-align:start; gap:8px; padding:16px; }
+.nv-chapters .ep span { color:var(--muted); font-size:13px; font-weight:400; line-height:1.5; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.nv-reader { min-height:100dvh; padding-bottom:110px; color:#ddd; background:var(--bg); --nv-size:22px; }
+.nv-reader[data-paper=dim] { background:var(--card); color:#ddd; }
 .nv-reader[data-paper=sepia] { background:#f3e9d2; color:#3b3024; }
 .nv-reader[data-paper=light] { background:#fafafa; color:#222; }
-.nv-reader-bar { display:flex; flex-wrap:wrap; align-items:center; gap:16px; padding:16px var(--gutter); border-bottom:1px solid currentColor; }
-.nv-reader-bar > span { flex:1; }
-.nv-reader-bar label { display:flex; align-items:center; gap:8px; font-size:14px; }
-.nv-reader .btn { color:inherit; border:1px solid currentColor; }
-.nv-reader .btn.red { color:#fff; border-color:var(--red); }
-.nv-text { max-width:76ch; margin-inline:auto; padding:32px 24px; font-size:var(--nv-size); line-height:1.95; overflow-wrap:anywhere; }
+.nv-text { max-width:76ch; margin-inline:auto; padding:40px 24px; font-size:var(--nv-size); line-height:1.95; overflow-wrap:anywhere; }
 .nv-text h1 { font-size:1.25em; margin-bottom:32px; line-height:1.6; }
 .nv-text p { margin-block:0 1.2em; white-space:pre-wrap; }
-.nv-reader-foot { justify-content:center; padding:16px; margin:0; }
+.nv-reader .rd-head, .nv-reader .rd-bar { color:#fff; }
+.nv-size-label { display:flex; align-items:center; gap:12px; color:var(--muted); font-size:13px; }
+.nv-size-label input { width:110px; accent-color:var(--red); }
 .nv-page [hidden], #nv-ch-more[hidden] { display:none; }
-@media(max-width:760px) { .nv-reader-bar > span { flex-basis:60%; } .nv-reader { padding-bottom:80px; } }
+@media(max-width:760px) { .nv-reader { padding-bottom:150px; } .nv-reader .rd-head .ttl { align-items:start; flex-direction:column; gap:4px; } .nv-reader .rd-head .ttl small { margin:0; } }

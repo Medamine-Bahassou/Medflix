@@ -7,7 +7,7 @@ function setup(load) {
   const ctx={parsers:{},api:{web:true},load,URL,URLSearchParams,location:{hash:'#/novels'},lang:'en',
     store:{novels:{},prefs:{}},t:(k,n)=>k+(n===undefined?'':':'+n),esc:s=>String(s??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),
     view:{innerHTML:''},grid:cs=>'<div class="grid">'+cs.map(c=>c.title).join('')+'</div>',row:()=>'',card:c=>c.title,
-    inList:()=>false,toggleList:()=>{},ICON:{back:''},toast:()=>{},persist:k=>writes.push(k),requestAnimationFrame:f=>f(),scrollTo:()=>{},
+    pageRefresh:null,CHEVRON:'',pickSheet:()=>{},heroPage:()=>{},chips:()=>'',inList:()=>false,toggleList:()=>{},ICON:{back:'',search:'',x:'',sort:'',novel:'',plus:'',check:''},toast:()=>{},persist:k=>writes.push(k),requestAnimationFrame:f=>f(),scrollTo:()=>{},
     document:{documentElement:{scrollHeight:2000}},innerHeight:1000,scrollY:0,clearTimeout,setTimeout,
     addEventListener:(k,f)=>events[k]=f,removeEventListener:(k,f)=>{if(events[k]===f)delete events[k];},
     $:sel=>{if(!nodes.has(sel))nodes.set(sel,{style:{setProperty(){}},dataset:{},isConnected:true,insertAdjacentHTML(_,html){this.html=(this.html||'')+html;}});return nodes.get(sel);},nodes,events,writes};
@@ -46,4 +46,36 @@ test('reader escapes chapter text, restores progress and saves progress without 
 test('empty chapter is rejected rather than saved as a reading position',async()=>{
   const c=setup(async(_,u)=>u.endsWith('/view')?{data:{novel:{}}}:{data:{id:'1',content:''}});
   c.location.hash='#/novels/read/b/ch';await assert.rejects(c.novelRead('b','ch'),/nvNoText/);assert.equal(c.store.novels.b,undefined);
+});
+test('home reuses the shared hero and rows and remains usable if a secondary list fails',async()=>{
+  const c=setup(async(_,url)=>{
+    const sort=new URL(url).searchParams.get('sort');
+    if(sort==='views')throw Error('temporarily unavailable');
+    return {data:[{id:sort,title:sort,descriptionShort:'Synopsis',coverURL:'/cover.webp'}]};
+  });
+  const rows=[];let hero;
+  c.row=(label,items,href)=>{rows.push({label,items,href});return label;};
+  c.heroPage=(slides,body)=>hero={slides,body};
+  await c.novelsRoute([]);
+  assert.equal(hero.slides[0].banner,'https://novltime.com/cover.webp');
+  assert.equal(hero.slides[0].info,'#/novels/series/trending');
+  assert.equal(hero.slides[0].desc,'Synopsis');
+  assert.equal(rows.find(r=>r.label==='mHot').href,'#/novels/browse?sort=trending');
+  assert.equal(rows.find(r=>r.label==='mNew').items.length,1);
+});
+test('browse filter sheets preserve search when selecting a genre',async()=>{
+  const c=setup(async()=>({data:[],meta:{}}));c.location.hash='#/novels/browse?search=dragon';
+  let pick;c.pickSheet=(name,opts,cur,onPick)=>pick=onPick;
+  await c.novelsBrowse();
+  c.nodes.get('.nv-page .fchips').onclick({target:{closest:()=>({dataset:{k:'genre'}})}});
+  pick('fantasy');assert.equal(c.location.hash,'#/novels/browse?search=dragon&genre=fantasy');
+});
+test('novel chapters can be filtered by exact number and reversed across loaded pages',async()=>{
+  const c=setup(async(_,url)=>url.endsWith('/view')?{data:{novel:{id:'book',title:'Book',genres:[]}}}:{data:[{id:'1',slug:'one',order:1,title:'First'},{id:'2',slug:'two',order:2,title:'Second'}],meta:{}});
+  c.location.hash='#/novels/series/book';c.nodes.set('#nv-jump',{value:''});
+  await c.novelDetails('book');
+  const chapters=c.nodes.get('.nv-chapters');
+  assert.ok(chapters.innerHTML.indexOf('First')<chapters.innerHTML.indexOf('Second'));
+  c.nodes.get('#nv-reverse').onclick();assert.ok(chapters.innerHTML.indexOf('Second')<chapters.innerHTML.indexOf('First'));
+  c.nodes.get('#nv-jump').value='1';c.nodes.get('#nv-jump').oninput();assert.match(chapters.innerHTML,/First/);assert.doesNotMatch(chapters.innerHTML,/Second/);
 });

@@ -698,7 +698,7 @@ $('#nav').addEventListener('click', e => e.target === e.currentTarget && closeSe
 $('#search').onsubmit = e => {
   e.preventDefault();
   const q = e.target.q.value.trim();
-  if (q) { closeSearch(); location.hash = location.hash.startsWith('#/novels') ? '#/novels?search=' + encodeURIComponent(q) : '#/search/' + encodeURIComponent(q); }
+  if (q) { closeSearch(); location.hash = location.hash.startsWith('#/novels') ? '#/novels/browse?search=' + encodeURIComponent(q) : '#/search/' + encodeURIComponent(q); }
 };
 
 // ---------- views ----------
