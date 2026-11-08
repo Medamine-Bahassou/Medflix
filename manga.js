@@ -652,6 +652,7 @@ const lockedBack = () => {
 let readerY = 0, readerSave, readerPos, rdLocked = false, sbIdle;
 addEventListener('scroll', () => {
   const r = document.querySelector('.reader');
+  if (!r) { readerY = scrollY; return; } // every page's scroll comes here: nothing to do outside the reader
   if (!(api.web && matchMedia('(min-width: 761px)').matches) && r && scrollY !== readerY) r.classList.toggle('hide-ui', scrollY > 80); // the website on a wide screen keeps its bars; phones hide them as the app does
   r?.style.setProperty('--sp', scrollY / Math.max(1, document.documentElement.scrollHeight - innerHeight)); // scrollbar thumb
   if (r) { r.classList.add('scrolling'); clearTimeout(sbIdle); sbIdle = setTimeout(() => r.classList.remove('scrolling'), 1500); } // the thumb fades once scrolling stops

@@ -29,7 +29,7 @@ input:focus-visible, select:focus-visible { outline: none; }
 /* window drag area; leave room for the native window controls on the right */
 #nav, .player header, .rd-head { -webkit-app-region: drag; padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + var(--gutter)); }
 #nav a, #nav form, #nav .lang, #nav .nav-gear, .player header button, .player header a, .player header .dd, .rd-head button, .rd-head a, .rd-head select { -webkit-app-region: no-drag; }
-#nav.solid { background: #000000f2; backdrop-filter: blur(10px); }
+#nav.solid { background: #000000f2; } /* no blur behind it: nothing shows through 95% black, and it repainted on every scroll */
 .logo { display: flex; direction: ltr; font-size: 26px; } /* the M and "edFlix" read as one word, left to right, in Arabic too */
 .logo-mark { height: 1.3em; width: auto; }
 .links { display: flex; gap: 22px; }
@@ -120,12 +120,13 @@ input:focus-visible, select:focus-visible { outline: none; }
 .card { position: relative; flex: 0 0 auto; width: 190px; border-radius: 6px; overflow: hidden; background: var(--card); cursor: pointer;
   transition: transform .4s var(--ease); animation: rise .6s var(--ease) backwards; animation-delay: calc(var(--i, 0) * 35ms); }
 /* backwards, not both: a finished animation that still held transform made the hover jump instead of easing */
-.card .img { position: relative; aspect-ratio: 2/3; overflow: hidden; background: linear-gradient(110deg, #1a1a1a 30%, #262626 50%, #1a1a1a 70%) 0 0/300% 100%; animation: shimmer 1.4s infinite; }
+.card .img { position: relative; aspect-ratio: 2/3; overflow: hidden; background: linear-gradient(110deg, #1a1a1a 30%, #262626 50%, #1a1a1a 70%) 0 0/300% 100%; }
+.skel .img { animation: shimmer 1.4s infinite; } /* only here: on real cards it never stopped, a page's worth of them repainting every frame under posters already loaded */
+.track .card { content-visibility: auto; contain-intrinsic-size: 190px 285px; } /* a row's cards off screen aren't styled or painted: a page can hold 700. their size is fixed, nothing jumps */
 /* a cover still not here after 4s (or never coming): its title in place of the shimmer. the img carries on loading, and covers it when it lands */
 .card .img[data-ph]::before { content: attr(data-ph); position: absolute; inset: 0; display: grid; place-items: center; padding: 12px; text-align: center; font-size: 13px; color: var(--muted); background: linear-gradient(#262626, var(--card)); opacity: 0; animation: img-late 0s 4s forwards; }
 @keyframes img-late { to { opacity: 1 } }
 .card img { position: relative; width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .4s var(--ease), opacity .4s; opacity: 0; } /* .4s: in step with the card's lift */
-@media (hover: hover) { .card, .card img { will-change: transform; } } /* the hover's scaling on the GPU: no repaint each frame */
 .card img.ok { opacity: 1; }
 .card:hover { transform: scale(1.08) translateY(-6px); z-index: 3; outline: 2px solid var(--red); }
 .card:hover img { transform: scale(1.06); }
@@ -134,7 +135,7 @@ input:focus-visible, select:focus-visible { outline: none; }
 .card .s { font-size: 11px; color: #bbb; display: flex; gap: 8px; }
 .card .badge { position: absolute; top: 8px; inset-inline-start: 8px; background: var(--red); font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 3px; }
 .card .fav { position: absolute; top: 8px; inset-inline-end: 8px; width: 30px; height: 30px; border-radius: 50%; background: #000a; border: 1px solid #fff6; color: #fff;
-  display: grid; place-items: center; opacity: 0; transform: scale(.7); transition: all .25s var(--ease); }
+  display: grid; place-items: center; opacity: 0; transform: scale(.7); transition: opacity .25s var(--ease), transform .25s var(--ease), background .25s, border-color .25s; }
 .card:hover .fav, .card .fav.on { opacity: 1; transform: none; }
 .card .fav svg { width: 15px; height: 15px; }
 .card .fav::after { content: ""; position: absolute; inset: -8px; } /* bigger tap area than the visible circle */
@@ -393,6 +394,7 @@ input:focus-visible, select:focus-visible { outline: none; }
   .arrow { display: none; }
 
   .card { width: 118px; }
+  .track .card { contain-intrinsic-size: 118px 177px; }
   .card:hover { transform: none; outline: none; }
   .card:hover img { transform: none; }
   .card .fav { opacity: 1; transform: none; width: 28px; height: 28px; top: 6px; inset-inline-end: 6px; }
@@ -872,8 +874,7 @@ img.broken:not(.rd-pages img) { content: url("data:image/gif;base64,R0lGODlhAQAB
 .cast-placeholder { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--muted); }
 .cast-placeholder svg { width:40%; height:auto; max-width:56px; }
 .cast-photo img { position:absolute; inset:0; opacity:0; }
-.cast-photo img.ok:not(.broken):not([hidden]) { opacity:1; }
-.cast-photo:has(img.ok:not(.broken):not([hidden])) .cast-placeholder { visibility:hidden; }
+.cast-photo img.ok:not(.broken):not([hidden]) { opacity:1; background:var(--card); } /* over the placeholder. not a :has(img.ok): every poster landing anywhere restyled the whole page */
 
 .cast-more[hidden] { display:none; }
 

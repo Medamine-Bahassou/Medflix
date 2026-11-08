@@ -464,7 +464,7 @@ function card(c, i = 0) {
   cardData.set(id, { ...c, path: show, type: c.type === 'episode' ? (show.startsWith('/movie') ? 'movie' : 'anime') : c.type, href: c.href || (c.type === 'episode' ? playHash(c.path) : /^\/(manga|cinema|airing|novels)\//.test(c.path) ? '#' + c.path : '#/title' + c.path) });
   const h = store.history[show];
   return `<div class="card" data-id="${id}" style="--i:${i % 12}">
-    <div class="img" data-ph="${esc(c.title)}"><img src="${esc(img(c.poster))}" loading="lazy" alt="" draggable="false"></div>
+    <div class="img" data-ph="${esc(c.title)}"><img src="${esc(img(c.poster))}" loading="lazy" decoding="async" alt="" draggable="false"></div>
     ${c.badge ? `<span class="badge">${esc(c.badge.replace(/\bEP\b|الحلقة/, t('ep')).replace('والأخيرة', t('epFinal')))}</span>` : ''}
     ${c.rm ? `<button class="fav rm" title="${t('remove')}" aria-label="${t('remove')}">${ICON.x}</button>`
       : show.startsWith('/airing/') ? '' // a schedule card: not a show page yet (found on witanime when opened), so nothing to list
