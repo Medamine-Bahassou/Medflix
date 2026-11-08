@@ -142,10 +142,12 @@ async function novelRead(id, slug) {
   $('#nv-paper .dd-btn').onclick=()=>{ const dd=$('#nv-paper'); dd.classList.contains('open') ? closeMenu(dd) : openMenu(dd); };
   $('#nv-paper-menu').onclick=e=>{ const v=e.target.closest('.dd-item')?.dataset.paper; if(!['black','dim','sepia','light'].includes(v))return; $('.nv-reader').dataset.paper=v;store.prefs.nvPaper=v;persist('prefs');drawPaper();closeMenu($('#nv-paper')); };
 
-  requestAnimationFrame(()=>{if(location.hash===hash)scrollTo(0,progress*Math.max(0,document.documentElement.scrollHeight-innerHeight));});
-  let timer;
-  const save=()=>{if(location.hash!==hash)return;store.novels[id].progress=scrollY/Math.max(1,document.documentElement.scrollHeight-innerHeight);store.novels[id].at=Date.now();nvFinish(c,store.novels[id].progress);persist('novels');};
-  const onScroll=()=>{if(location.hash!==hash)return;store.novels[id].progress=scrollY/Math.max(1,document.documentElement.scrollHeight-innerHeight);nvFinish(c,store.novels[id].progress);clearTimeout(timer);timer=setTimeout(save,250);};
+  let timer,controls;
+  requestAnimationFrame(()=>{if(location.hash===hash){if(controls)controls.restore(progress);else scrollTo(0,progress*Math.max(0,document.documentElement.scrollHeight-innerHeight));}});
+  const position=()=>controls?controls.progress():scrollY/Math.max(1,document.documentElement.scrollHeight-innerHeight);
+  const save=()=>{if(location.hash!==hash)return;store.novels[id].progress=position();store.novels[id].at=Date.now();nvFinish(c,store.novels[id].progress);persist('novels');};
+  const onScroll=()=>{if(location.hash!==hash)return;store.novels[id].progress=position();nvFinish(c,store.novels[id].progress);clearTimeout(timer);timer=setTimeout(save,250);};
   nvFinish(c,progress);addEventListener('scroll',onScroll,{passive:true});addEventListener('pagehide',save);
-  addEventListener('hashchange',()=>{persist('novels');clearTimeout(timer);removeEventListener('scroll',onScroll);removeEventListener('pagehide',save);},{once:true});
+  addEventListener('hashchange',()=>{persist('novels');clearTimeout(timer);controls?.dispose();removeEventListener('scroll',onScroll);removeEventListener('pagehide',save);},{once:true});
+  controls=NovelReader.mount({id,slug,c,n,context,hash,progress});
 }

@@ -75,7 +75,7 @@ const WebDownloads=(()=>{
       for(const c of chapters){
         const url=nvUrl(`/novels/${encodeURIComponent(id)}/chapters/by-slug/${encodeURIComponent(c.slug)}`);
         // Reuse content already read in the normal page cache. Otherwise request it on the client, never via our API proxy.
-        let data=scraper.cached(url);
+        let data=c.contentJson?.length||c.content?{success:true,data:c}:scraper.cached(url);
         if(!data){
           if(sourceDenied){blocked.push(c);continue;}
           let r;try{r=await ClientTransfer.fetch(url,{mode:'cors',credentials:'omit',referrerPolicy:'no-referrer'});}catch{sourceDenied=true;blocked.push(c);continue;}

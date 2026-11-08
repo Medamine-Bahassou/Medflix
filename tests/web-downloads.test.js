@@ -68,3 +68,8 @@ test('mixed novel selections never silently export a partial ZIP and skip redund
  assert.equal(requests,1);assert.equal(c.exports.length,0);assert.deepEqual(Array.from(c.choices[0].opts,o=>o[0]),['open','available','cancel']);
  await c.choices[0].onPick('available');assert.equal(c.exports.length,1);assert.equal(c.exports[0].blob.type,'application/zip');assert.equal(c.writes.length,0);
 });
+test('open novel reader exports its loaded chapter with no network or cache dependency',async()=>{
+ const c=setup();c.fetch=()=>{throw Error('reader export must not transfer text');};c.api.fetch=c.fetch;c.scraper.cached=()=>{throw Error('reader export must use displayed text');};
+ await c.wb.downloadNovels('book',[{slug:'one',order:1,title:'First',contentJson:[{text:'On-screen chapter'}],content:'On-screen chapter'}],{title:'Novel'});
+ assert.equal(c.exports.length,1);assert.equal(c.exports[0].name,'Novel 1.txt');assert.match(await c.exports[0].blob.text(),/On-screen chapter/);assert.equal(c.writes.length,0);
+});
