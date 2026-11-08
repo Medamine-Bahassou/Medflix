@@ -37,10 +37,23 @@
   };
   const items=box=>[...box.querySelectorAll(SEL)].filter(el=>(box!==document.body||!el.closest('#drawer'))&&usable(el)).map( // (shut, the drawer only waits off the screen)
     el=>({el,rect:el.getBoundingClientRect(),bar:!!el.closest(BAR)}));
+  // to the middle of each real scroller, then of the page. not scrollIntoView: it also scrolls overflow:hidden boxes, and a hero's zoomed picture makes
+  // it scrollable, so its dark overlay slid off the picture
+  function reveal(el,behavior){
+    let moved=0; // (a glide hasn't moved el yet when the page's turn comes)
+    for(let p=el.parentElement;p&&p!==document.body;p=p.parentElement){
+      const s=getComputedStyle(p),r=el.getBoundingClientRect(),b=p.getBoundingClientRect();
+      const left=/auto|scroll/.test(s.overflowX)&&p.scrollWidth>p.clientWidth?(r.left+r.right-b.left-b.right)/2:0;
+      const top=/auto|scroll/.test(s.overflowY)&&p.scrollHeight>p.clientHeight?(r.top+r.bottom-b.top-b.bottom)/2:0;
+      if(left||top){p.scrollBy({left,top,behavior});moved+=top;}
+      if(s.position==='fixed')return; // a sheet: the page behind it stays
+    }
+    const r=el.getBoundingClientRect();scrollBy({top:(r.top+r.bottom-innerHeight)/2-moved,behavior});
+  }
   function focus(el,scroll=true,smooth=true){
     if(!el.matches('a[href],button,input,select,textarea,[tabindex]'))el.tabIndex=-1;
     el.focus({preventScroll:true});last=el.getBoundingClientRect();setTimeout(()=>{if(active()===el)last=el.getBoundingClientRect();},500); // again once the glide's over: a redraw puts the ring back by this
-    if(scroll&&!el.closest(BAR))el.scrollIntoView({block:'center',inline:'center',behavior:smooth?'smooth':'auto'}); // a held key would queue up a slow glide per card
+    if(scroll&&!el.closest(BAR))reveal(el,smooth?'smooth':'auto'); // a held key would queue up a slow glide per card
   }
   // nothing has focus, or the sheet closed: put the ring back, near where it was, without moving the page. not on a text box: the TV's keyboard would open
   function settle(pressed=false){ // pressed: the top bar will do. by itself it waits for the page: OK pressed twice while one loads would hit the logo and go home
