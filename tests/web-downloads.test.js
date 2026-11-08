@@ -69,3 +69,20 @@ test('an incomplete client response is rejected without retaining a partial payl
  const c=setup();c.fetch=async()=>new Response(new Uint8Array([0,0]),{headers:{'Content-Type':'video/mp4','Content-Length':'4'}});
  await assert.rejects(c.wb.enqueue({id:'truncated',kind:'anime',title:'Show',token:'https://pixeldrain.com/api/file/truncated'}));assert.equal(c.store.webDownloads.truncated.state,'error');assert.equal(c.store.webDownloads.truncated.files.length,0);
 });
+test('the Download action automatically saves a manga chapter ZIP to the browser and can save it again',async()=>{
+ const c=setup();let requests=0;const fetch=c.fetch;c.fetch=(...args)=>{requests++;return fetch(...args);};
+ await c.wb.queueManga({id:'series',title:'Manga'},[{id:'1',n:216}]);
+ assert.equal(c.exports.length,1);assert.match(c.exports[0].name,/Manga.*216\.zip$/);assert.equal(c.exports[0].blob.type,'application/zip');
+ const count=requests;await c.wb.queueManga({id:'series',title:'Manga'},[{id:'1',n:216}]);
+ assert.equal(c.exports.length,2);assert.equal(requests,count,'saving an existing chapter must not redownload it');
+});
+test('Download on multiple chapters saves one combined ZIP rather than multiple automatic files',async()=>{
+ const c=setup();await c.wb.queueManga({id:'series',title:'Manga'},[{id:'1',n:1},{id:'2',n:2}]);
+ assert.equal(c.exports.length,1);assert.equal(c.exports[0].blob.type,'application/zip');
+ const contents=Buffer.from(await c.exports[0].blob.arrayBuffer());assert.ok(contents.includes(Buffer.from('manga 1 manga_1')));assert.ok(contents.includes(Buffer.from('manga 2 manga_2')));
+});
+test('Download on a single video saves its file to the browser, without a separate Save action',async()=>{
+ const c=setup();c.fetch=async()=>new Response(new Uint8Array([0,0,0,4]),{headers:{'Content-Type':'video/mp4','Content-Length':'4'}});
+ await c.wb.queueVideo([{id:'video',title:'Show',ep:1,token:'https://source.test/video.mp4'}]);
+ assert.equal(c.exports.length,1);assert.equal(c.exports[0].name,'Show 1.mp4');assert.equal(c.exports[0].blob.type,'video/mp4');
+});

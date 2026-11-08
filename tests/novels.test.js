@@ -110,3 +110,11 @@ test('storage failures never mark a chapter as downloaded and a retry can succee
   c.api.set=async()=>{};await vm.runInContext('nvDownload("book","one",n)',c);
   assert.ok(c.store.novelDownloads['novel:book/one']);
 });
+test('novel Download action saves chapter text to the browser rather than only caching it',async()=>{
+ const c=setup(async(_,url)=>url.endsWith('/view')?{data:{novel:{id:'book',title:'Book'}}}:url.includes('/published')?{data:[{id:'ch',slug:'one',order:1,title:'First'}],meta:{}}:url.endsWith('/context')?{data:{next:null}}:{data:{id:'ch',slug:'one',order:1,title:'First',content:'Chapter text'}});
+ c.location.hash='#/novels/series/book';c.nodes.set('#nv-jump',{value:''});const saves=[];
+ c.WebDownloads={records:()=>Object.values(c.store.novelDownloads).map(n=>({...n,kind:'novel',novelId:n.id})),saveFile:async item=>saves.push(item),exportZip:async()=>{throw Error('single chapter should save its text');}};
+ c.selectable=(list,all,acts,run)=>{c.selectRun=run;return ()=>{};};
+ await c.novelDetails('book');await c.selectRun('dl',['ch']);
+ assert.equal(saves.length,1);assert.equal(saves[0].slug,'one');assert.equal(saves[0].novelId,'book');
+});

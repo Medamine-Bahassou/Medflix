@@ -16,7 +16,7 @@ const nvPending = new Map();
 const nvParagraphs = c => (c.contentJson?.length ? c.contentJson.map(b=>b.text || '') : String(c.content || '').split('\n')).map(p=>p.trim()).filter(Boolean);
 const nvChapterLink = (id, c) => {
   const key=nvKey(id,c.slug), read=store.novelSeen[c.id]===2, saved=!!store.novelDownloads[key], busy=nvPending.has(key);
-  return `<div class="nv-chapter ${picks?.has(String(c.id))?'sel':''}" data-pick="${esc(c.id)}"><a class="ep ${read?'seen':''} ${saved?'dld':''} ${store.novels[id]?.slug===c.slug?'last':''}" href="${esc(nvReadHash(id,c.slug))}"><b>${t('chapter')} ${esc(c.order)}</b><span dir="auto">${esc(c.title)}</span></a><div class="nv-chapter-actions"><button class="icon-btn ${read?'on':''}" data-nv-act="${read?'unread':'read'}" title="${t(read?'markUnread':'markRead')}" aria-label="${t(read?'markUnread':'markRead')}" aria-pressed="${read}">${ICON.check}</button><button class="icon-btn ${saved?'on':''}" data-nv-act="${saved?'del':'dl'}" ${busy?'disabled aria-busy="true"':''} title="${t(saved?'delDownload':busy?'dlActive':'downloadShort')}" aria-label="${t(saved?'delDownload':busy?'dlActive':'downloadShort')}">${busy?'<i class="nv-dl-spin"></i>':ICON.download}</button></div></div>`;
+  return `<div class="nv-chapter ${picks?.has(String(c.id))?'sel':''}" data-pick="${esc(c.id)}"><a class="ep ${read?'seen':''} ${saved?'dld':''} ${store.novels[id]?.slug===c.slug?'last':''}" href="${esc(nvReadHash(id,c.slug))}"><b>${t('chapter')} ${esc(c.order)}</b><span dir="auto">${esc(c.title)}</span></a><div class="nv-chapter-actions"><button class="icon-btn ${read?'on':''}" data-nv-act="${read?'unread':'read'}" title="${t(read?'markUnread':'markRead')}" aria-label="${t(read?'markUnread':'markRead')}" aria-pressed="${read}">${ICON.check}</button><button class="icon-btn ${saved?'on':''}" data-nv-act="dl" ${busy?'disabled aria-busy="true"':''} title="${t(busy?'dlActive':'downloadShort')}" aria-label="${t(busy?'dlActive':'downloadShort')}">${busy?'<i class="nv-dl-spin"></i>':ICON.download}</button></div></div>`;
 };
 // chapter text is saved separately from its small index, so a large library is never rewritten for every download.
 async function nvChapterData(id,slug,novel,keep=false) {
@@ -112,7 +112,7 @@ async function novelDetails(id) {
   $('#nv-reverse').onclick = () => { reversed=!reversed;drawChapters(); };
   $('#nv-list').onclick = e => { const on=toggleList(c); e.currentTarget.innerHTML=(on?ICON.check:ICON.plus)+' '+t(on?'inList':'myList'); };
   const picked = ids => allChapters.filter(c=>ids.includes(String(c.id)));
-  const acts = (ids,one) => { const xs=picked(ids);return [['read',t('markRead')],['unread',t('markUnread')],one && ['prev',t('markPrevRead')],xs.some(c=>!store.novelDownloads[nvKey(id,c.slug)]) && ['dl',t('downloadShort')],xs.some(c=>store.novelDownloads[nvKey(id,c.slug)]) && ['del',t('delDownload')],ids.length>1 && ['zip',t('wbZip')],one && ['select',t('select')]].filter(Boolean); };
+  const acts = (ids,one) => { const xs=picked(ids);return [['read',t('markRead')],['unread',t('markUnread')],one && ['prev',t('markPrevRead')],['dl',t('downloadShort')],xs.some(c=>store.novelDownloads[nvKey(id,c.slug)]) && ['del',t('delDownload')],ids.length>1 && ['zip',t('wbZip')],one && ['select',t('select')]].filter(Boolean); };
   const run = async (act,ids) => {
     const xs=picked(ids);
     if(act==='select')return selectFrom(ids[0]);
@@ -123,11 +123,12 @@ async function novelDetails(id) {
     }
     if(act==='dl') {
       let failed=false;
-      for(const c of xs.filter(c=>!store.novelDownloads[nvKey(id,c.slug)])) {
+      for(const c of xs) {
         const job=nvDownload(id,c.slug,n);drawChapters();
         try { await job; } catch { failed=true; }drawChapters();
       }
-      toast(t(failed?'dlFailed':'dlNotifDone'),failed);
+      if(failed)toast(t('dlFailed'),true);
+      else { const items=WebDownloads.records().filter(r=>r.kind==='novel'&&r.novelId===id&&xs.some(c=>c.slug===r.slug));if(items.length>1)await WebDownloads.exportZip(items);else if(items.length)await WebDownloads.saveFile(items[0]); }
     }
     if(act==='del') { try { for(const c of xs)await nvDeleteDownload(id,c.slug); }catch{toast(t('dlFailed'),true);} }
     drawChapters();

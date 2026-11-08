@@ -82,7 +82,8 @@ const WebDownloads=(()=>{
   async function batch(specs,zip=false){
     toast(t('dlQueuedN',specs.length));const results=await Promise.allSettled(specs.map(enqueue));
     if(results.some(r=>r.status==='rejected')){toast(t('dlFailed'),true);return;}
-    if(zip)await exportZip(results.map(r=>r.value));else toast(t('dlNotifDone'));
+    const completed=results.map(r=>r.value);
+    if(zip || completed.length>1)await exportZip(completed);else if(completed.length)await saveFile(completed[0]);
   }
   const queueManga=(serie,chapters,zip=false)=>batch(chapters.map(c=>({id:'manga:'+c.id,kind:'manga',chapterId:String(c.id),title:serie.title,poster:serie.poster,show:'/manga/series/'+serie.id,ep:c.n})),zip);
   const queueVideo=(specs,zip=false)=>batch(specs.map(s=>({...s,kind:s.kind||'anime'})),zip);
@@ -108,7 +109,7 @@ const WebDownloads=(()=>{
     try{
       const chosen=items.filter(i=>i.state==='done');if(!chosen.length||chosen.length!==items.length)throw Error('wbNoSaved');
       const entries=[];for(const item of chosen){const folder=BrowserZip.safeName(item.title)+'/'+BrowserZip.safeName(item.kind+' '+item.ep+' '+item.id);for(const f of await filesFor(item))entries.push({name:folder+'/'+BrowserZip.safeName(f.name),blob:f.blob});}
-      if(!entries.length)throw Error('wbNoSaved');deliver(await BrowserZip.create(entries),'Medflix-'+new Date().toISOString().slice(0,10)+'.zip');
+      if(!entries.length)throw Error('wbNoSaved');const name=chosen.length===1?BrowserZip.safeName(chosen[0].title+' - '+t(['manga','novel'].includes(chosen[0].kind)?'chapter':'episode')+' '+(chosen[0].ep??'')):'Medflix-'+new Date().toISOString().slice(0,10);deliver(await BrowserZip.create(entries),name+'.zip');
     }catch(e){toast(t(/^ZIP (size|entry) limit$/.test(e.message)?'wbZipLimit':e.message in strings.en?e.message:'dlFailed'),true);}finally{exporting=false;}
   }
   async function saveFile(item){try{const files=await filesFor(item);if(files.length!==1)return exportZip([item]);deliver(files[0].blob,BrowserZip.safeName(files[0].name));}catch(e){toast(t('wbFileMissing'),true);}}

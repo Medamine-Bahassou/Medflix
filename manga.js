@@ -386,7 +386,7 @@ async function mangaSeries(id, force) {
       (!one || !read) && ['read', t('markRead')],
       (!one || read) && ['unread', t('markUnread')],
       one && chs.indexOf(xs[0]) < chs.length - 1 && ['prev', t('markPrevRead')], // chs: newest first, the earlier ones after it
-      xs.some(x => !copies.has(String(x.n))) && ['dl', t('downloadShort')],
+      (api.web || xs.some(x => !copies.has(String(x.n)))) && ['dl', t('downloadShort')],
       api.web && cids.length>1 && ['zip', t('wbZip')],
       xs.some(x => copies.has(String(x.n))) && ['del', t(one ? 'delDownload' : 'delDownloads')],
       one && ['select', t('select')],
