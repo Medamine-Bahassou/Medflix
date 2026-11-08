@@ -1,8 +1,11 @@
 // Public hosts sometimes permit Origin:null (embedded/local readers), rather than the website's origin.
 // Both paths fetch on the user's device. No media bytes are relayed by a server.
 const ClientTransfer=(()=>{
+  const framed=new Set(); // hosts only the frame can read: no doomed request (and console error) for every page of a chapter
   async function request(url,options){
-    try{return await fetch(url,options);}catch(e){if(options.signal?.aborted)throw e;return isolated(url,options.signal);}
+    const host=new URL(url).host;
+    if(!framed.has(host))try{return await fetch(url,options);}catch(e){if(options.signal?.aborted)throw e;framed.add(host);}
+    return isolated(url,options.signal).catch(e=>{framed.delete(host);throw e;}); // it was the network, maybe: ask directly again next time
   }
   function isolated(url,signal){return new Promise((resolve,reject)=>{
     if(signal?.aborted)return reject(new DOMException('Cancelled','AbortError'));

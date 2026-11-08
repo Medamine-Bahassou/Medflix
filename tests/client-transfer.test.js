@@ -4,7 +4,7 @@ const vm=require('node:vm');
 const fs=require('node:fs');
 function setup(fetch){
  const state={frames:0,removed:0};let port;
- const c={fetch,Response,ReadableStream,DOMException,setTimeout:()=>0,clearTimeout(){},MessageChannel:class{constructor(){this.port1={close(){state.closed=true;}};this.port2={};port=this.port1;}},document:{createElement(){return {setAttribute(){},remove(){state.removed++;},contentWindow:{postMessage(message,target,ports){state.message=message;state.port=ports[0];state.target=target;c.reply?.(port);}}};},body:{append(frame){state.frames++;frame.onload();}}},state};
+ const c={URL,fetch,Response,ReadableStream,DOMException,setTimeout:()=>0,clearTimeout(){},MessageChannel:class{constructor(){this.port1={close(){state.closed=true;}};this.port2={};port=this.port1;}},document:{createElement(){return {setAttribute(){},remove(){state.removed++;},contentWindow:{postMessage(message,target,ports){state.message=message;state.port=ports[0];state.target=target;c.reply?.(port);}}};},body:{append(frame){state.frames++;frame.onload();}}},state};
  vm.createContext(c);vm.runInContext(fs.readFileSync('client-transfer.js','utf8'),c);c.transfer=vm.runInContext('ClientTransfer',c);return c;
 }
 test('CORS-readable files use direct fetch without creating a transfer frame',async()=>{
@@ -14,6 +14,11 @@ test('isolated browser transfer streams bytes to its parent and removes the fram
  const c=setup(async()=>{throw new TypeError('CORS');});
  c.reply=port=>{port.onmessage({data:{type:'headers',status:200,headers:{'content-type':'image/png'}}});port.onmessage({data:{type:'chunk',bytes:new Uint8Array([1,2,3]).buffer}});port.onmessage({data:{type:'end'}});};
  const r=await c.transfer.fetch('https://source.test/image',{});assert.deepEqual(new Uint8Array(await r.arrayBuffer()),new Uint8Array([1,2,3]));assert.equal(c.state.message.url,'https://source.test/image');assert.equal(c.state.frames,1);assert.equal(c.state.removed,1);
+});
+test('a host only the frame can read is not asked directly again',async()=>{
+ const urls=[],c=setup(async url=>{urls.push(url);throw new TypeError('CORS');});
+ c.reply=port=>{port.onmessage({data:{type:'headers',status:200,headers:{}}});port.onmessage({data:{type:'end'}});};
+ await c.transfer.fetch('https://source.test/1',{});await c.transfer.fetch('https://source.test/2',{});assert.deepEqual(urls,['https://source.test/1']);assert.equal(c.state.frames,2);
 });
 test('aborting an isolated transfer removes the frame and rejects without any relay request',async()=>{
  const urls=[],c=setup(async url=>{urls.push(url);throw new TypeError('CORS');}),ac=new AbortController();

@@ -3,8 +3,8 @@
 const WebDownloads=(()=>{
   const active=new Set();
   const strings={
-    en:{wbZip:'Download ZIP',wbNovelBlocked:'This source blocks direct downloads',wbNovelOpen:'Open original chapter in browser',wbNovelOpenMany:'Open first unavailable chapter in browser',wbNovelAvailable:n=>`Download available chapters (${n})`,wbZipLimit:'This selection exceeds ZIP limits. Export smaller groups.',wbHostOnly:'Open the provider to download this file.',wbZipBusy:'Preparing browser download…',wbCors:'This source blocks browser access to its files.',wbUnsupported:'This source did not provide a downloadable file.'},
-    ar:{wbZip:'تحميل ZIP',wbNovelBlocked:'يمنع هذا المصدر التحميل المباشر',wbNovelOpen:'فتح الفصل الأصلي في المتصفح',wbNovelOpenMany:'فتح أول فصل غير متاح في المتصفح',wbNovelAvailable:n=>`تحميل الفصول المتاحة (${n})`,wbZipLimit:'يتجاوز التحديد حدود ZIP. صدّر مجموعات أصغر.',wbHostOnly:'افتح المصدر لتحميل هذا الملف.',wbZipBusy:'جارٍ تجهيز تحميل المتصفح…',wbCors:'يمنع هذا المصدر وصول المتصفح إلى ملفاته.',wbUnsupported:'لم يوفر هذا المصدر ملفًا قابلًا للتحميل.'}
+    en:{wbZip:'Download ZIP',wbPagesMissing:n=>`⁦${n}⁩ pages are missing at the source`,wbProgress:(n,all)=>`Chapter ⁦${n}/${all}⁩ ready`,wbSomeFailed:n=>`⁦${n}⁩ chapters could not be downloaded`,wbAvailable:n=>`Download available chapters (${n})`,wbZipLimit:'This selection exceeds ZIP limits. Export smaller groups.',wbHostOnly:'Open the provider to download this file.',wbZipBusy:'Preparing browser download…',wbCors:'This source blocks browser access to its files.',wbUnsupported:'This source did not provide a downloadable file.'},
+    ar:{wbZip:'تحميل ZIP',wbPagesMissing:n=>`⁦${n}⁩ من الصفحات مفقودة في المصدر`,wbProgress:(n,all)=>`الفصل ⁦${n}/${all}⁩ جاهز`,wbSomeFailed:n=>`تعذّر تحميل ⁦${n}⁩ من الفصول`,wbAvailable:n=>`تحميل الفصول المتاحة (${n})`,wbZipLimit:'يتجاوز التحديد حدود ZIP. صدّر مجموعات أصغر.',wbHostOnly:'افتح المصدر لتحميل هذا الملف.',wbZipBusy:'جارٍ تجهيز تحميل المتصفح…',wbCors:'يمنع هذا المصدر وصول المتصفح إلى ملفاته.',wbUnsupported:'لم يوفر هذا المصدر ملفًا قابلًا للتحميل.'}
   };
   const check=signal=>{if(signal.aborted)throw new DOMException('Cancelled','AbortError');};
   const extension=type=>/png/.test(type)?'png':/webp/.test(type)?'webp':/gif/.test(type)?'gif':/image/.test(type)?'jpg':/zip/.test(type)?'zip':/matroska/.test(type)?'mkv':'mp4';
@@ -44,6 +44,19 @@ const WebDownloads=(()=>{
     const name=items.length===1?BrowserZip.safeName(items[0].title+' - '+items[0].unit+' '+items[0].n):'Medflix-'+new Date().toISOString().slice(0,10);
     deliver(await BrowserZip.create(files),name+'.zip');
   }
+  // a moment's refusal or a dropped connection shouldn't cost a chapter
+  async function retry(job,tries=3){for(let k=1;;k++){try{return await job();}catch(e){if(k>=tries)throw e;await new Promise(r=>setTimeout(r,500*2**k));}}}
+  // a few at a time: one by one a long selection takes minutes, all at once gets refused. the first failure stops what hasn't started
+  async function each(list,n,job){let next=0;const work=async()=>{while(next<list.length){const i=next++;try{await job(list[i],i);}catch(e){next=list.length;throw e;}}};await Promise.all(Array.from({length:Math.min(n,list.length)},work));}
+  // a chapter that still fails doesn't lose the others, and fewer than were picked are only saved when asked
+  async function gather(list,n,job,zip){
+    const items=[];let done=0,failed=0,error;
+    await each(list,n,async(c,i)=>{try{items[i]=await job(c);}catch(e){failed++;error=e;}if(list.length>1)toast(t('wbProgress',++done,list.length));});
+    const got=items.filter(Boolean);
+    if(!failed)return save(got,zip);
+    if(!got.length)throw error;
+    pickSheet(t('wbSomeFailed',failed),[['available',t('wbAvailable',got.length)],['cancel',t('cancel')]],'',v=>{if(v==='available')return save(got,zip).catch(()=>toast(t('dlFailed'),true));});
+  }
   async function videoLinks(spec){return spec.token?[{token:spec.token}]:spec.kind==='cinema'?edDownloads(spec.slug):animeDownloadLinks(spec.epPath,spec.title,spec.alt,spec.ep);}
   async function resolved(spec){
     const links=await videoLinks(spec);links.sort((a,b)=>Number(b.quality===spec.quality)-Number(a.quality===spec.quality));
@@ -61,36 +74,30 @@ const WebDownloads=(()=>{
   }
   async function downloadManga(serie,chapters){
     return run('manga:'+chapters.map(c=>c.id).join('|'),async()=>{
-      toast(t('wbZipBusy'));const items=[],signal=new AbortController().signal;
-      for(const c of chapters){const chapter=c.images?.length?c:await mChapter(c.id,true);if(!chapter.images.length)throw Error('noImages');const files=[];
-        for(let i=0;i<chapter.images.length;i++){const blob=await binary(chapter.images[i],signal);if(!blob.type.startsWith('image/'))throw Error('noImages');files.push({name:String(i+1).padStart(4,'0')+'.'+extension(blob.type),blob});}
-        items.push({id:String(c.id),title:serie.title,n:c.n,unit:t('chapter'),files});
-      }
-      await save(items,true);
+      toast(t('wbZipBusy'));let missing=0;
+      // a stalled connection would hold the whole selection up forever, and its slot
+      const page=src=>retry(()=>{const stop=new AbortController(),timer=setTimeout(()=>stop.abort(),60000);return binary(src,stop.signal).finally(()=>clearTimeout(timer));});
+      // 2 chapters x 3 pages: the browser's 6 connections to a host, none left waiting into the frame's timeout
+      await gather(chapters,2,async c=>{const chapter=c.images?.length?c:await retry(()=>mChapter(c.id,true));if(!chapter.images.length)throw Error('noImages');const files=[];let gone=0;
+        await each(chapter.images,3,async(src,i)=>{
+          let blob;try{blob=await page(src);}catch(e){if(++gone>chapter.images.length*.1)throw e;return;} // sites do have dead pages (a 404 in 1 chapter of 2 tried): a few don't cost the chapter, more means it's us being blocked
+          if(!blob.type.startsWith('image/'))throw Error('noImages');files[i]={name:String(i+1).padStart(4,'0')+'.'+extension(blob.type),blob};
+        });
+        missing+=gone;return {id:String(c.id),title:serie.title,n:c.n,unit:t('chapter'),files:files.filter(Boolean)};
+      },true);
+      if(missing)toast(t('wbPagesMissing',missing),true);
     });
   }
   async function downloadNovels(id,chapters,novel,zip=false){
     return run('novel:'+id+':'+chapters.map(c=>c.slug).join('|'),async()=>{
-      toast(t('wbZipBusy'));const items=[],blocked=[];let sourceDenied=false;
-      for(const c of chapters){
+      toast(t('wbZipBusy'));
+      await gather(chapters,4,async c=>{
         const url=nvUrl(`/novels/${encodeURIComponent(id)}/chapters/by-slug/${encodeURIComponent(c.slug)}`);
-        // Reuse content already read in the normal page cache. Otherwise request it on the client, never via our API proxy.
-        let data=c.contentJson?.length||c.content?{success:true,data:c}:scraper.cached(url);
-        if(!data){
-          if(sourceDenied){blocked.push(c);continue;}
-          let r;try{r=await ClientTransfer.fetch(url,{mode:'cors',credentials:'omit',referrerPolicy:'no-referrer'});}catch{sourceDenied=true;blocked.push(c);continue;}
-          if(r.status===403){sourceDenied=true;blocked.push(c);continue;}
-          if(!r.ok)throw Error('wbUnsupported');data=await r.json();
-        }
+        // on screen or already read: no request. else the reader's route, since novltime answers 403 to every site's browser, opaque frames too. not load(): a long selection would fill the page cache
+        const data=c.contentJson?.length||c.content?{success:true,data:c}:scraper.cached(url)||await retry(async()=>parsers.novelJSON(JSON.parse(await api.fetch(url))));
         const chapter=parsers.novelJSON(data).data,paras=nvParagraphs(chapter);if(!paras.length)throw Error('nvNoText');
-        items.push({id:c.slug,title:novel.title,n:c.order,unit:t('chapter'),files:[{name:novel.title+' '+c.order+'.txt',blob:new Blob(['\ufeff'+novel.title+'\n'+chapter.title+'\n\n'+paras.join('\n\n')],{type:'text/plain;charset=utf-8'})}]});
-      }
-      if(blocked.length){
-        const chapter=blocked[0],source=novel.slug?NV_SITE+'/ar/novel/'+encodeURIComponent(novel.slug)+'/chapter/'+encodeURIComponent(chapter.slug):NV_SITE+'/ar';
-        // An explicit choice: never send blocked chapter text through a relay or silently export a partial selection.
-        pickSheet(t('wbNovelBlocked'),[['open',t(blocked.length>1?'wbNovelOpenMany':'wbNovelOpen')],items.length&&['available',t('wbNovelAvailable',items.length)],['cancel',t('cancel')]].filter(Boolean),'',v=>{if(v==='open')return api.openExternal(source);if(v==='available')return save(items,zip||items.length>1).catch(()=>toast(t('dlFailed'),true));});return;
-      }
-      await save(items,zip||items.length>1);
+        return {id:c.slug,title:novel.title,n:c.order,unit:t('chapter'),files:[{name:novel.title+' '+c.order+'.txt',blob:new Blob(['\ufeff'+novel.title+'\n'+chapter.title+'\n\n'+paras.join('\n\n')],{type:'text/plain;charset=utf-8'})}]};
+      },zip||chapters.length>1);
     });
   }
   async function cleanupLegacyDownloads(){
