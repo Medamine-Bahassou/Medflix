@@ -5,7 +5,7 @@ const vm=require('node:vm');
 function setup(load) {
   const nodes=new Map(), events={}, writes=[];
   const ctx={parsers:{},api:{web:true,get:async()=>null,set:async()=>{}},load,URL,URLSearchParams,location:{hash:'#/novels'},lang:'en',
-    store:{novels:{},novelSeen:{},novelDownloads:{},prefs:{}},t:(k,n)=>k+(n===undefined?'':':'+n),esc:s=>String(s??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),
+    store:{novels:{},novelSeen:{},prefs:{}},t:(k,n)=>k+(n===undefined?'':':'+n),esc:s=>String(s??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),
     view:{innerHTML:''},grid:cs=>'<div class="grid">'+cs.map(c=>c.title).join('')+'</div>',row:()=>'',card:c=>c.title,
     picks:null,pagePress:null,selBtn:()=>'',selBar:()=>'',selectable:()=>()=>{},pageRefresh:null,CHEVRON:'',openMenu:()=>{},closeMenu:()=>{},pickSheet:()=>{},heroPage:()=>{},chips:()=>'',inList:()=>false,toggleList:()=>{},ICON:{back:'',search:'',x:'',sort:'',novel:'',plus:'',check:''},toast:()=>{},persist:k=>writes.push(k),requestAnimationFrame:f=>f(),scrollTo:()=>{},
     document:{documentElement:{scrollHeight:2000}},innerHeight:1000,scrollY:0,clearTimeout,setTimeout,
@@ -89,32 +89,11 @@ test('read state distinguishes opening a chapter, finishing it, and marking it u
   vm.runInContext('nvMark(["ch"],0)',c);assert.equal(c.store.novelSeen.ch,undefined);
   c.location.hash='#/novels';c.events.hashchange();
 });
-test('chapter download is deduplicated and its saved text opens without any network requests',async()=>{
-  const calls=[],disk=new Map();
-  const c=setup(async(_,url,force,keep)=>{calls.push({url,keep});return url.endsWith('/context')?{data:{next:{slug:'two'}}}:{data:{id:'ch',slug:'one',order:1,content:'Saved text'}};});
-  c.api.get=async key=>disk.get(key);c.api.set=async(key,value)=>disk.set(key,value);
-  const n={id:'book',title:'Book'};c.n=n;
-  await Promise.all([vm.runInContext('nvDownload("book","one",n)',c),vm.runInContext('nvDownload("book","one",n)',c)]);
-  assert.equal(calls.length,2);assert.ok(calls.every(x=>x.keep));assert.equal(c.store.novelDownloads['novel:book/one'].chapterId,'ch');
-  c.load=()=>{throw Error('offline');};c.location.hash='#/novels/read/book/one';
-  await c.novelRead('book','one');assert.match(c.view.innerHTML,/Saved text/);assert.match(c.view.innerHTML,/book\/two/);
-  c.location.hash='#/novels';c.events.hashchange();
-  await vm.runInContext('nvDeleteDownload("book","one")',c);
-  assert.equal(disk.get('novel:book/one'),null);assert.equal(c.store.novelDownloads['novel:book/one'],undefined);
-});
-test('storage failures never mark a chapter as downloaded and a retry can succeed',async()=>{
-  const c=setup(async(_,u)=>u.endsWith('/context')?{data:{}}:{data:{id:'c',slug:'one',content:'Text'}});
-  c.n={id:'book',title:'Book'};c.api.set=async()=>{throw Error('quota');};
-  await assert.rejects(vm.runInContext('nvDownload("book","one",n)',c),/quota/);
-  assert.equal(c.store.novelDownloads['novel:book/one'],undefined);
-  c.api.set=async()=>{};await vm.runInContext('nvDownload("book","one",n)',c);
-  assert.ok(c.store.novelDownloads['novel:book/one']);
-});
 test('novel Download action saves chapter text to the browser rather than only caching it',async()=>{
  const c=setup(async(_,url)=>url.endsWith('/view')?{data:{novel:{id:'book',title:'Book'}}}:url.includes('/published')?{data:[{id:'ch',slug:'one',order:1,title:'First'}],meta:{}}:url.endsWith('/context')?{data:{next:null}}:{data:{id:'ch',slug:'one',order:1,title:'First',content:'Chapter text'}});
  c.location.hash='#/novels/series/book';c.nodes.set('#nv-jump',{value:''});const saves=[];
- c.WebDownloads={records:()=>Object.values(c.store.novelDownloads).map(n=>({...n,kind:'novel',novelId:n.id})),saveFile:async item=>saves.push(item),exportZip:async()=>{throw Error('single chapter should save its text');}};
+ c.WebDownloads={downloadNovels:async(id,chapters,novel,zip)=>saves.push({id,chapters,novel,zip})};
  c.selectable=(list,all,acts,run)=>{c.selectRun=run;return ()=>{};};
  await c.novelDetails('book');await c.selectRun('dl',['ch']);
- assert.equal(saves.length,1);assert.equal(saves[0].slug,'one');assert.equal(saves[0].novelId,'book');
+ assert.equal(saves.length,1);assert.equal(saves[0].chapters[0].slug,'one');assert.equal(saves[0].id,'book');assert.equal(saves[0].zip,false);
 });

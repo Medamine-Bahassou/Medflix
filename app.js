@@ -434,7 +434,7 @@ function webData() {
 }
 
 // ---------- user state (persisted in main process JSON) ----------
-const store = { ...(api.web ? { novels: {}, novelSeen: {}, novelDownloads: {}, webDownloads: {} } : {}), list: {}, history: {}, seen: {}, prefs: {}, downloads: {}, manga: {}, mangaSeen: {}, hidden: {}, streams: {} }; // hidden: cards long-pressed away, by path; streams: see play()
+const store = { ...(api.web ? { novels: {}, novelSeen: {} } : {}), list: {}, history: {}, seen: {}, prefs: {}, downloads: {}, manga: {}, mangaSeen: {}, hidden: {}, streams: {} }; // hidden: cards long-pressed away, by path; streams: see play()
 const persist = k => api.set(k, store[k]);
 const inList = p => !!store.list[p];
 function toggleList(item) {
@@ -1097,7 +1097,7 @@ const inAppHost = label => !!(api.download || api.downloadEnqueue) && MediaHosts
 // different shows download side by side. A show can be paused on its own; Pause all holds every show.
 const held = show => store.prefs.dlHeld?.[show] ?? !!store.prefs.dlPaused; // a show's own choice beats Pause all
 function startDownload(item, quality = item.quality || store.prefs.dlQuality) {
-  if (api.web) return WebDownloads.queueVideo([{...item,quality}]);
+  if (api.web) return WebDownloads.downloadVideo([{...item,quality}]);
   const cur = store.downloads[item.id];
   if (cur?.state === 'active' || cur?.state === 'done') return toast(t(cur.state === 'done' ? 'dlDone' : 'dlActive'));
   const wait = held(item.show), busy = Object.values(store.downloads).some(d => d.show === item.show && d.state === 'active');
@@ -1140,7 +1140,7 @@ async function runEpisode(d) {
 // manga chapters: page images (see download-pages in main.js)
 const isManga = d => d.kind === 'manga';
 function queueChapters(serie, chapters) { // serie {id, title, poster}, chapters [{id, n}] oldest first
-  if (api.web) return WebDownloads.queueManga(serie,chapters);
+  if (api.web) return WebDownloads.downloadManga(serie,chapters);
   let added = 0;
   const show = '/manga/series/' + serie.id;
   for (const c of chapters) {
@@ -1202,6 +1202,7 @@ function prefetch() {
 }
 // starts the next waiting item of every show that isn't paused and has nothing downloading (phones: see dlSent)
 function pumpDownloads() {
+  if (api.web) return; // only native apps have an in-app download queue
   if (api.downloadEnqueue) {
     for (const d of Object.values(store.downloads).filter(d => d.state === 'queued' && !held(d.show) && !dlSent.has(d.id)).sort(dlOrder)) {
       dlSent.add(d.id);
@@ -1503,7 +1504,7 @@ async function title(path, force) {
     epActions(eps, d.episodes.map(e => ({ id: e.path, ep: e.ep })), () => shown().map(e => e.path), drawEps,
       e => ({ id: e.id, epPath: e.id, show: showOf(e.id), title: d.title, ep: e.ep, poster: d.poster }), d.title);
   }
-  $('#web-film-dl')?.addEventListener('click',()=>WebDownloads.queueVideo([{id:first,epPath:first,show:path,title:d.title,ep:'',poster:d.poster}]));
+  $('#web-film-dl')?.addEventListener('click',()=>WebDownloads.downloadVideo([{id:first,epPath:first,show:path,title:d.title,ep:'',poster:d.poster}]));
   $('#fav').onclick = e => { const on = toggleList({ path, title: d.title, poster: d.poster, type }); e.currentTarget.innerHTML = on ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList'); };
   pageRefresh = () => title(path, true);
   $('#rf').onclick = () => pageRefresh().then(() => toast(t('updated')));
@@ -1524,7 +1525,7 @@ async function nextAir(names) {
 }
 // an episode's row (anime, series): its still (else the show's picture), its number and, when known, its name
 const epKind = k => (k ? `<em class="ep-kind ${k}">${t(k)}</em>` : ''); // "filler" or "mixed" (scraper.filler)
-const epRow = (n, i, pic, href, seen, last, pick) => `<a class="ep ${seen ? 'seen' : ''} ${last ? 'last' : ''} ${(store.downloads[pick] || (api.web && store.webDownloads[pick]))?.state === 'done' ? 'dld' : ''} ${picks?.has(pick) ? 'sel' : ''}"
+const epRow = (n, i, pic, href, seen, last, pick) => `<a class="ep ${seen ? 'seen' : ''} ${last ? 'last' : ''} ${store.downloads[pick]?.state === 'done' ? 'dld' : ''} ${picks?.has(pick) ? 'sel' : ''}"
   href="${href}"${pick ? ` data-pick="${esc(pick)}"` : ''}>
   <img src="${esc(img(i?.thumb || pic))}" alt="" loading="lazy"><span><b>${/^\d/.test(n) ? t('ep') + ' ' : ''}${esc(n)}${epKind(i?.kind)}</b>${i?.name ? `<small dir="auto">${esc(i.name)}</small>` : ''}</span></a>`;
 // an episode list's actions (anime, series), on one (long-press) or several picked: mark them watched or not, download them or
@@ -1545,7 +1546,7 @@ function epActions(list, eps, ids, redraw, job, title) {
     const xs = pick(ps);
     if (v === 'select') return selectFrom(ps[0]);
     if (v === 'seen' || v === 'unseen') { for (const e of xs) v === 'seen' ? (store.seen[e.id] = 1) : delete store.seen[e.id]; persist('seen'); }
-    if (api.web && (v==='dl'||v==='zip')) { const here=location.hash;await WebDownloads.queueVideo(xs.map(job),v==='zip');if(location.hash===here)redraw();return; }
+    if (api.web && (v==='dl'||v==='zip')) { const here=location.hash;await WebDownloads.downloadVideo(xs.map(job),v==='zip');if(location.hash===here)redraw();return; }
     if (v === 'dl') {
       const todo = xs.filter(free);
       for (const e of todo) startDownload(job(e)); // in the quality last picked; each show's queue takes them oldest first
@@ -1735,7 +1736,7 @@ async function play(epPath) {
     if (b.dataset.act === 'list') return location.hash = '#/downloads';
     const l = links[b.dataset.i];
     store.prefs.dlQuality = l.quality; store.prefs.dlHost = l.label; persist('prefs');
-    if (api.web) return WebDownloads.queueVideo([{id:epPath,epPath,show,title:d.title,ep,poster:d.poster,quality:l.quality,host:l.label,token:l.token}]);
+    if (api.web) return WebDownloads.downloadVideo([{id:epPath,epPath,show,title:d.title,ep,poster:d.poster,quality:l.quality,host:l.label,token:l.token}]);
     if (inAppHost(l.label)) startDownload({ id: epPath, epPath, show, title: d.title, ep, poster: d.poster }, l.quality);
     else api.openDownloadPage(l.token).then(() => toast(t('openedBrowser')), () => toast(t('dlFailed'), true));
   };
@@ -1916,7 +1917,6 @@ async function route(soft) {
   // (and while a pull-to-refresh runs: a redraw would drop its loads, and its spinner would never stop)
   if (soft && (/^#\/novels\/read\//.test(location.hash) || /^#\/(play|offline|manga\/read)\/|^#\/cinema\/([^/]+\/watch|episode\/)/.test(location.hash) || $('.sheet-wrap, .context-menu, .dd.open, body.searching, #ptr.busy'))) return;
   closeContextMenu();
-  if (api.web) WebDownloads.releaseUrls();
   const version = ++routeVersion;
   let spinnerT;
   CastInfo.dispose();
@@ -1982,7 +1982,7 @@ addEventListener('hashchange', () => route()); // not `route` directly: the even
 (async () => {
   await Promise.all(Object.keys(store).map(async k => { store[k] = (await api.get(k)) || {}; }));
   for (const [p, s] of Object.entries(store.streams)) if (!(Date.now() - s.at < STREAMS_KEEP)) delete store.streams[p];
-  if (api.web) await WebDownloads.init();
+  if (api.web) WebDownloads.cleanupLegacyDownloads().catch(()=>{});
   lang = store.prefs.lang || 'ar';
   const ran = (await api.downloadStatus?.().catch(() => null)) || {}; // phones: downloads kept going after the app was swiped away
   for (const d of Object.values(store.downloads)) { // what the service did meanwhile, including items it started on its own (see dlSent)

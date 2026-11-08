@@ -407,6 +407,7 @@ const intro = async (title, alt, ep) => {
 
 window.scraper = {
   remember,
+  cached: url => cache?.[url]?.data, // read-only: client exports may reuse page data without starting a server request
   changed: () => onChange?.(),
   home: force => load('home', '/', force),
   airTimes: force => load('airTimes', AS + '/', force).then(a => (Array.isArray(a) ? a : [])), // [] : an older cached format

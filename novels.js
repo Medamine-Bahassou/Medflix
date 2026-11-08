@@ -15,31 +15,15 @@ const nvKey = (id,slug) => 'novel:' + id + '/' + slug;
 const nvPending = new Map();
 const nvParagraphs = c => (c.contentJson?.length ? c.contentJson.map(b=>b.text || '') : String(c.content || '').split('\n')).map(p=>p.trim()).filter(Boolean);
 const nvChapterLink = (id, c) => {
-  const key=nvKey(id,c.slug), read=store.novelSeen[c.id]===2, saved=!!store.novelDownloads[key], busy=nvPending.has(key);
-  return `<div class="nv-chapter ${picks?.has(String(c.id))?'sel':''}" data-pick="${esc(c.id)}"><a class="ep ${read?'seen':''} ${saved?'dld':''} ${store.novels[id]?.slug===c.slug?'last':''}" href="${esc(nvReadHash(id,c.slug))}"><b>${t('chapter')} ${esc(c.order)}</b><span dir="auto">${esc(c.title)}</span></a><div class="nv-chapter-actions"><button class="icon-btn ${read?'on':''}" data-nv-act="${read?'unread':'read'}" title="${t(read?'markUnread':'markRead')}" aria-label="${t(read?'markUnread':'markRead')}" aria-pressed="${read}">${ICON.check}</button><button class="icon-btn ${saved?'on':''}" data-nv-act="dl" ${busy?'disabled aria-busy="true"':''} title="${t(busy?'dlActive':'downloadShort')}" aria-label="${t(busy?'dlActive':'downloadShort')}">${busy?'<i class="nv-dl-spin"></i>':ICON.download}</button></div></div>`;
+  const key=nvKey(id,c.slug), read=store.novelSeen[c.id]===2, busy=nvPending.has(key);
+  return `<div class="nv-chapter ${picks?.has(String(c.id))?'sel':''}" data-pick="${esc(c.id)}"><a class="ep ${read?'seen':''} ${store.novels[id]?.slug===c.slug?'last':''}" href="${esc(nvReadHash(id,c.slug))}"><b>${t('chapter')} ${esc(c.order)}</b><span dir="auto">${esc(c.title)}</span></a><div class="nv-chapter-actions"><button class="icon-btn ${read?'on':''}" data-nv-act="${read?'unread':'read'}" title="${t(read?'markUnread':'markRead')}" aria-label="${t(read?'markUnread':'markRead')}" aria-pressed="${read}">${ICON.check}</button><button class="icon-btn" data-nv-act="dl" ${busy?'disabled aria-busy="true"':''} title="${t(busy?'dlActive':'downloadShort')}" aria-label="${t(busy?'dlActive':'downloadShort')}">${busy?'<i class="nv-dl-spin"></i>':ICON.download}</button></div></div>`;
 };
-// chapter text is saved separately from its small index, so a large library is never rewritten for every download.
+// reader data uses the normal page cache; file exports are handled separately on the client.
 async function nvChapterData(id,slug,novel,keep=false) {
-  const saved=await api.get(nvKey(id,slug));
-  if(saved?.c && nvParagraphs(saved.c).length)return saved;
   const [j,details]=await Promise.all([nvLoad(`/novels/${encodeURIComponent(id)}/chapters/by-slug/${encodeURIComponent(slug)}`,undefined,false,keep),novel?{data:{novel}}:nvLoad(`/novels/${encodeURIComponent(id)}/view`,undefined,false,keep)]);
   if(!nvParagraphs(j.data).length)throw Error(t('nvNoText'));
   const x=await nvLoad(`/chapters/${encodeURIComponent(j.data.id)}/context`,undefined,false,keep).catch(()=>null);
   return {c:j.data,n:details.data.novel,x};
-}
-function nvDownload(id,slug,novel) {
-  const key=nvKey(id,slug);
-  if(nvPending.has(key))return nvPending.get(key);
-  const job=(async()=>{
-    const data=await nvChapterData(id,slug,novel,true);
-    await api.set(key,data); // only report a download after the text was actually stored (quota errors must surface).
-    store.novelDownloads[key]={id,slug,chapterId:data.c.id,n:data.c.order,title:data.n.title,at:Date.now()};
-    try { await persist('novelDownloads'); } catch(e) { delete store.novelDownloads[key];throw e; }
-  })().finally(()=>nvPending.delete(key));
-  nvPending.set(key,job);return job;
-}
-async function nvDeleteDownload(id,slug) {
-  const key=nvKey(id,slug);await api.set(key,null);delete store.novelDownloads[key];await persist('novelDownloads');
 }
 function nvMark(ids,value) { for(const id of ids)value?store.novelSeen[id]=value:delete store.novelSeen[id];persist('novelSeen'); }
 function nvFinish(chapter,progress) { if(progress>=.97 && store.novelSeen[chapter.id]!==2)nvMark([chapter.id],2); }
@@ -112,25 +96,17 @@ async function novelDetails(id) {
   $('#nv-reverse').onclick = () => { reversed=!reversed;drawChapters(); };
   $('#nv-list').onclick = e => { const on=toggleList(c); e.currentTarget.innerHTML=(on?ICON.check:ICON.plus)+' '+t(on?'inList':'myList'); };
   const picked = ids => allChapters.filter(c=>ids.includes(String(c.id)));
-  const acts = (ids,one) => { const xs=picked(ids);return [['read',t('markRead')],['unread',t('markUnread')],one && ['prev',t('markPrevRead')],['dl',t('downloadShort')],xs.some(c=>store.novelDownloads[nvKey(id,c.slug)]) && ['del',t('delDownload')],ids.length>1 && ['zip',t('wbZip')],one && ['select',t('select')]].filter(Boolean); };
+  const acts = (ids,one) => { const xs=picked(ids);return [['read',t('markRead')],['unread',t('markUnread')],one && ['prev',t('markPrevRead')],['dl',t('downloadShort')],ids.length>1 && ['zip',t('wbZip')],one && ['select',t('select')]].filter(Boolean); };
   const run = async (act,ids) => {
     const xs=picked(ids);
     if(act==='select')return selectFrom(ids[0]);
     if(act==='read'||act==='unread')nvMark(ids,act==='read'?2:0);
     if(act==='prev'&&xs[0])nvMark(allChapters.filter(c=>+c.order<+xs[0].order).map(c=>c.id),2);
-    if(act==='zip') {
-      try { for(const c of xs)await nvDownload(id,c.slug,n);await WebDownloads.exportZip(WebDownloads.records().filter(r=>r.kind==='novel'&&r.novelId===id&&xs.some(c=>c.slug===r.slug))); }catch{toast(t('dlFailed'),true);}return;
+    if(act==='dl'||act==='zip') {
+      const task=WebDownloads.downloadNovels(id,xs,n,act==='zip');
+      for(const c of xs)nvPending.set(nvKey(id,c.slug),task);drawChapters();
+      try{await task;}finally{for(const c of xs)nvPending.delete(nvKey(id,c.slug));drawChapters();}return;
     }
-    if(act==='dl') {
-      let failed=false;
-      for(const c of xs) {
-        const job=nvDownload(id,c.slug,n);drawChapters();
-        try { await job; } catch { failed=true; }drawChapters();
-      }
-      if(failed)toast(t('dlFailed'),true);
-      else { const items=WebDownloads.records().filter(r=>r.kind==='novel'&&r.novelId===id&&xs.some(c=>c.slug===r.slug));if(items.length>1)await WebDownloads.exportZip(items);else if(items.length)await WebDownloads.saveFile(items[0]); }
-    }
-    if(act==='del') { try { for(const c of xs)await nvDeleteDownload(id,c.slug); }catch{toast(t('dlFailed'),true);} }
     drawChapters();
   };
   const selectFrom=selectable($('.nv-chapters'),()=>shown().map(c=>String(c.id)),acts,run);

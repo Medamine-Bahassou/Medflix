@@ -411,7 +411,7 @@ async function cinemaTitle(slug, force) {
     epActions($('#eps'), eps.map(e => ({ id: '/cinema/' + e.slug, ep: e.n, slug: e.slug })), () => eps.map(e => '/cinema/' + e.slug), drawEps,
       e => ({ id: e.id, epPath: e.id, kind: 'cinema', slug: e.slug, show: path, title: m.title, ep: e.ep, poster: m.poster }), m.title);
   }
-  $('#web-cinema-dl')?.addEventListener('click',()=>WebDownloads.queueVideo([{id:path,kind:'cinema',slug,show:path,title:m.title,ep:'',poster:m.poster}]));
+  $('#web-cinema-dl')?.addEventListener('click',()=>WebDownloads.downloadVideo([{id:path,kind:'cinema',slug,show:path,title:m.title,ep:'',poster:m.poster}]));
   pageRefresh = () => cinemaTitle(slug, true);
   $('#rf').onclick = () => pageRefresh().then(() => toast(t('updated')));
   if (m.trailer) $('#trl').onclick = () => showTrailer(m.trailer);
@@ -527,7 +527,7 @@ async function cinemaPlay(slug) {
     : `<div class="dd-group">${t('dlNone')}</div>`;
   drawDl();
   dlm.querySelector('.dd-btn').onclick = () => dlm.classList.contains('open') ? closeMenu(dlm) : openMenu(dlm);
-  dlm.querySelector('.dd-menu').onclick = e => { const b = e.target.closest('.dd-item'); if (b) { closeMenu(); const l=w.downloads[b.dataset.i]; if(api.web)return WebDownloads.queueVideo([{id:'/cinema/'+slug,kind:'cinema',slug,show:'/cinema/'+slug,title:m.title,ep:m.n||'',poster:m.poster,token:l.url,host:l.label,quality:l.quality}]); api.openExternal(l.url); toast(t('openedBrowser')); } };
+  dlm.querySelector('.dd-menu').onclick = e => { const b = e.target.closest('.dd-item'); if (b) { closeMenu(); const l=w.downloads[b.dataset.i]; if(api.web)return WebDownloads.downloadVideo([{id:'/cinema/'+slug,kind:'cinema',slug,show:'/cinema/'+slug,title:m.title,ep:m.n||'',poster:m.poster,token:l.url,host:l.label,quality:l.quality}]); api.openExternal(l.url); toast(t('openedBrowser')); } };
   if (!w.servers.length) {
     draw();
     stage.innerHTML = `<div class="empty"><b>${t('noServers')}</b>${t('noServersEdHint')}${why ? `<small class="why" dir="ltr">${esc(why)}</small>` : ''}<br><br><button class="btn red" id="again">${t('retry')}</button></div>`;
