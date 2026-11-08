@@ -585,7 +585,7 @@ function autoScroll() {
   box.addEventListener('click', () => run && stop());
 }
 
-// zoom: pinch (1-4x, around the fingers), double-tap (2.5x at that spot / back to 1x), ctrl+wheel on desktop.
+// zoom: pinch (0.5-4x on web, 1-4x native, around the fingers), double-tap (2.5x at that spot / back to 1x), ctrl+wheel on desktop.
 // Only the pages zoom (the WebView's own zoom would blow up the bars too): vertical mode widens the page column
 // inside a sideways scroller (.rd-zoom) and the window scrolls down as usual; horizontal mode widens each page
 // inside its own slide, which pans both ways. A single tap still shows/hides the bars, once it's clear it wasn't a double tap.
@@ -593,7 +593,7 @@ function readerZoom(box, horiz) {
   const reader = $('.reader'), zbox = $('.rd-zoom');
   let z = 1;
   const set = (nz, fx, fy) => { // keep the content under (fx, fy) — viewport coords — in place
-    nz = Math.min(4, Math.max(1, nz));
+    nz = Math.min(4, Math.max(api.web ? .5 : 1, nz));
     if (nz === z) return;
     const k = nz / z;
     if (horiz) {

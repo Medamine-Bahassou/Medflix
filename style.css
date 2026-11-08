@@ -594,7 +594,7 @@ html, body { overscroll-behavior-y: none; } /* no WebView stretch / glow (or bro
 .reader.horiz .rd-zoom { overflow: visible; direction: inherit; }
 .reader.horiz .rd-pages { display: flex; width: auto; height: 100dvh; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; outline: none; scrollbar-width: none; }
 .reader.horiz .pg { flex: 0 0 100%; display: grid; overflow: auto; direction: ltr; scrollbar-width: none; scroll-snap-align: start; scroll-snap-stop: always; } /* a fling turns one page, never several */
-.reader.horiz .pg img { width: calc(100% * var(--z)); margin-block: auto; min-height: 0; }
+.reader.horiz .pg img { width: calc(100% * var(--z)); margin: auto; min-height: 0; }
 .reader.horiz .rd-end { display: none; }
 .rd-head .ttl { display: flex; align-items: baseline; min-width: 0; font-weight: 700; white-space: nowrap; }
 .rd-head .ttl a { min-width: 0; overflow: hidden; text-overflow: ellipsis; } /* a long title shortens; the chapter number always shows */
