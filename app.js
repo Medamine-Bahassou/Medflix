@@ -27,7 +27,7 @@ const STR = {
     continueWatching: 'تابع المشاهدة', refreshSite: 'تحديث من الموقع', refresh: 'تحديث', updated: 'تم التحديث', updateTitle: 'تحديث متوفر', updateText: 'يوجد إصدار أحدث من التطبيق. حدّثه الآن، ستبقى بياناتك كما هي.', updateGo: 'تحديث الآن', updateGetting: 'جارٍ التنزيل', updateAllow: 'اسمح للتطبيق بتثبيت التحديثات، ثم اضغط تحديث الآن مرة أخرى', updateFailed: 'تعذّر التحديث، يتم التنزيل من المتصفح',
     feedback: 'ملاحظات وبلاغات', feedbackHint: 'اقتراح أو مشكلة واجهتك؟ اكتبها هنا وستصلنا مباشرة.', feedbackEmail: 'بريدك الإلكتروني (اختياري، لنرد عليك)', feedbackMsg: 'اكتب رسالتك…', feedbackSend: 'إرسال', feedbackSending: 'جارٍ الإرسال…', feedbackSent: 'تم إرسال رسالتك، شكرًا لك', feedbackFailed: 'تعذّر الإرسال، حاول مرة أخرى',
     play: 'تشغيل', moreInfo: 'المزيد', details: 'التفاصيل', charactersCast: 'الشخصيات والممثلون', viewAllCast: 'عرض الكل', enlargeImage: 'عرض الصورة بحجم كامل', loadMoreCast: 'تحميل المزيد', castSearch: 'ابحث عن شخصية أو ممثل…', loadingCast: 'جارٍ تحميل الشخصيات…', noCast: 'لا تتوفر معلومات عن الشخصيات لهذا العنوان.', castUnavailable: 'تعذّر تحميل الشخصيات حالياً.', japaneseVoice: 'الصوت الياباني', actor: 'الممثل', prev: 'السابق', next: 'التالي',
-    results: q => `نتائج البحث عن «${q}»`, listEmpty: 'قائمتك فارغة', listHint: 'مرّر على أي عنوان واضغط + لحفظه هنا.',
+    results: q => `نتائج البحث عن «${q}»`, listEmpty: 'قائمتك فارغة', listHint: 'اضغط + على أي بطاقة لتحفظها هنا، وتعود إليها متى شئت.',
     resume: e => `متابعة الحلقة ${e}`, inList: 'في قائمتي', trailer: 'الإعلان', episodes: 'الحلقات', jump: 'انتقل إلى حلقة…', moreLike: 'أعمال مشابهة',
     back: 'رجوع (Esc)', loadingServers: 'جارٍ تحميل السيرفرات…', openBrowser: 'فتح في المتصفح', openBrowserTip: 'إذا لم يعمل المشغّل داخل التطبيق', cast: 'عرض على التلفاز', casting: 'يُعرض الآن على التلفاز', castPlayFirst: 'شغّل الفيديو هنا أولاً، ثم اعرضه على التلفاز', castHost: 'لا يمكن عرض هذا السيرفر على التلفاز من المتصفح، اختر سيرفراً آخر', castWifi: 'اتصل بشبكة الواي فاي نفسها التي يتصل بها التلفاز', castFailed: 'تعذّر التشغيل على التلفاز، جرّب سيرفراً آخر',
     // witanime's row headings, always Arabic and vague: its heading stays the row's key (SECTIONS), this is what's shown
@@ -73,7 +73,7 @@ homeHotManga: 'المانجا الرائجة', homeLatestManga: 'أحدث فصو
     continueWatching: 'Continue Watching', refreshSite: 'Refresh from site', refresh: 'Refresh', updated: 'Updated', updateTitle: 'Update available', updateText: 'A newer version of the app is out. Update now; your data stays.', updateGo: 'Update now', updateGetting: 'Downloading', updateAllow: 'Allow the app to install updates, then tap Update now again', updateFailed: 'Update failed, downloading in the browser instead',
     feedback: 'Feedback & issues', feedbackHint: 'An idea, or something not working? Write it here and it reaches us directly.', feedbackEmail: 'Your email (optional, for a reply)', feedbackMsg: 'Write your message…', feedbackSend: 'Send', feedbackSending: 'Sending…', feedbackSent: 'Message sent, thank you', feedbackFailed: 'Could not send, try again',
     play: 'Play', moreInfo: 'More Info', details: 'Details', charactersCast: 'Characters & cast', viewAllCast: 'View all', enlargeImage: 'View image fullscreen', loadMoreCast: 'Load more', castSearch: 'Search characters or actors…', loadingCast: 'Loading characters…', noCast: 'Character and cast information is not available for this title.', castUnavailable: 'Character information could not be loaded right now.', japaneseVoice: 'Japanese voice', actor: 'Actor', prev: 'Prev', next: 'Next',
-    results: q => `Results for “${q}”`, listEmpty: 'Your list is empty', listHint: 'Hover any title and press + to save it here.',
+    results: q => `Results for “${q}”`, listEmpty: 'Your list is empty', listHint: 'Press + on any card to save it here and come back to it anytime.',
     resume: e => `Resume Ep ${e}`, inList: 'In My List', trailer: 'Trailer', episodes: 'Episodes', jump: 'Jump to ep…', moreLike: 'More Like This',
     back: 'Back (Esc)', loadingServers: 'Loading servers…', openBrowser: 'Open in browser', openBrowserTip: "If the in-app player won't load", cast: 'Cast to TV', casting: 'Playing on the TV', castPlayFirst: 'Start the video here first, then cast it', castHost: 'This server can’t be cast from the browser: pick another one', castWifi: 'Connect to the same Wi-Fi as the TV', castFailed: "Couldn't play it on the TV, try another server",
 homeHotManga: 'Trending manga', homeLatestManga: 'Latest manga chapters', homeHotNovels: 'Trending novels', homeLatestNovels: 'Latest novel chapters', epFinal: '(final)',
@@ -473,6 +473,10 @@ function card(c, i = 0) {
 }
 const row = (title, items, href) => !items?.length ? '' : `<section class="row"><h3>${href ? `<a href="${href}">${esc(t(title))} ${ICON.next}</a>` : esc(t(title))}</h3>
   <div class="track-wrap"><button class="arrow l" aria-label="${t('prev')}">${ICON.caretLeft}</button><div class="track">${items.map(card).join('')}</div><button class="arrow r" aria-label="${t('next')}">${ICON.caretRight}</button></div></section>`;
+// an empty page: a few blank posters fanned out behind the section's icon, then what's missing and where to go from here
+// (acts: [href, label, icon]; the first is the red one)
+const emptyState = (icon, title, hint, acts = []) => `<div class="empty rich"><div class="empty-art" aria-hidden="true"><span></span><span></span><span></span><i>${icon}</i></div>
+  <b>${title}</b><p>${hint}</p>${acts.length ? `<div class="empty-acts">${acts.map(([href, label, ic], i) => `<a class="btn ${i ? 'ghost' : 'red'}" href="${href}">${ic} ${label}</a>`).join('')}</div>` : ''}</div>`;
 const grid = items => items.length ? `<div class="grid">${items.map(card).join('')}</div>` : `<div class="empty"><b>${t('nothing')}</b>${t('tryElse')}</div>`;
 const spinner = () => { view.innerHTML = '<div class="center"><div class="spin"></div></div>'; };
 // error text shown on screen, without the sources' names or addresses ("no answer from witanime.site" -> "no answer from the site")
@@ -1311,7 +1315,7 @@ function drawDownloads(only) {
           <small>${dlKind(d0)} · ${isManga(d0) ? t('chCount', done) : t('epCount', done)}${act.length ? ' · ' + t('dlActiveN', act.length) : ''}</small>
           ${act.length ? `<div class="dl-bar"><i style="width:${tot ? r / tot * 100 : 0}%"></i></div>` : ''}</div>
         ${showToggle(show, items)}<span class="chev">${ICON.next}</span></a>`;
-    }).join('')}</div>` : `<div class="empty"><b>${t('noDownloads')}</b>${t('noDownloadsHint')}</div>`}</div>`;
+    }).join('')}</div>` : emptyState(ICON.download, t('noDownloads'), t('noDownloadsHint'))}</div>`;
     if (!groups.length) return;
     // shows, one or several (long-press one, or pick them): pause / resume what they have left, delete all they have
     const of = shows => groups.filter(g => shows.includes(g.show));
@@ -1383,7 +1387,8 @@ function offline(epPath) {
 
 function myList() {
   const items = Object.values(store.list).sort((a, b) => b.at - a.at), nh = Object.keys(store.hidden).length;
-  view.innerHTML = `<div class="page"><h1>${t('myList')}${nh ? ` <a class="btn ghost small h1-btn" href="#/hidden">${ICON.eyeSlash} ${t('openHidden', nh)}</a>` : ''}</h1>${items.length ? grid(items) : `<div class="empty"><b>${t('listEmpty')}</b>${t('listHint')}</div>`}</div>`;
+  view.innerHTML = `<div class="page"><h1>${t('myList')}${nh ? ` <a class="btn ghost small h1-btn" href="#/hidden">${ICON.eyeSlash} ${t('openHidden', nh)}</a>` : ''}</h1>${items.length ? grid(items) : emptyState(ICON.bookmark, t('listEmpty'), t('listHint'),
+    [['#/anime', t('anime'), ICON.series], ['#/cinema', t('cinema'), ICON.cinema], ['#/manga', t('manga'), ICON.manga]])}</div>`;
 }
 
 // #/hidden: what was long-pressed away, by kind; ✕ (the card's remove button) brings one back
@@ -1393,7 +1398,7 @@ function hiddenGrid(h = 'h2') {
   const all = Object.values(store.hidden).sort((a, b) => b.at - a.at).map(x => ({ ...x, rm: 'hidden:' + x.path }));
   const kinds = [['anime', x => x.type !== 'manga' && x.type !== 'cinema'], ['manga', x => x.type === 'manga'], ['cinema', x => x.type === 'cinema']];
   return all.length ? kinds.map(([k, f]) => (l => l.length ? `<${h}>${t(k)} <small>${l.length}</small></${h}>${grid(l)}` : '')(all.filter(f))).join('')
-    : `<div class="empty"><b>${t('noHidden')}</b></div>`;
+    : emptyState(ICON.eyeSlash, t('noHidden'), t('hiddenHint'));
 }
 function hiddenView() {
   view.innerHTML = `<div class="page hidden-page"><h1>${t('hiddenTitle')}</h1><p class="hint">${t('hiddenHint')}</p>${hiddenGrid()}</div>`;
