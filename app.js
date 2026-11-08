@@ -637,8 +637,8 @@ function askOrGo(d) {
   w.className = 'sheet-wrap';
   w.innerHTML = `<div class="sheet ask-sheet" role="dialog" aria-label="${esc(d.title)}">
     <div class="ask-head">${d.poster ? `<img src="${esc(img(d.poster))}" alt="">` : ''}<div>${resume ? `<small>${t(reading ? 'continueReading' : 'continueWatching')}</small>` : ''}<b dir="auto">${esc(d.title)}</b></div></div>
-    <a class="btn red ask-main" href="${esc(resume?.[0] || page)}">${resume ? ICON.play : ICON.info} ${esc(resume?.[1] || t('details'))}</a>
-    ${own || resume ? `<div class="ask-more">${own ? `<a class="btn ghost" href="${esc(own[0])}">${ICON.play} ${esc(own[1])}</a>` : ''}${resume ? `<a class="btn ghost" href="${esc(page)}">${ICON.info} ${t('details')}</a>` : ''}</div>` : ''}</div>`;
+    <div class="ask-actions"><a class="btn red" href="${esc(resume?.[0] || page)}">${resume ? ICON.play : ICON.info} ${esc(resume?.[1] || t('details'))}</a>
+    ${own ? `<a class="btn ghost" href="${esc(own[0])}">${ICON.play} ${esc(own[1])}</a>` : ''}${resume ? `<a class="btn ghost" href="${esc(page)}">${ICON.info} ${t('details')}</a>` : ''}</div></div>`;
   document.body.append(w);
   requestAnimationFrame(() => w.classList.add('open'));
   w.onclick = e => { if (e.target === w || e.target.closest('a')) closeSheet(); }; // a link goes on by itself (no return false: that would stop it)
