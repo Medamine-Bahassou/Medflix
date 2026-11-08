@@ -375,7 +375,7 @@ async function cinemaTitle(slug, force) {
   const meta = [...m.cat, ...m.tags.filter(x => /^(19|20)\d\d$/.test(x)), ...m.tags.filter(x => /ساع|دقيق/.test(x)).map(runtime),
     ...m.tags.filter(x => /^(blu-?ray|web-?dl|web-?rip|hd-?rip|hdtv|hd-?cam|cam|dvd\w*|hd|4k|\d{3,4}p)$/i.test(x))];
   const desc = /^مشاهدة\s+(و\s*)?تحميل/.test(m.desc) ? '' : m.desc; // pages saved before the plot was read: the site's line, not shown
-  view.innerHTML = `
+  view.innerHTML = `<div class="det-page">${eps.length ? detTabs(t('episodes'), eps.length) : ''}
     <div class="det-hero"><div class="bg" style="background-image:url('${esc(img(m.banner))}')"></div>
       <div class="det">
         ${m.poster ? `<img class="poster" src="${esc(img(m.poster))}" alt="">` : ''}
@@ -396,11 +396,12 @@ async function cinemaTitle(slug, force) {
         </div>
       </div>
     </div>
-    ${m.seasons.length > 1 ? `<div class="section"><h2>${t('seasons')}</h2><div class="fchips">${m.seasons.map(s => `<a class="fchip ${s.path === path ? 'on' : ''}" href="#${s.path}" dir="auto">${esc(s.title.match(/(الموسم|الجزء)\s+\S+/)?.[0] || s.title)}</a>`).join('')}</div></div>` : ''}
-    ${eps.length ? `<div class="section"><h2>${t('episodes')} <small>${eps.length}</small><div class="ep-tools">${selBtn('btn ghost small')}</div></h2>
+    ${m.seasons.length > 1 ? `<div class="section" data-pane="eps"><h2>${t('seasons')}</h2><div class="fchips">${m.seasons.map(s => `<a class="fchip ${s.path === path ? 'on' : ''}" href="#${s.path}" dir="auto">${esc(s.title.match(/(الموسم|الجزء)\s+\S+/)?.[0] || s.title)}</a>`).join('')}</div></div>` : ''}
+    ${eps.length ? `<div class="section" data-pane="eps"><h2>${t('episodes')} <small>${eps.length}</small><div class="ep-tools">${selBtn('btn ghost small')}</div></h2>
       ${selBar()}<div class="eps list" id="eps"></div></div>` : ''}
     <section class="section" id="title-cast" hidden></section>
-    ${row(t('moreLike'), dubbed(m.related))}`;
+    ${row(t('moreLike'), dubbed(m.related))}</div>`;
+  wireDetTabs();
   CastInfo.mount($('#title-cast'), [m.title], slug.includes('/') ? 'series' : 'cinema', slug.includes('/') ? '' : m.year, slug);
   if (slug.includes('/')) $('#grf').onclick = () => ratingsSheet([m.title], m.imdbId, false); // a series: a film has no episodes to rate
   $('#fav').onclick = e => { const on = toggleList({ path, title: m.title, poster: m.poster, type: 'cinema' }); e.currentTarget.innerHTML = on ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList'); };

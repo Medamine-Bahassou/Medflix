@@ -166,6 +166,17 @@ input:focus-visible, select:focus-visible { outline: none; }
 .section { padding: 0 var(--gutter) 40px; }
 .section h2 { font-size: 22px; margin-bottom: 16px; display: flex; align-items: center; gap: 14px; }
 .section h2 small { color: var(--muted); font-weight: 400; font-size: 14px; }
+.det-tabs { display: none; } /* phones only: wide screens show details and the list one under the other */
+@media (max-width: 760px) {
+  /* a title's page as the app has it: details or its list (episodes, chapters), picked from tabs held under the nav */
+  .det-tabs { display: flex; position: sticky; top: var(--nav-h, 64px); z-index: 20; margin-top: calc(var(--nav-h, 64px)); background: var(--bg); border-bottom: 1px solid #ffffff1a; }
+  .det-tabs button { flex: 1; min-height: 48px; background: none; color: var(--muted); font: inherit; font-weight: 600; border-bottom: 2px solid transparent; transition: color .2s var(--ease); }
+  .det-tabs button small { font-weight: 400; }
+  .det-tabs button[aria-selected=true] { color: #fff; border-color: var(--red); }
+  .det-tabs + .det-hero { padding-top: 24px; } /* the tabs already clear the nav */
+  .det-page[data-tab=det] > [data-pane=eps], .det-page[data-tab=eps] > :not(.det-tabs, [data-pane=eps]) { display: none !important; }
+  .det-page[data-tab=eps] > [data-pane=eps] { padding-top: 16px; }
+}
 .eps { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
 .ep { position: relative; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 48px; padding: 10px 8px; border-radius: 12px;
   background: #ffffff0f; color: #fff; font-weight: 600; font-size: 14px; line-height: 1.2; text-align: center; font-variant-numeric: tabular-nums;

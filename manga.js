@@ -329,7 +329,7 @@ async function mangaSeries(id, force) {
   const path = '/manga/series/' + id, r = store.manga[id];
   const rCh = r && (chs.find(c => c.id === r.chapterId) || chs.find(c => c.n === chNum(r.n)));
   const start = rCh ? { id: rCh.id, label: t('resumeCh', chNum(r.n)) } : chs.length ? { id: chs[chs.length - 1].id, label: t('read') } : null;
-  view.innerHTML = `
+  view.innerHTML = `<div class="det-page">${detTabs(t('chapters'), chs.length)}
     <div class="det-hero"><div class="bg" style="background-image:url('${esc(img(s.cover))}')"></div>
       <div class="det">
         ${s.poster ? `<img class="poster" src="${esc(img(s.poster))}" alt="">` : ''}
@@ -351,12 +351,13 @@ async function mangaSeries(id, force) {
         </div>
       </div>
     </div>
-    <div class="section"><h2>${t('chapters')} <small>${chs.length}</small>
+    <div class="section" data-pane="eps"><h2>${t('chapters')} <small>${chs.length}</small>
       <div class="ep-tools"><input id="epf" placeholder="${t('jumpCh')}" type="number"><button class="btn ghost small" id="rev" aria-label="${t('reverse')}" title="${t('reverse')}">${ICON.sort}</button>
         ${selBtn('btn ghost small')}</div></h2>
       ${selBar()}
       <div class="eps" id="eps"></div></div>
-    <section class="section" id="title-cast" hidden></section>`;
+    <section class="section" id="title-cast" hidden></section></div>`;
+  wireDetTabs();
   let rev = false;
   const shown = (f = $('#epf').value) => (rev ? [...chs].reverse() : chs).filter(c => !f || parseFloat(c.n) === +f); // the number itself: 1 is chapter 1, not 10-19
   const drawChs = () => {

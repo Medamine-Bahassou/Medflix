@@ -1451,13 +1451,27 @@ function hiddenView() {
   view.innerHTML = `<div class="page hidden-page"><h1>${t('hiddenTitle')}</h1><p class="hint">${t('hiddenHint')}</p>${hiddenGrid()}</div>`;
 }
 
+// phones: a title's page in two tabs, as the app has it: details (and characters, more like this), then its list (episodes,
+// chapters). wide screens show both, one under the other. the list's sections carry data-pane="eps"
+let detTab = ['', 'det']; // the tab open and its page's address: a redraw (route(true)) keeps it
+const detTabs = (list, n) => `<div class="det-tabs" role="tablist">${[['det', t('details')], ['eps', `${list} <small>${n}</small>`]]
+  .map(([k, s]) => `<button role="tab" data-tab="${k}">${s}</button>`).join('')}</div>`;
+function wireDetTabs() {
+  const p = $('.det-page'), bs = [...document.querySelectorAll('.det-tabs button')];
+  if (!p || !bs.length) return;
+  const set = k => { p.dataset.tab = k; detTab = [location.hash, k]; bs.forEach(b => b.setAttribute('aria-selected', b.dataset.tab === k)); };
+  set(detTab[0] === location.hash ? detTab[1] : 'det');
+  document.documentElement.style.setProperty('--nav-h', $('#nav').offsetHeight + 'px'); // the tabs stick under the nav, whose height wraps on a phone
+  bs.forEach(b => b.onclick = () => { set(b.dataset.tab); scrollTo(0, 0); });
+}
+
 async function title(path, force) {
   const d = await scraper.details(path, force);
   if (d.path && decodeURIComponent(d.path) !== path) return location.replace('#/title' + d.path); // found under another address (the website's episode cards, risto.js): its own
   const h = store.history[path];
   const type = path.startsWith('/movie') ? 'movie' : 'anime';
-  const first = h?.epPath || d.episodes[0]?.path;
-  view.innerHTML = `
+  const first = h?.epPath || d.episodes[0]?.path, hasEps = d.episodes.length > 1 || type === 'anime';
+  view.innerHTML = `<div class="det-page">${hasEps ? detTabs(t('episodes'), d.episodes.length) : ''}
     <div class="det-hero"><div class="bg" style="background-image:url('${esc(img(d.banner))}')"></div>
       <div class="det">
         ${d.poster ? `<img class="poster" src="${esc(img(d.poster))}" alt="">` : ''}
@@ -1478,12 +1492,13 @@ async function title(path, force) {
       </div>
     </div>
     ${d.info.length ? `<div class="infos">${d.info.map(([k, v]) => `<div><span>${esc(k)}</span>${esc(v)}</div>`).join('')}</div>` : ''}
-    ${d.episodes.length > 1 || type === 'anime' ? `<div class="section"><h2>${t('episodes')} <small>${d.episodes.length}</small>
+    ${hasEps ? `<div class="section" data-pane="eps"><h2>${t('episodes')} <small>${d.episodes.length}</small>
       <div class="ep-tools"><input id="epf" placeholder="${t('jump')}" type="number"><button class="btn ghost small ${store.prefs.hideFiller ? 'on' : ''}" id="hfl" aria-label="${t('hideFiller')}" title="${t('hideFiller')}" aria-pressed="${!!store.prefs.hideFiller}" hidden>${ICON.eyeSlash}</button><button class="btn ghost small" id="rev" aria-label="${t('reverse')}" title="${t('reverse')}">${ICON.sort}</button>
         ${selBtn('btn ghost small')}</div></h2>
       ${selBar()}<div class="eps list" id="eps"></div></div>` : ''}
     <section class="section" id="title-cast" hidden></section>
-    ${d.related.length ? row(t('moreLike'), d.related) : ''}`;
+    ${d.related.length ? row(t('moreLike'), d.related) : ''}</div>`;
+  wireDetTabs();
 
   CastInfo.mount($('#title-cast'), [d.title, ...(d.alt || '').split(/[,،]/)], 'anime');
   if (type === 'anime') $('#grf').onclick = () => ratingsSheet([d.title, ...(d.alt || '').split(/[,،]/)], '', true);
