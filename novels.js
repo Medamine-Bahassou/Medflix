@@ -10,7 +10,7 @@ const nvReadHash = (id, slug) => '#/novels/read/' + encodeURIComponent(id) + '/'
 const NV_SORT = [['trending','mHot'],['views','mSortViews'],['latest','mSortNew'],['rating','mSortRating']];
 const NV_GENRES = [['action','أكشن','Action'],['adventure','مغامرة','Adventure'],['fantasy','خيال','Fantasy'],['romance','رومانسي','Romance'],['drama','دراما','Drama'],['comedy','كوميدي','Comedy'],['mystery','غموض','Mystery'],['horror','رعب','Horror'],['system','نظام','System'],['xianxia','شيانشيا','Xianxia']];
 const nvGenre = key => { const g = NV_GENRES.find(x => x[0] === key); return g ? g[lang === 'ar' ? 1 : 2] : key; };
-const nvContinued = () => Object.values(store.novels).sort((a,b) => b.at-a.at).map(r => ({ path: '/novels/series/' + r.id, type: 'novel', title: r.title, poster: r.poster, href: nvReadHash(r.id, r.slug), badge: t('resumeCh', r.n), rm: 'novels:' + r.id }));
+const nvContinued = () => Object.values(store.novels).sort((a,b) => b.at-a.at).map(r => ({ kind: 'novel', at: r.at, path: '/novels/series/' + r.id, type: 'novel', title: r.title, poster: r.poster || store.list?.['/novels/series/' + r.id]?.poster, href: nvReadHash(r.id, r.slug), badge: t('resumeCh', r.n), rm: 'novels:' + r.id }));
 const nvKey = (id,slug) => 'novel:' + id + '/' + slug;
 const nvPending = new Map();
 const nvParagraphs = c => (c.contentJson?.length ? c.contentJson.map(b=>b.text || '') : String(c.content || '').split('\n')).map(p=>p.trim()).filter(Boolean);

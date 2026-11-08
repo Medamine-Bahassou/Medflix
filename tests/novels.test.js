@@ -97,3 +97,20 @@ test('novel Download action saves chapter text to the browser rather than only c
  await c.novelDetails('book');await c.selectRun('dl',['ch']);
  assert.equal(saves.length,1);assert.equal(saves[0].chapters[0].slug,'one');assert.equal(saves[0].id,'book');assert.equal(saves[0].zip,false);
 });
+test('main home includes novel progress with mixed history and resumes the saved chapter',async()=>{
+ const c=setup(async()=>{}),app=fs.readFileSync('app.js','utf8');
+ Object.assign(c.store,{history:{film:{slug:'film',show:'/cinema/film',title:'Film',at:30}},manga:{comic:{id:'comic',chapterId:'ch',n:2,at:10}},list:{'/novels/series/book':{poster:'cover.webp'}}});
+ c.store.novels.book={id:'book',slug:'chapter 3',title:'Book',n:3,progress:.4,at:20};
+ Object.assign(c,{edHref:s=>'#/cinema/'+s,chNum:n=>n,animeHero:()=>[],animeRows:()=>'',mMerge:()=>[],dubbed:x=>x});
+ vm.runInContext(app.slice(app.indexOf('function continued('),app.indexOf('// a page under a cover slider')),c);
+ vm.runInContext(app.slice(app.indexOf('function resumeOf('),app.indexOf('function askOrGo(')),c);
+ vm.runInContext(app.slice(app.indexOf('async function home('),app.indexOf('// Anime: witanime')),c);
+ c.firstSections=async()=>[];const rows=[];c.row=(label,items)=>{rows.push({label,items});return '';};
+ await c.home();const items=rows.find(r=>r.label==='continueWatching').items;
+ assert.deepEqual(Array.from(items,x=>x.kind),['cinema','novel','manga']);
+ const novel=items[1];assert.equal(novel.poster,'cover.webp');assert.equal(novel.href,'#/novels/read/book/chapter%203');
+ assert.equal(c.resumeOf(novel)[0],novel.href);assert.equal(novel.badge,'resumeCh:3');
+ assert.equal(c.continued(['anime']).length,0);assert.equal(c.continued(['manga']).length,1);
+ const [key,id]=novel.rm.split(/:(.*)/);delete c.store[key][id];assert.equal(c.continued(['novel']).length,0);
+ c.api.web=false;delete c.store.novels;assert.doesNotThrow(()=>c.continued(['cinema','manga']));
+});

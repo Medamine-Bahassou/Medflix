@@ -738,7 +738,7 @@ $('#search').onsubmit = e => {
 };
 
 // ---------- views ----------
-// Continue Watching: anime episodes and films (store.history) and manga chapters (store.manga), newest first.
+// Continue Watching: video history, manga and web novel chapters, newest first.
 // `rm` names the stored entry, so the card's × can drop it.
 function continued(kinds) {
   return [
@@ -747,6 +747,7 @@ function continued(kinds) {
       : { kind: 'anime', at: h.at, path: h.epPath, showPath: h.show, type: 'episode', title: h.title, poster: h.poster || store.list[h.show]?.poster, badge: t('ep') + ' ' + h.ep, rm: 'history:' + h.show }),
     ...Object.values(store.manga).map(r => ({ kind: 'manga', at: r.at, path: '/manga/series/' + r.id, type: 'manga', title: r.title, poster: r.poster || store.list['/manga/series/' + r.id]?.poster, // saved without a cover: the one in My List
       badge: `${t('chShort')} ${chNum(r.n)}`, href: '#/manga/read/' + r.chapterId, rm: 'manga:' + r.id })),
+    ...(api.web ? nvContinued() : []),
   ].filter(c => kinds.includes(c.kind)).sort((a, b) => b.at - a.at);
 }
 
@@ -813,7 +814,7 @@ async function home(force) {
   const a = d ? animeHero(d).slice(0, 3) : [];
   const hero = [...Array(3)].flatMap((_, i) => [a[i], m?.[i], f?.[i]]).filter(Boolean);
   heroPage(hero, `
-      ${row(t('continueWatching'), continued(['anime', 'cinema', 'manga']))}
+      ${row(t('continueWatching'), continued(['anime', 'cinema', 'manga', 'novel']))}
       ${row(t('myList'), Object.values(store.list).sort((a, b) => b.at - a.at), '#/list')}
       ${d ? animeRows(d) : ''}
       ${row(t('homeHotManga'), hot?.items, '#/manga/browse/1?is_hot=true')}
