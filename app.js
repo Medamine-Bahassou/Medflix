@@ -123,13 +123,14 @@ const NAV = [
   { id: 'anime', href: '#/anime' },
   { id: 'cinema', href: '#/cinema' },
   { id: 'manga', href: '#/manga' },
+  ...(api.web ? [{ id: 'novels', href: '#/novels' }] : []),
   { id: 'schedule', href: '#/schedule' },
   { id: 'myList', href: '#/list' },
   ...(api.web ? [] : [{ id: 'downloads', href: '#/downloads' }]), // the website can't download (web.js): no page for it, nor a dock button
 ];
-const DOCK_MAX = 5, DOCK_DEFAULT = ['home', 'anime', 'manga', 'cinema']; // no novels section here yet (Android has it, in the fourth place)
+const DOCK_MAX = 5, DOCK_DEFAULT = ['home', 'anime', 'manga', 'cinema']; // novels is also available through the drawer on phones
 const dockLabel = id => t(id === 'schedule' ? 'scheduleShort' : id === 'cinema' ? 'cinemaShort' : id); // a fifth of the screen
-const navSvg = id => ICON[id === 'anime' ? 'series' : id]; // nav icons share the section ids
+const navSvg = id => ICON[id === 'anime' ? 'series' : id === 'novels' ? 'novel' : id]; // nav icons share the section ids
 const navItem = id => NAV.find(n => n.id === id);
 // series and movies were one section each before Anime held both
 const dockIds = () => [...new Set((store.prefs.dock?.length ? store.prefs.dock : DOCK_DEFAULT).map(id => id === 'series' || id === 'movies' ? 'anime' : id))].filter(navItem);
@@ -145,7 +146,7 @@ function renderNav() {
   markActive();
 }
 function markActive() {
-  let a = location.hash.split('/')[1] || '';
+  let a = (location.hash.split('/')[1] || '').split('?')[0];
   if (a === 'browse' || a === 'movies' || a === 'section') a = 'anime'; // pages inside the Anime section
   document.querySelectorAll('.links a, .dr-links a').forEach(l => l.classList.toggle('active', l.getAttribute('href').split('/')[1] === a));
 }
@@ -408,7 +409,7 @@ $('.nav-gear').addEventListener('click', e => { // the gear shows on wide screen
 });
 
 // the website keeps everything in the browser (web.js): a copy of it as a file, put back from one; and the saved pages cleared
-const BACKUP = ['list', 'history', 'seen', 'prefs', 'manga', 'mangaSeen', 'hidden']; // not downloads (none here) nor streams (a cache)
+const BACKUP = ['list', 'history', 'seen', 'prefs', 'manga', 'mangaSeen', 'hidden', 'novels']; // not downloads (none here) nor streams (a cache)
 function webData() {
   $('#bk').onclick = () => {
     const a = document.createElement('a');
@@ -432,7 +433,7 @@ function webData() {
 }
 
 // ---------- user state (persisted in main process JSON) ----------
-const store = { list: {}, history: {}, seen: {}, prefs: {}, downloads: {}, manga: {}, mangaSeen: {}, hidden: {}, streams: {} }; // hidden: cards long-pressed away, by path; streams: see play()
+const store = { ...(api.web ? { novels: {} } : {}), list: {}, history: {}, seen: {}, prefs: {}, downloads: {}, manga: {}, mangaSeen: {}, hidden: {}, streams: {} }; // hidden: cards long-pressed away, by path; streams: see play()
 const persist = k => api.set(k, store[k]);
 const inList = p => !!store.list[p];
 function toggleList(item) {
@@ -459,7 +460,7 @@ function card(c, i = 0) {
   const id = Math.random().toString(36).slice(2);
   const show = c.showPath || c.path;
   if (store.hidden[show] && !c.rm?.startsWith('hidden:')) return ''; // (the hidden page itself still draws them)
-  cardData.set(id, { ...c, path: show, type: c.type === 'episode' ? (show.startsWith('/movie') ? 'movie' : 'anime') : c.type, href: c.href || (c.type === 'episode' ? playHash(c.path) : /^\/(manga|cinema|airing)\//.test(c.path) ? '#' + c.path : '#/title' + c.path) });
+  cardData.set(id, { ...c, path: show, type: c.type === 'episode' ? (show.startsWith('/movie') ? 'movie' : 'anime') : c.type, href: c.href || (c.type === 'episode' ? playHash(c.path) : /^\/(manga|cinema|airing|novels)\//.test(c.path) ? '#' + c.path : '#/title' + c.path) });
   const h = store.history[show];
   return `<div class="card" data-id="${id}" style="--i:${i % 12}">
     <div class="img" data-ph="${esc(c.title)}"><img src="${esc(img(c.poster))}" loading="lazy" alt="" draggable="false"></div>
@@ -485,7 +486,7 @@ const failed = e => { view.innerHTML = `<div class="center"><div class="empty"><
 
 // event delegation for cards, arrows, image fade-in
 // long-press a card: a menu to hide it from every page (its path goes in store.hidden; #/hidden lists them) or (un)list it
-const hideLabel = d => t(d.type === 'manga' ? 'hideManga' : d.type !== 'cinema' ? 'hideAnime' : /^\/cinema\/(serie|season|episode)\//.test(d.path) ? 'hideSeries' : 'hideMovie');
+const hideLabel = d => t(d.type === 'novel' ? 'hideNovel' : d.type === 'manga' ? 'hideManga' : d.type !== 'cinema' ? 'hideAnime' : /^\/cinema\/(serie|season|episode)\//.test(d.path) ? 'hideSeries' : 'hideMovie');
 function setHidden(d, on) {
   if (on) store.hidden[d.path] = { path: d.path, title: d.title, poster: d.poster, type: d.type, at: Date.now() };
   else delete store.hidden[d.path];
@@ -618,8 +619,9 @@ document.addEventListener('click', e => {
 // a card of something already started, or one going straight into an episode or chapter (the latest ones), asks first: that
 // episode could be far past where the viewer is, a spoiler. The main choice is never the one that could spoil: where it was
 // left, or, not started, its page; the card's own episode is the lesser one beside it (NativeActivity.kt ResumeSheet)
-const PLAYS = /^#\/(play\/|cinema\/episode\/|cinema\/[^/]+\/watch$|manga\/read\/)/;
+const PLAYS = /^#\/(play\/|cinema\/episode\/|cinema\/[^/]+\/watch$|manga\/read\/|novels\/read\/)/;
 function resumeOf(d) {
+  if (api.web && d.type === 'novel') { const r = store.novels[d.path.split('/').pop()]; return r?.slug && [nvReadHash(r.id, r.slug), t('resumeCh', r.n)]; }
   if (d.path.startsWith('/manga/series/')) { const r = store.manga[d.path.slice('/manga/series/'.length)]; return r?.chapterId && ['#/manga/read/' + r.chapterId, t('resumeCh', chNum(r.n))]; }
   const h = store.history[d.path];
   if (!h) return null;
@@ -627,10 +629,10 @@ function resumeOf(d) {
   return h.epPath && [playHash(h.epPath), t('resume', h.ep)];
 }
 function askOrGo(d) {
-  const page = /^\/(manga|cinema|airing)\//.test(d.path) ? '#' + d.path : '#/title' + d.path, resume = resumeOf(d);
+  const page = /^\/(manga|cinema|airing|novels)\//.test(d.path) ? '#' + d.path : '#/title' + d.path, resume = resumeOf(d);
   if (!resume && !PLAYS.test(d.href)) return location.hash = d.href;
   const own = d.href !== page && d.href !== resume?.[0] && [d.href, (d.badge || '').replace(/\bEP\b|الحلقة/, t('ep')).replace('والأخيرة', t('epFinal')) || t('play')];
-  const reading = /^\/manga\//.test(d.path);
+  const reading = /^\/(manga|novels)\//.test(d.path);
   const w = document.createElement('div');
   w.className = 'sheet-wrap';
   w.innerHTML = `<div class="sheet ask-sheet" role="dialog" aria-label="${esc(d.title)}">
@@ -696,7 +698,7 @@ $('#nav').addEventListener('click', e => e.target === e.currentTarget && closeSe
 $('#search').onsubmit = e => {
   e.preventDefault();
   const q = e.target.q.value.trim();
-  if (q) { closeSearch(); location.hash = '#/search/' + encodeURIComponent(q); }
+  if (q) { closeSearch(); location.hash = location.hash.startsWith('#/novels') ? '#/novels?search=' + encodeURIComponent(q) : '#/search/' + encodeURIComponent(q); }
 };
 
 // ---------- views ----------
@@ -1232,7 +1234,7 @@ const dlStatus = d => {
   return { queued: t('dlQueued'), paused: t('dlPaused'), error: t('dlFailed'), cancelled: t('dlCancelled') }[d.state] || '';
 };
 const dlKind = d => t(isManga(d) ? 'manga' : d.kind === 'cinema' ? 'cinema' : 'kindAnime');
-const showHref = show => /^\/(manga|cinema)\//.test(show) ? '#' + show : '#/title' + show;
+const showHref = show => /^\/(manga|cinema|novels)\//.test(show) ? '#' + show : '#/title' + show;
 const dlGroups = () => {
   const g = {};
   for (const d of Object.values(store.downloads)) (g[d.show] ||= []).push(d);
@@ -1401,7 +1403,7 @@ function unhidden() { toast(t('shown')); settingsModal() ? settingsView(settings
 // the hidden cards by kind: the page's, and the settings modal's hidden-items tab (h: its smaller heading there)
 function hiddenGrid(h = 'h2') {
   const all = Object.values(store.hidden).sort((a, b) => b.at - a.at).map(x => ({ ...x, rm: 'hidden:' + x.path }));
-  const kinds = [['anime', x => x.type !== 'manga' && x.type !== 'cinema'], ['manga', x => x.type === 'manga'], ['cinema', x => x.type === 'cinema']];
+  const kinds = [['novels', x => x.type === 'novel'], ['anime', x => x.type !== 'novel' && x.type !== 'manga' && x.type !== 'cinema'], ['manga', x => x.type === 'manga'], ['cinema', x => x.type === 'cinema']];
   return all.length ? kinds.map(([k, f]) => (l => l.length ? `<${h}>${t(k)} <small>${l.length}</small></${h}>${grid(l)}` : '')(all.filter(f))).join('')
     : emptyState(ICON.eyeSlash, t('noHidden'), t('hiddenHint'));
 }
@@ -1868,7 +1870,7 @@ let pageRefresh = null;
 async function route(soft) {
   // background redraws wait while a video plays or a search/sheet/menu is open, rather than reset them
   // (and while a pull-to-refresh runs: a redraw would drop its loads, and its spinner would never stop)
-  if (soft && (/^#\/(play|offline|manga\/read)\/|^#\/cinema\/([^/]+\/watch|episode\/)/.test(location.hash) || $('.sheet-wrap, .dd.open, body.searching, #ptr.busy'))) return;
+  if (soft && (/^#\/novels\/read\//.test(location.hash) || /^#\/(play|offline|manga\/read)\/|^#\/cinema\/([^/]+\/watch|episode\/)/.test(location.hash) || $('.sheet-wrap, .dd.open, body.searching, #ptr.busy'))) return;
   CastInfo.dispose();
   scraper.newView();
   clearInterval(heroTimer);
@@ -1879,14 +1881,15 @@ async function route(soft) {
   playerObs?.disconnect();
   api.player(null);
   const h = decodeURIComponent(location.hash.slice(1) || '/');
-  const [, a, ...rest] = h.split('/');
+  const [, section, ...rest] = h.split('/');
+  const a = section.split('?')[0];
   markActive();
   if (!soft) closeDrawer(); // a background redraw (fresher site data, often just after launch) happens behind it
   api.scrollbar?.(!(a === 'manga' && rest[0] === 'read')); // phones: the reader has its own scrollbar
   api.statusBar?.(true); // phones: the reader hides it with its bars (manga.js), every page starts with it
   const watching = a === 'play' || a === 'offline' || (a === 'cinema' && (rest[1] === 'watch' || rest[0] === 'episode'));
   api.keepAwake?.(watching); // phones: the video is in an iframe, which doesn't stop the screen locking mid-episode
-  immersed = watching || (a === 'manga' && rest[0] === 'read');
+  immersed = watching || (['manga', 'novels'].includes(a) && rest[0] === 'read');
   $('#nav').style.display = immersed ? 'none' : '';
   if (!soft) { scrollTo(0, 0); spinner(); }
   view.classList.toggle('still', !!soft); // a redraw with fresher data: no entrance animations, no poster fade-in
@@ -1903,6 +1906,7 @@ async function route(soft) {
     else if (a === 'offline') offline((rest[0] === 'cinema' ? '/' : '/watch/') + rest.join('/'));
     else if (a === 'schedule') await schedule();
     else if (a === 'airing') await airing(rest[0]);
+    else if (a === 'novels') await novelsRoute(rest);
     else if (a === 'manga') await mangaRoute(rest);
     else if (a === 'cinema') await cinemaRoute(rest);
     else if (a === 'settings') settingsView();

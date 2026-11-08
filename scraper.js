@@ -329,7 +329,7 @@ function fetchPage(kind, url, background = false) {
   let p = inflight.get(requestKey);
   if (!p) {
     p = api.fetch(url, kind === 'slayerPages' ? { action: 'chapter_navigate_page' } : kind === 'slayerChapters' ? { action: 'manga_get_chapters', manga: new URL(url).searchParams.get('manga') } : undefined, false, background).then(text => {
-      const isJson = /^(manga|kitsu)/.test(kind);
+      const isJson = /^(manga|kitsu|novelJSON)/.test(kind);
       const data = parsers[kind](isJson ? JSON.parse(text) : ['newEpisodes', 'slayerPages'].includes(kind) ? text : parse(text), url);
       cache[url] = { at: Date.now(), data, ...(kind === 'slayerSeries' && { parser: 2 }), ...(kind === 'edList' && { parser: 1 }) };
       save();
