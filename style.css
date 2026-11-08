@@ -63,7 +63,7 @@ input:focus-visible, select:focus-visible { outline: none; }
 .hero .info > * { animation: rise .8s var(--ease) both; }
 .hero .info > :nth-child(2) { animation-delay: .1s; }
 .hero .info > :nth-child(3) { animation-delay: .2s; }
-.hero h2 { font-size: clamp(32px, 4.5vw, 62px); line-height: 1.05; font-weight: 900; margin-bottom: 14px; }
+.hero h2 { font-size: clamp(32px, 4.5vw, 62px); line-height: 1.15; font-weight: 900; margin-bottom: 14px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; } /* a long romaji name stops at 3 lines; the roomier line keeps the clip off its descenders */
 .hero p { color: #ddd; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 22px; }
 .dots { position: absolute; z-index: 3; inset-inline-end: var(--gutter); bottom: 24%; display: flex; gap: 6px; }
 /* wide screens: the picture on the end side at a sensible size (a portrait cover across the whole width was blown up and
@@ -76,16 +76,17 @@ input:focus-visible, select:focus-visible { outline: none; }
   [dir=rtl] .hero .slide img { -webkit-mask-image: linear-gradient(to left, #0000 0%, #000 38%), linear-gradient(to top, #0000 0%, #000 30%);
     mask-image: linear-gradient(to left, #0000 0%, #000 38%), linear-gradient(to top, #0000 0%, #000 30%); }
   .hero::after, [dir=rtl] .hero::after { background: none; } /* the title sits on the plain side now */
-  .hero .info { top: 50%; bottom: auto; transform: translateY(-40%); max-width: min(560px, 38%); }
-  .hero h2 { font-size: clamp(30px, 3.4vw, 54px); }
-  .dots { inset-inline: var(--gutter) auto; bottom: 19%; } /* under the buttons, clear of the chips row below the slider */
+  /* both measured from the rows, which overlap the slider by 10vh: a title of any length grows upward, its buttons stay over the dots and those over the chips */
+  .hero .info { bottom: calc(10vh + 34px); max-width: min(560px, 38%); }
+  .hero h2 { font-size: clamp(30px, min(3.4vw, 7.5vh), 54px); } /* a short window has less height for its 3 lines */
+  .dots { inset-inline: var(--gutter) auto; bottom: calc(10vh + 14px); }
   /* a portrait cover: whole, about its own size, on a blurred copy of itself. no zoom: it's what shows its pixels (app.js heroPage) */
   .hero .slide.tall::before { content: ""; position: absolute; inset: -40px; background: var(--art) center / cover; filter: blur(36px) brightness(.55);
-    -webkit-mask-image: linear-gradient(to right, #0000 8%, #000 55%), linear-gradient(to top, #0000 6%, #000 34%); -webkit-mask-composite: source-in;
-    mask-image: linear-gradient(to right, #0000 8%, #000 55%), linear-gradient(to top, #0000 6%, #000 34%); mask-composite: intersect; }
-  [dir=rtl] .hero .slide.tall::before { -webkit-mask-image: linear-gradient(to left, #0000 8%, #000 55%), linear-gradient(to top, #0000 6%, #000 34%);
-    mask-image: linear-gradient(to left, #0000 8%, #000 55%), linear-gradient(to top, #0000 6%, #000 34%); }
-  .hero .slide.tall img, [dir=rtl] .hero .slide.tall img { inset-block: 7% auto; inset-inline-end: 9%; width: auto; height: 78%; border-radius: 8px; box-shadow: 0 14px 44px #000a; transform: none; animation: none;
+    -webkit-mask-image: linear-gradient(to right, #0000 8%, #000 55%), linear-gradient(to top, #0000 10%, #000 34%); -webkit-mask-composite: source-in;
+    mask-image: linear-gradient(to right, #0000 8%, #000 55%), linear-gradient(to top, #0000 10%, #000 34%); mask-composite: intersect; }
+  [dir=rtl] .hero .slide.tall::before { -webkit-mask-image: linear-gradient(to left, #0000 8%, #000 55%), linear-gradient(to top, #0000 10%, #000 34%);
+    mask-image: linear-gradient(to left, #0000 8%, #000 55%), linear-gradient(to top, #0000 10%, #000 34%); }
+  .hero .slide.tall img, [dir=rtl] .hero .slide.tall img { inset-block: 72px auto; inset-inline-end: 9%; width: auto; height: calc(100% - 72px - 10vh - 12px); border-radius: 8px; box-shadow: 0 14px 44px #000a; transform: none; animation: none;
     -webkit-mask-image: none; mask-image: none; }
 }
 .dots i { width: 22px; height: 3px; background: #fff5; border-radius: 2px; cursor: pointer; transition: all .3s; }
