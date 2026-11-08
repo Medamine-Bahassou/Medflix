@@ -2,8 +2,8 @@
 const WebDownloads=(()=>{
   const controllers=new Map(),waiters=new Map(),urls=new Set();let redrawT,exporting=false;
   const strings={
-    en:{wbZip:'Download ZIP',wbZipLimit:'This selection exceeds ZIP limits. Export smaller groups.',wbSave:'Save to device',wbHost:'Open provider',wbHostOnly:'This host did not provide a downloadable file. Open its page to download.',wbHint:'Keep this tab open while downloading. Saved files stay in this browser; select them to export one ZIP.',wbCancelAll:'Cancel pending',wbZipBusy:'Creating ZIP…',wbStorageFull:'Browser storage is full. Save or delete existing downloads, then retry.',wbFileMissing:'Saved file is missing. Download it again.',wbUnsupported:'This file host cannot be downloaded here.',wbNoSaved:'Select completed downloads first.'},
-    ar:{wbZip:'تحميل ZIP',wbZipLimit:'يتجاوز التحديد حدود ملف ZIP. صدّر مجموعات أصغر.',wbSave:'حفظ على الجهاز',wbHost:'فتح صفحة التحميل',wbHostOnly:'لم يوفر هذا المصدر ملفًا قابلًا للتحميل. افتح صفحته للتحميل.',wbHint:'أبقِ هذا التبويب مفتوحًا أثناء التحميل. تبقى الملفات في هذا المتصفح؛ حددها لتصدير ملف ZIP واحد.',wbCancelAll:'إلغاء التحميلات المعلقة',wbZipBusy:'جارٍ إنشاء ZIP…',wbStorageFull:'مساحة المتصفح ممتلئة. احفظ أو احذف تنزيلات سابقة ثم أعد المحاولة.',wbFileMissing:'الملف المحفوظ غير موجود. أعد تحميله.',wbUnsupported:'لا يمكن تحميل هذا الملف من مصدره هنا.',wbNoSaved:'حدد تنزيلات مكتملة أولًا.'}
+    en:{wbZip:'Download ZIP',wbZipLimit:'This selection exceeds ZIP limits. Export smaller groups.',wbSave:'Save to device',wbHost:'Open provider',wbHostOnly:'This host did not provide a downloadable file. Open its page to download.',wbHint:'Keep this tab open while downloading. Saved files stay in this browser; select them to export one ZIP.',wbCancelAll:'Cancel pending',wbZipBusy:'Creating ZIP…',wbStorageFull:'Browser storage is full. Save or delete existing downloads, then retry.',wbFileMissing:'Saved file is missing. Download it again.',wbCors:'This host blocks browser downloads. Use Open provider to download directly.',wbUnsupported:'This file host cannot be downloaded here.',wbNoSaved:'Select completed downloads first.'},
+    ar:{wbZip:'تحميل ZIP',wbZipLimit:'يتجاوز التحديد حدود ملف ZIP. صدّر مجموعات أصغر.',wbSave:'حفظ على الجهاز',wbHost:'فتح صفحة التحميل',wbHostOnly:'لم يوفر هذا المصدر ملفًا قابلًا للتحميل. افتح صفحته للتحميل.',wbHint:'أبقِ هذا التبويب مفتوحًا أثناء التحميل. تبقى الملفات في هذا المتصفح؛ حددها لتصدير ملف ZIP واحد.',wbCancelAll:'إلغاء التحميلات المعلقة',wbZipBusy:'جارٍ إنشاء ZIP…',wbStorageFull:'مساحة المتصفح ممتلئة. احفظ أو احذف تنزيلات سابقة ثم أعد المحاولة.',wbFileMissing:'الملف المحفوظ غير موجود. أعد تحميله.',wbCors:'يمنع هذا المصدر التحميل داخل المتصفح. افتح صفحة التحميل لحفظ الملف مباشرة.',wbUnsupported:'لا يمكن تحميل هذا الملف من مصدره هنا.',wbNoSaved:'حدد تنزيلات مكتملة أولًا.'}
   };
   const jobs=()=>store.webDownloads;
   const records=()=>[...Object.values(jobs()),...Object.values(store.novelDownloads||{}).map(n=>({...n,id:nvKey(n.id,n.slug),novelId:n.id,kind:'novel',ep:n.n,state:'done'}))].sort((a,b)=>b.at-a.at);
@@ -13,16 +13,23 @@ const WebDownloads=(()=>{
   const check=signal=>{if(signal.aborted)throw new DOMException('Cancelled','AbortError');};
   const extension=type=>/png/.test(type)?'png':/webp/.test(type)?'webp':/gif/.test(type)?'gif':/image/.test(type)?'jpg':/zip/.test(type)?'zip':/matroska/.test(type)?'mkv':'mp4';
   async function binary(url,signal,progress){
-    const parts=[];let start=0,total,type;
-    do{
-      check(signal);const r=await fetch('/api/file?'+new URLSearchParams({url,start}),{signal});
-      if(!r.ok)throw Error('wbUnsupported');
-      const size=Number(r.headers.get('X-File-Total')),offset=Number(r.headers.get('X-File-Offset'));
-      if(!Number.isSafeInteger(size)||size<1||offset!==start||(total&&total!==size))throw Error('wbUnsupported');
-      total=size;type=r.headers.get('Content-Type')||'application/octet-stream';const blob=await r.blob();
-      if(!blob.size||start+blob.size>total)throw Error('wbUnsupported');parts.push(blob);start+=blob.size;progress?.(start,total);
-    }while(start<total);
+    check(signal);if(!/^https:\/\//.test(url))throw Error('wbUnsupported');
+    let response;
+    try { response=await ClientTransfer.fetch(url,{signal,mode:'cors',credentials:'omit',referrerPolicy:'no-referrer'}); }
+    catch(e){check(signal);throw Error('wbCors');}
+    if(!response.ok || response.type==='opaque' || response.status===206){await response.body?.cancel();throw Error('wbUnsupported');}
+    const type=response.headers.get('Content-Type')||'application/octet-stream';
+    if(/text\/|json|javascript|xml/i.test(type)){await response.body?.cancel();throw Error('wbUnsupported');}
+    // browsers decompress encoded responses: their Content-Length is not the number of bytes we receive.
+    const encoding=response.headers.get('Content-Encoding');
+    const length=encoding && encoding!=='identity'?0:Number(response.headers.get('Content-Length'));
+    const total=Number.isSafeInteger(length)&&length>0?length:0,parts=[];let received=0;
+    if(!response.body)throw Error('wbUnsupported');
+    const reader=response.body.getReader();
+    for(;;){const {done,value}=await reader.read();check(signal);if(done)break;parts.push(value);received+=value.length;progress?.(received,total);}
+    if(!received || (total && received!==total))throw Error('wbUnsupported');
     let result=new Blob(parts,{type});
+    const head=await result.slice(0,64).text();if(/^[\s]*[<{[]/.test(head))throw Error('wbUnsupported');
     const magic=new Uint8Array(await result.slice(0,4).arrayBuffer());if(magic[0]===0x50&&magic[1]===0x4b)result=new Blob(parts,{type:'application/zip'});
     return result;
   }
@@ -32,6 +39,7 @@ const WebDownloads=(()=>{
       const chapter=await mChapter(job.chapterId,true);check(signal);job.chapter={...chapter,images:[]};
       if(!chapter.images.length)throw Error('noImages');job.total=chapter.images.length;
       for(let i=0;i<chapter.images.length;i++){
+        job.provider=chapter.images[i];
         const blob=await binary(chapter.images[i],signal);if(!blob.type.startsWith('image/'))throw Error('noImages');
         await put(job,blob,String(i+1).padStart(4,'0')+'.'+extension(blob.type),signal);job.received=i+1;update();
       }
@@ -41,15 +49,16 @@ const WebDownloads=(()=>{
     check(signal);
     const ranked=[...links].sort((a,b)=>Number(b.quality===job.quality)-Number(a.quality===job.quality));
     job.provider=ranked[0]?.token?.replace(/^(?:stream:)?(?:aw:|ra:)?/,'');
+    let blocked=false;
     for(const link of ranked){
       try{
         check(signal);const url=await api.downloadUrl(link.token);check(signal);
         const blob=await binary(url,signal,(got,total)=>{job.received=got;job.total=total;update();});
         if(blob.type.startsWith('image/'))throw Error('wbUnsupported');
         await put(job,blob,BrowserZip.safeName(job.title)+' '+job.ep+'.'+extension(blob.type),signal);return;
-      }catch(e){check(signal);}
+      }catch(e){check(signal);if(e.message==='wbCors')blocked=true;}
     }
-    throw Error('wbHostOnly');
+    throw Error(blocked?'wbCors':'wbHostOnly');
   }
   function pump(){
     while(controllers.size<2){

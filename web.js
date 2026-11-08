@@ -1,5 +1,5 @@
 // Website (Vercel) stand-in for the Electron / Android api: the sites are asked through api/proxy.js, user data is kept in
-// IndexedDB, and the player is an iframe (as mobile.js). Browser file transfers use web-downloads.js and api/file.js.
+// IndexedDB, and the player is an iframe (as mobile.js). File bytes are fetched directly by the browser in web-downloads.js.
 // Anime comes from RistoAnime here (risto.js): Cloudflare refuses witanime to Vercel's servers.
 if (!window.api) (() => {
   const SITE = 'https://witanime.site', AR = 'https://eva.animerco.org';

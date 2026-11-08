@@ -2,6 +2,6 @@
   "installCommand": "npm install --omit=dev --no-audit --no-fund",
   "buildCommand": "npm run build:web",
   "outputDirectory": "www",
-  "functions": { "api/proxy.js": { "maxDuration": 60 }, "api/file.js": { "maxDuration": 60 } },
+  "functions": { "api/proxy.js": { "maxDuration": 60 } },
   "headers": [{ "source": "/(.*)\\.(js|css)", "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }] }]
 }
