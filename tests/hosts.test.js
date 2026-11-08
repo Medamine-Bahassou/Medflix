@@ -59,6 +59,6 @@ test('direct files have video controls and cannot inject player markup', () => {
 test('casting: files a TV can fetch by itself, best first, and never streamtape', () => {
   const l = (label, quality) => ({ label, quality, token: 'aw:https://x/' + label });
   const order = hosts.castOrder([l('Firestream', 'FHD'), l('Streamtape', 'FHD'), l('Pixeldrain', 'SD'), l('Mediafire', 'FHD'), l('Pixeldrain', 'HD'), l('Krakenfiles', 'FHD'), l('st', 'HD')]);
-  assert.deepEqual(order.map(x => x.label + ' ' + x.quality), ['Mediafire FHD', 'Pixeldrain HD', 'Pixeldrain SD', 'Krakenfiles FHD', 'Firestream FHD']);
+  assert.deepEqual(order.map(x => x.label + ' ' + x.quality), ['Mediafire FHD', 'Krakenfiles FHD', 'Firestream FHD', 'Pixeldrain HD', 'Pixeldrain SD']);
   assert.equal(hosts.castOrder([{ label: 'x', quality: '', token: 'https://streamtape.com/v/1' }]).length, 0);
 });

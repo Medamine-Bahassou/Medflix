@@ -53,12 +53,12 @@ if (window.api?.web) (() => {
   // AniList's pictures of a show: a real wide banner for its page, and a cover where the site lost its own (about 1 poster in 25 is a
   // 404 there). Only under the show's exact name: no picture beats another show's. Kept, a miss too
   const sameName = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-  const aniArt = (title, alt) => remember('sh:art:' + title, async () => {
+  const aniArt = (title, alt) => remember('sh:art2:' + title, async () => { // 2: older answers have no trailer
     for (const search of new Set([alt, title].filter(Boolean))) {
-      const query = `{Page(perPage:6){media(search:${JSON.stringify(search)},type:ANIME,sort:SEARCH_MATCH){title{romaji english} synonyms bannerImage coverImage{extraLarge}}}}`;
+      const query = `{Page(perPage:6){media(search:${JSON.stringify(search)},type:ANIME,sort:SEARCH_MATCH){title{romaji english} synonyms bannerImage coverImage{extraLarge} trailer{id site}}}}`;
       const media = JSON.parse(await api.fetch('https://graphql.anilist.co', { query })).data?.Page?.media || [];
       const hit = media.find(m => [...Object.values(m.title), ...m.synonyms].some(n => sameName(n) === sameName(search)));
-      if (hit) return { banner: hit.bannerImage || hit.coverImage?.extraLarge || '', cover: hit.coverImage?.extraLarge || '' };
+      if (hit) return { banner: hit.bannerImage || hit.coverImage?.extraLarge || '', cover: hit.coverImage?.extraLarge || '', trailer: hit.trailer?.site === 'youtube' ? `https://www.youtube.com/embed/${encodeURIComponent(hit.trailer.id)}?autoplay=1` : '' };
     }
     return {};
   });
@@ -240,6 +240,7 @@ if (window.api?.web) (() => {
     okanime,
     shahiid,
     cover: title => aniArt(title).then(a => a.cover), // a poster that didn't load (app.js)
+    trailer: (title, alt) => aniArt(title, alt).then(a => a?.trailer || ''), // the sites here have none: AniList's (app.js)
   });
   // web.js asks these for a page's own servers and downloads
   Object.assign(Risto, {

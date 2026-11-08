@@ -56,6 +56,28 @@ if (!window.api) (() => {
     document.head.append(s);
     setTimeout(() => ok(false), 8000); // it says nothing at all on some browsers: a tap on Cast must still get an answer
   }).then(on => { if (!on) castSdk = null; return on; }); // a slow connection, maybe: asked again next time
+  // a file we play ourselves: Plyr (vendor/, MIT) in its frame, in the theme, with what the Android player has. it fails to load: the video's own controls stay
+  const PLYR = 'vendor/plyr-3.8.5', playerHead = `<link rel="stylesheet" href="${PLYR}.css"><script src="${PLYR}.js"></script><style>
+    :root{--plyr-color-main:#e50914;--plyr-font-family:system-ui,sans-serif}.plyr{height:100%}.plyr video{object-fit:contain}
+    .plyr--loading::after{content:"";position:absolute;z-index:1;top:50%;left:50%;width:44px;height:44px;margin:-22px;border:3px solid #fff3;border-top-color:#e50914;border-radius:50%;animation:s .7s linear infinite;pointer-events:none}@keyframes s{to{transform:rotate(360deg)}}
+    .plyr--loading .plyr__control--overlaid{display:none}</style>`;
+  const frameVideo = () => { const f = frame(); try { return f?.hasAttribute('srcdoc') ? f.contentDocument?.querySelector('video') : null; } catch { return null; } }; // a host's player is another site's page
+  async function dressVideo(f) {
+    const v = f.contentDocument?.querySelector('video'), key = 'video:' + location.hash;
+    if (!v) return;
+    if (f.contentWindow.Plyr) new f.contentWindow.Plyr(v, f.contentWindow.JSON.parse(JSON.stringify({ // through the frame's JSON: Plyr ignores an object from another window. absolute: the frame's own address is about:srcdoc. blankVideo: it would ask Plyr's CDN
+      iconUrl: new URL(PLYR + '.svg', location.href).href, blankVideo: '', autoplay: true, seekTime: 10, keyboard: { focused: true, global: true }, tooltips: { controls: true, seek: true }, i18n: t('plyr'),
+      controls: ['play-large', 'rewind', 'play', 'fast-forward', 'progress', 'current-time', 'duration', 'mute', 'volume', 'settings', 'pip', 'fullscreen'], settings: ['speed'], speed: { selected: 1, options: [.5, .75, 1, 1.25, 1.5, 2] } })));
+    // back from inside the frame: a remote or Esc would otherwise stop here. in its fullscreen, Esc is the browser's
+    f.contentDocument.addEventListener('keydown', e => { if (['Escape', 'GoBack', 'BrowserBack'].includes(e.key) && !f.contentDocument.fullscreenElement) { focus(); back(); } });
+    // where it was left, per episode; finished, from the start again
+    const saved = await window.api.get(key).catch(() => null);
+    if (saved > 5 && f.isConnected) v.readyState ? v.currentTime = saved : v.addEventListener('loadedmetadata', () => { if (saved < v.duration * .95) v.currentTime = saved; }, { once: true });
+    let at = 0;
+    const save = () => { at = Date.now(); window.api.set(key, v.ended ? null : v.currentTime).catch(() => {}); };
+    v.addEventListener('timeupdate', () => Date.now() - at > 5000 && v.currentTime > 5 && save());
+    ['pause', 'ended'].forEach(n => v.addEventListener(n, save));
+  }
   const limit = (promise, ms) => Promise.race([promise, sleep(ms).then(() => { throw new Error('timed out'); })]);
   // the popup ads of each host's player, measured in Chrome without an ad blocker: videa and mp4upload's a sandbox stops, and they play
   // on (videa first: 1080p from the start, where ok.ru stayed at 240p); ok.ru and vk open none. share4max/megamax's script takes every
@@ -141,12 +163,17 @@ if (!window.api) (() => {
         f.removeAttribute('srcdoc');
         // takes effect on the next load, so before it. No allow-popups: that's the point
         if (!native && SANDBOXED.test(new URL(url).hostname)) f.sandbox = 'allow-scripts allow-same-origin allow-forms allow-presentation'; else f.removeAttribute('sandbox');
-        if (native) f.srcdoc = MediaHosts.videoHtml(url); else f.src = url;
+        f.onload = native ? () => dressVideo(f).catch(console.error) : null;
+        if (native) f.srcdoc = MediaHosts.videoHtml(url, playerHead); else f.src = url;
         f.dataset.playerKey = key;
         f.dataset.src = url;
       }
     },
     playerFull: () => frame()?.requestFullscreen().catch(() => {}),
+    // our own video only (app.js watchServer: one that can't play goes on to the next server; skip intro). a host's says nothing here
+    playerHealth: async () => { const v = frameVideo(); return !v ? 'works' : v.error ? 'dead' : v.readyState >= 2 ? 'works' : 'waiting'; },
+    playerTime: () => frameVideo()?.currentTime,
+    playerSeek: at => { const v = frameVideo(); if (v) v.currentTime = at; },
     // a TV (Chromecast, Android TV). A host's player is another site's page, out of reach, so the TV is handed a file of this episode and
     // fetches it by itself, through Google's Cast sender (Chrome, Edge). No bytes pass through here. Asked for when the ⋮ opens: by the
     // tap on Cast it's ready, and the TV picker only opens straight from a tap

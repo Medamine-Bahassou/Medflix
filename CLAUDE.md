@@ -30,6 +30,7 @@ The UI only talks to `window.api`. It never calls the network or storage directl
 | `manga.js` | Manga section: MeshManga JSON API (`appswat.com`) merged with Olympus Staff |
 | `cinema.js` | Movies & series: ArabSeed/MySeed/EgyDead (WordPress) |
 | `filter.js` | witanime browse filters page |
+| `vendor/` | Plyr (MIT): the website's controls for a file it plays itself; hosts' players are other sites' pages. Pixeldrain refuses video players (403 hotlink_detected), so downloads only |
 | `tv.js` | TV remote and game controller: arrows move focus to the nearest item, OK clicks, held OK opens the long-press menu, back steps out |
 | `icons.js` | Inline SVG icons (`ICON.x`), filled into `data-icon` elements |
 | `main.js` | Electron: fetching, Cloudflare check windows, 429 retry, downloads, `medimg://` image cache, player view, JSON DB |

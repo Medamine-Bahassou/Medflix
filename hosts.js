@@ -57,12 +57,13 @@
     const prefix = String.fromCharCode(...first.slice(0, 4)).trimStart();
     return !/^[{[<]/.test(prefix) && prefix !== 'PK\x03\x04';
   };
-  const videoHtml = url => '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;background:#000}video{width:100vw;height:100vh}</style><video controls autoplay playsinline src="' + url.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;') + '"></video>';
-  // what a TV can fetch by itself, best first. tried as a Chromecast asks (no cookies, no referrer): pixeldrain and mediafire answered with
-  // the mp4 every time, firestream about half the time, streamtape never (its page needs a session: the TV would get html)
+  const videoHtml = (url, head = '') => '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{height:100%;margin:0;overflow:hidden;background:#000}video{display:block;width:100%;height:100%}</style>' + head + '<video controls autoplay playsinline src="' + url.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;') + '"></video>';
+  // what a TV can fetch by itself, best first. tried as a Chromecast's player asks (no cookies, no referrer): mediafire answered with the mp4
+  // every time, firestream about half the time, streamtape never (its page needs a session: the TV would get html). pixeldrain refuses
+  // video players on purpose (403 hotlink_detected to Sec-Fetch-Dest: video), so it's the last hope
   const castOrder = links => {
     const name = l => `${l.label} ${l.token}`.toLowerCase();
-    const reliable = l => /pixeldrain|mediafire/.test(name(l)) ? 0 : /firestream/.test(name(l)) ? 2 : 1;
+    const reliable = l => /mediafire/.test(name(l)) ? 0 : /pixeldrain/.test(name(l)) ? 3 : /firestream/.test(name(l)) ? 2 : 1;
     const quality = l => { const q = String(l.quality).toUpperCase(); return /4K|2160/.test(q) ? 0 : /FHD|1080/.test(q) ? 1 : /HD|720/.test(q) ? 2 : /SD|480|360/.test(q) ? 3 : 4; };
     return links.filter(l => !/^st(\s|$)|streamtape|streamta\.pe/.test(name(l))).sort((a, b) => reliable(a) - reliable(b) || quality(a) - quality(b));
   };
