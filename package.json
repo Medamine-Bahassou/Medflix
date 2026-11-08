@@ -6,7 +6,7 @@
   "main": "main.js",
   "scripts": {
     "start": "electron . 2>&1 | grep --line-buffered -v '^Fontconfig warning'",
-    "build:web": "rm -rf www && mkdir www && cp index.html animewitcher.js hosts.js icons.js app.js scraper.js mobile.js web.js filter.js slayer.js manga.js novels.js novel-reader.js zip.js client-transfer.js download-frame.html download-frame.js web-downloads.js cinema.js cast-info.js ratings.js risto.js style.css www/ && mkdir www/assets && cp assets/icon.png www/assets/ && cp -r assets/ratings www/assets/ && cp -r assets/fonts www/assets/ && echo \"window.BUILD = '$(date '+%Y-%m-%d %H:%M')';\" > www/build.js && sed -i -E 's/\\.(js|css)\"/.\\1?v='$(date +%s)'\"/g' www/index.html www/download-frame.html",
+    "build:web": "rm -rf www && mkdir www && cp index.html animewitcher.js hosts.js icons.js app.js scraper.js mobile.js web.js filter.js slayer.js manga.js novels.js novel-reader.js zip.js client-transfer.js download-frame.html download-frame.js web-downloads.js cinema.js cast-info.js ratings.js risto.js shahiid.js style.css www/ && mkdir www/assets && cp assets/icon.png www/assets/ && cp -r assets/ratings www/assets/ && cp -r assets/fonts www/assets/ && echo \"window.BUILD = '$(date '+%Y-%m-%d %H:%M')';\" > www/build.js && sed -i -E 's/\\.(js|css)\"/.\\1?v='$(date +%s)'\"/g' www/index.html www/download-frame.html",
     "apk": "node release.js",
     "release": "node release.js release"
   },

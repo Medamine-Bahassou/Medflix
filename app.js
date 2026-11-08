@@ -1660,7 +1660,7 @@ async function play(epPath) {
   const here = () => decodeURIComponent(location.hash) === playHash(epPath);
   // animerco's, WeCima's and ristoanime's servers for the same episode are looked up alongside and appended as backups
   const backup = Promise.all([
-    ...[scraper.animerco, scraper.wecima, scraper.ristoanime].map(f =>
+    ...[scraper.animerco, scraper.wecima, scraper.ristoanime, scraper.okanime, scraper.shahiid].filter(Boolean).map(f => // the last two: website only
       f(d.title, d.alt, ep, epPath.startsWith('/watch/movie/')).catch(e => (console.error(e), []))),
     api.awSources(d.title, d.alt, ep).then(l => l.map(s => ({ ...s, url: undefined }))).catch(e => (console.error(e), []))
   ]).then(l => l.flat());

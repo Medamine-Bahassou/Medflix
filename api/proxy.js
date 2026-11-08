@@ -7,12 +7,12 @@ const MediaHosts = require('../hosts');
 const { fetch: exitFetch, ProxyAgent } = require('undici');
 
 // same sites as main.js's fetch allowlist, plus the download hosts (MediaHosts) and egydead's MegaMax player pages (mirrors)
-const SITES = ['novltime.com', 'witanime.site', 'eva.animerco.org', 'ristoanime.me', 'appswat.com', 'animeschedule.net', 'cima.my-cima.net', 'wecima.singles', 'olympustaff.com',
+const SITES = ['novltime.com', 'witanime.site', 'eva.animerco.org', 'ristoanime.me', 'shahiid-anime.net', 'ww3.okanime.xyz', 'appswat.com', 'animeschedule.net', 'cima.my-cima.net', 'wecima.singles', 'olympustaff.com',
   'sparkmanga.net', 'manga-starz.net', 'graphql.anilist.co', 'api.tvmaze.com', 'api.jikan.moe', 'www.wikidata.org', 'kitsu.io', 'v3.sg.media-imdb.com', 'www.imdb.com',
   'caching.graphql.imdb.com', 'api.aniskip.com', 'myanimelist.net', 'www.rottentomatoes.com', 'backend.metacritic.com', 'www.animefillerlist.com',
   'vidara.to']; // vidara: a film's embed asked whether it's still queued for encoding (cinema.js seedWatch)
 const allowed = u => u.protocol === 'https:' && (SITES.includes(u.hostname) || /(^|\.)(egydead|myseed|arabseed)\.[a-z]+$/.test(u.hostname)
-  || MediaHosts.host(u.href) || /^\/iframe\/[A-Za-z0-9]+$/.test(u.pathname));
+  || MediaHosts.host(u.href) || (/(^|\.)(megamax\.me|share4max\.com)$/.test(u.hostname) && /^\/iframe\/[A-Za-z0-9]+$/.test(u.pathname)));
 // desktop Chrome, as on desktop and Android: the sites serve the markup the scraper expects
 const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36';
 const KEEP = ['location', 'retry-after', 'cf-mitigated', 'content-type'];
@@ -42,10 +42,10 @@ module.exports = async (req, res) => {
       const reader = r.body.getReader(), dec = new TextDecoder(), re = new RegExp(stopAt);
       for (;;) { const { done, value } = await reader.read(); if (done) break; data += dec.decode(value, { stream: true }); if (re.test(data)) { reader.cancel(); break; } }
     } else data = await r.text();
-    // RistoAnime's pages (~350KB) and animeschedule's (~7MB) are mostly inline scripts, styles, <noscript> image copies and
+    // RistoAnime's pages (~350KB), Shahiid's (~150KB) and animeschedule's (~7MB) are mostly inline scripts, styles, <noscript> image copies and
     // indentation nothing reads: dropped before they're sent on and parsed. RistoAnime's season list's call needs the page's post id,
     // which only a script has: that one line is kept
-    if (/^(ristoanime\.me|animeschedule\.net)$/.test(u.hostname) && /html/.test(r.headers.get('content-type') || '')) {
+    if (/^(ristoanime\.me|shahiid-anime\.net|animeschedule\.net)$/.test(u.hostname) && /html/.test(r.headers.get('content-type') || '')) {
       const id = data.match(/post_id:\s*'\d+'/)?.[0];
       data = data.replace(/<(script|style|svg|noscript)\b[^>]*>[\s\S]*?<\/\1>/gi, '').replace(/ data-srcset="[^"]*"/g, '')
         .replace(/\s{2,}/g, ' ') + (id ? `<script>${id}</script>` : ''); // its indentation alone is ~4.5MB of animeschedule's; text is read whitespace-collapsed anyway

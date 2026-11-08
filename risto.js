@@ -1,4 +1,5 @@
-// The website's anime section: RistoAnime (WordPress) in place of witanime, which Cloudflare refuses Vercel's servers.
+// RistoAnime (WordPress), for the website: Cloudflare refuses witanime to Vercel's servers. Shahiid Anime is its main source
+// (shahiid.js, which wraps these): this fills what that one lacks and adds its servers.
 // Its pages go through scraper.js's cache (load, remember) and come out in the same shapes as witanime's (home, list,
 // details), under the same paths: /anime/<series slug>, /anime/<slug>~<season id> (another season of it),
 // /anime/~<episode post slug> (a latest-episode card: resolved to its season's page), /movie/<post slug>,
@@ -110,7 +111,7 @@ if (window.api?.web) (() => {
       const mine = watched(), seen = new Set(mine.map(h => h.title));
       const extraKey=mine.map(h=>h.show).join('|');
       const fresh = items => [...items.filter(c => !seen.has(c.title)), ...items.filter(c => seen.has(c.title))];
-      const core = list(RA + '/', force);
+      const core = scraper.newEpisodes(1, force); // shahiid.js's: the main source
       // no artificial wait after the core list: cached rows join at once, slower ones redraw when ready.
       const ready = core.then(() => Promise.resolve(), () => {});
       const soon = (name,p) => {
@@ -119,15 +120,15 @@ if (window.api?.web) (() => {
         p=p.then(v=>{got=true;changed=JSON.stringify(homeExtras.get(key))!==JSON.stringify(v);homeExtras.set(key,v);if(homeExtras.size>40)homeExtras.delete(homeExtras.keys().next().value);return v;},()=>{got=true;return null;});
         return Promise.race([p,ready.then(()=>{if(!got)p.then(v=>v&&changed&&location.hash===hash&&redraw());return homeExtras.get(key)||null;})]);
       };
-      const tastes = Promise.all(mine.map(h => details(h.show).catch(() => null))).then(l => l.filter(Boolean)); // cached pages, mostly
+      const tastes = Promise.all(mine.map(h => scraper.details(h.show).catch(() => null))).then(l => l.filter(Boolean)); // cached pages, mostly
       const genres = tastes.then(l => {
         const count = {};
         l.flatMap(d => d.genres).forEach(g => count[g] = (count[g] || 0) + 1);
         return [...new Set([...Object.keys(count).sort((a, b) => count[b] - count[a]), ...TASTE])].slice(0, 3);
       });
-      const slides = core.then(h => byShow(h.slides).slice(0, 8));
-      const [h, views, films, last, byGenre, pics] = await Promise.all([core, soon('views',mostViewed()), soon('films',list(`${RA}/movies/`, force)), soon('last',tastes.then(l => l[0])),
-        soon('genres',genres.then(gs => Promise.all(gs.map(async g => ({ g, d: await list(genreUrl(g), force).catch(() => null) }))))),
+      const slides = core.then(h => byShow(h.items).slice(0, 8));
+      const [h, views, films, last, byGenre, pics] = await Promise.all([core, soon('views',mostViewed()), soon('films',scraper.list('/movies', 1, force)), soon('last',tastes.then(l => l[0])),
+        soon('genres',genres.then(gs => Promise.all(gs.map(async g => ({ g, d: await scraper.list('/genre/' + g, 1, force).catch(() => null) }))))),
         soon('art',slides.then(l => art(l.map(c => latin(c.title)))))]);
       const genreRow = i => byGenre?.[i]?.d && { title: t('genreRow', byGenre[i].g), items: fresh(shows(byGenre[i].d.items)), base: '/genre/' + byGenre[i].g };
       return { hero: (await slides).map((c, i) => ({ path: c.showPath || c.path, watch: c.type === 'episode' ? c.path : '', title: c.title, desc: '', banner: pics?.[i] || c.poster })),
@@ -151,7 +152,6 @@ if (window.api?.web) (() => {
     newEpisodes: async (page, force) => { const d = await list(page > 1 ? `${RA}/?page=${page}/` : RA + '/', force); return { ...d, items: byShow(d.items) }; },
     search: q => list(`${RA}/?s=${encodeURIComponent(q)}`),
     details,
-    ristoanime: async () => [], // the main source here: not again as a backup
     SITE: RA,
   });
   window.Risto = {
