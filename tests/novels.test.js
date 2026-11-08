@@ -7,7 +7,7 @@ function setup(load) {
   const ctx={parsers:{},api:{web:true},load,URL,URLSearchParams,location:{hash:'#/novels'},lang:'en',
     store:{novels:{},prefs:{}},t:(k,n)=>k+(n===undefined?'':':'+n),esc:s=>String(s??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),
     view:{innerHTML:''},grid:cs=>'<div class="grid">'+cs.map(c=>c.title).join('')+'</div>',row:()=>'',card:c=>c.title,
-    pageRefresh:null,CHEVRON:'',pickSheet:()=>{},heroPage:()=>{},chips:()=>'',inList:()=>false,toggleList:()=>{},ICON:{back:'',search:'',x:'',sort:'',novel:'',plus:'',check:''},toast:()=>{},persist:k=>writes.push(k),requestAnimationFrame:f=>f(),scrollTo:()=>{},
+    pageRefresh:null,CHEVRON:'',openMenu:()=>{},closeMenu:()=>{},pickSheet:()=>{},heroPage:()=>{},chips:()=>'',inList:()=>false,toggleList:()=>{},ICON:{back:'',search:'',x:'',sort:'',novel:'',plus:'',check:''},toast:()=>{},persist:k=>writes.push(k),requestAnimationFrame:f=>f(),scrollTo:()=>{},
     document:{documentElement:{scrollHeight:2000}},innerHeight:1000,scrollY:0,clearTimeout,setTimeout,
     addEventListener:(k,f)=>events[k]=f,removeEventListener:(k,f)=>{if(events[k]===f)delete events[k];},
     $:sel=>{if(!nodes.has(sel))nodes.set(sel,{style:{setProperty(){}},dataset:{},isConnected:true,insertAdjacentHTML(_,html){this.html=(this.html||'')+html;}});return nodes.get(sel);},nodes,events,writes};
@@ -38,7 +38,7 @@ test('reader escapes chapter text, restores progress and saves progress without 
   c.location.hash='#/novels/read/book/chapter-1';c.store.novels.book={slug:'chapter-1',progress:.5};
   let offset;c.scrollTo=(_,y)=>offset=y;
   await c.novelRead('book','chapter-1');
-  c.nodes.get('#nv-paper').onchange({target:{value:'sepia'}});
+  c.nodes.get('#nv-paper-menu').onclick({target:{closest:()=>({dataset:{paper:'sepia'}})}});
   assert.equal(c.store.prefs.nvPaper,'sepia');assert.equal(c.nodes.get('.nv-reader').dataset.paper,'sepia');
   assert.equal(offset,500);assert.match(c.view.innerHTML,/&lt;script>/);assert.doesNotMatch(c.view.innerHTML,/<script>/);
   assert.match(c.view.innerHTML,/#\/novels\/read\/book\/chapter-2/);
