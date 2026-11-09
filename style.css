@@ -1225,9 +1225,12 @@ body.tv .stage:focus ~ .mplayer { outline:3px solid #fff; outline-offset:-3px; }
 #dl-busy em i { display: block; height: 100%; width: var(--p); border-radius: 2px; background: var(--red); transition: width .25s var(--ease); }
 #dl-busy.wait em i { width: 35%; animation: dl-run 1.1s ease-in-out infinite alternate; } /* no number yet */
 @keyframes dl-run { from { transform: translateX(0) } to { transform: translateX(185%) } }
-/* manga page: its cover, blurred to just colours, behind the head */
-.det-hero .bg.blur { inset: -80px; background-position: center; filter: blur(60px) saturate(1.5); opacity: .6; transform: none; animation: none; -webkit-mask-image: none; mask-image: none; height: auto; }
-.det-hero:has(.bg.blur)::before, [dir=rtl] .det-hero:has(.bg.blur)::before { display: block; background: linear-gradient(0deg, var(--bg) 0%, #0000 45%), #0000004d; }
+/* manga and novel pages: the cover, blurred to just colours, behind the head */
+@media (min-width: 761px) {
+  .det-hero .bg.blur { inset: -80px; background-position: center; filter: blur(60px) saturate(1.5); opacity: .6; transform: none; animation: none; -webkit-mask-image: none; mask-image: none; height: auto; }
+  .det-hero:has(.bg.blur)::before, [dir=rtl] .det-hero:has(.bg.blur)::before { display: block; background: linear-gradient(0deg, var(--bg) 0%, #0000 45%), #0000004d; }
+}
+@media (max-width: 760px) { .det-hero .bg.blur { background-position: center; filter: blur(36px) saturate(1.5); opacity: .55; } } /* phones: the page's own faded strip at the top, blurred; the head's text stays clear of any overlay */
 .center:has(.slow-msg) { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 18px; }
 .slow-msg { margin: 0; padding-inline: 16px; text-align: center; color: var(--muted); font-size: 14px; opacity: 0; animation: slow-in .5s var(--ease) 6s forwards; } /* under the spinner, only after 6s of waiting */
 @keyframes slow-in { to { opacity: 1 } }
