@@ -161,7 +161,7 @@ input:focus-visible, select:focus-visible { outline: none; }
 .det-hero { position: relative; min-height: 78vh; display: flex; align-items: flex-end; padding: 120px var(--gutter) 50px; overflow: hidden; overflow: clip; }
 .det-hero .bg { position: absolute; inset: 0; background-size: cover; background-position: center 20%; transform: scale(1.08); animation: kenburns 20s linear forwards; }
 .det-hero::before { content: ""; position: absolute; inset: 0; z-index: 1; background: linear-gradient(90deg, #000f 0%, #000c 45%, #0003 100%), linear-gradient(0deg, var(--bg) 0%, #0000 40%); }
-.det { position: relative; z-index: 2; display: flex; gap: 40px; align-items: flex-end; animation: rise .8s var(--ease); }
+.det { position: relative; z-index: 2; display: flex; gap: 40px; align-items: flex-start; animation: rise .8s var(--ease); }
 .det .poster { width: 240px; aspect-ratio: 2/3; object-fit: cover; background: #1c1c1c; border-radius: 8px; flex: none; }
 .det h1 { font-size: clamp(30px, 4vw, 56px); line-height: 1.05; font-weight: 900; }
 .det .alt { color: var(--muted); margin: 6px 0 14px; }
