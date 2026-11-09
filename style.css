@@ -1235,3 +1235,4 @@ body.tv .stage:focus ~ .mplayer { outline:3px solid #fff; outline-offset:-3px; }
 .context-menu .dd-item .ck { flex: none; }
 .nv-wait { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; background: #0006; pointer-events: none; }
 .nv-wait .spin { width: 36px; height: 36px; border-width: 3px; }
+.eg-body .fchips { flex: none; margin: 0 0 14px; padding: 2px; flex-wrap: wrap; overflow: visible; } /* the ratings sheet's source buttons: they shrank to a sliver in the sheet's flex column, and the page-wide chip row's negative margin cut their edges */
