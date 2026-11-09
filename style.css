@@ -540,6 +540,7 @@ html, body { overscroll-behavior-y: none; } /* no WebView stretch / glow (or bro
 .fchip .chev { width: 16px; height: 16px; opacity: .7; }
 .fchip.on { background: #e5091424; border-color: var(--red); color: #fff; }
 .fchip.clear { padding: 0 16px; color: var(--muted); }
+.fchip.list-kind { padding: 0 16px; font: inherit; font-size: 14px; color: #fff; cursor: pointer; }
 .fchip.clear svg { width: 14px; height: 14px; }
 /* sheet: slides up from the bottom on phones, a centered dialog on desktop */
 .sheet-wrap { position: fixed; inset: 0; z-index: 70; background: #000b; opacity: 0; transition: opacity .25s; }

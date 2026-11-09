@@ -1458,9 +1458,30 @@ function offline(epPath) {
   if (epPath.startsWith('/watch/')) { const v = $('.player video'); skipIntro(d.title, '', d.ep, () => v.currentTime, at => { v.currentTime = at; }); if (!epPath.startsWith('/watch/movie/')) markFiller(d.title, '', d.ep); } // not a film or a series: they aren't on AniSkip
 }
 
+// as on Android: a search through the titles, and a chip per kind it holds (none when it holds one). kept while the page redraws
+let listKind = '', listQ = '';
+const listKindOf = p => /^\/(manga|cinema|novels)\//.exec(p)?.[1] || 'anime'; // (a film from the anime sites is /movie/)
 function myList() {
-  const items = Object.values(store.list).sort((a, b) => b.at - a.at), nh = Object.keys(store.hidden).length;
-  view.innerHTML = `<div class="page"><h1>${t('myList')}${nh ? ` <a class="btn ghost small h1-btn" href="#/hidden">${ICON.eyeSlash} ${t('openHidden', nh)}</a>` : ''}</h1>${items.length ? grid(items) : emptyState(ICON.bookmark, t('listEmpty'), t('listHint'))}</div>`;
+  const all = Object.values(store.list).sort((a, b) => b.at - a.at), nh = Object.keys(store.hidden).length;
+  const kinds = ['anime', 'cinema', 'manga', 'novels'].filter(k => all.some(i => listKindOf(i.path) === k));
+  if (kinds.length < 2 || !kinds.includes(listKind)) listKind = ''; // its last title gone: back to all
+  view.innerHTML = `<div class="page"><h1>${t('myList')}${nh ? ` <a class="btn ghost small h1-btn" href="#/hidden">${ICON.eyeSlash} ${t('openHidden', nh)}</a>` : ''}</h1>${!all.length ? emptyState(ICON.bookmark, t('listEmpty'), t('listHint')) : `
+    <form class="fsearch" id="lsearch">${ICON.search}<input type="search" enterkeyhint="search" autocomplete="off" placeholder="${t('listSearchPh')}" aria-label="${t('listSearchPh')}" value="${esc(listQ)}"></form>
+    ${kinds.length > 1 ? `<div class="fchips" id="lkinds">${['', ...kinds].map(k => `<button type="button" class="fchip list-kind ${k === listKind ? 'on' : ''}" data-k="${k}" aria-pressed="${k === listKind}">${t(k || 'all')}</button>`).join('')}</div>` : ''}
+    <div id="lgrid"></div>`}</div>`;
+  if (!all.length) return;
+  // only the cards: the box keeps its focus and the phone its keyboard while typing
+  const draw = () => { const q = listQ.trim().toLowerCase(); $('#lgrid').innerHTML = grid(all.filter(i => (!listKind || listKindOf(i.path) === listKind) && (i.title || '').toLowerCase().includes(q))); };
+  draw();
+  $('#lsearch input').oninput = e => { listQ = e.target.value; draw(); };
+  $('#lsearch').onsubmit = e => { e.preventDefault(); e.target.querySelector('input').blur(); }; // done typing: put the keyboard away, keep the results
+  if ($('#lkinds')) $('#lkinds').onclick = e => {
+    const b = e.target.closest('[data-k]');
+    if (!b) return;
+    listKind = b.dataset.k;
+    $('#lkinds').querySelectorAll('[data-k]').forEach(c => { const on = c === b; c.classList.toggle('on', on); c.setAttribute('aria-pressed', on); });
+    draw();
+  };
 }
 
 // #/hidden: what was long-pressed away, by kind; ✕ (the card's remove button) brings one back
