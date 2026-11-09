@@ -1,7 +1,7 @@
 const $ = (s, r = document) => r.querySelector(s);
 const view = $('#view');
 // images go through the platform's cache (Electron: medimg://; Android caches them natively, see ImageCache.java)
-const img = url => url && api.imgSrc ? api.imgSrc(url) : url || '';
+const img = url => url && api.imgSrc && !String(url).startsWith('medimg:') ? api.imgSrc(url) : url || '';
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 
 // ---------- language (Arabic by default, RTL) ----------
@@ -9,7 +9,7 @@ const STR = {
   ar: {
     home: 'الرئيسية', anime: 'أنمي', remove: 'إزالة', series: 'المسلسلات', movies: 'أفلام الأنمي', cinema: 'أفلام ومسلسلات', dubbed: 'مدبلج', schedule: 'مواعيد الأنمي', myList: 'قائمتي', searchPh: 'ابحث عن أنمي أو فيلم…', listSearchPh: 'ابحث في قائمتي…', cancel: 'إلغاء', clear: 'مسح',
     settings: 'الإعدادات', more: 'المزيد', storage: 'مجلد التطبيق', storageHint: 'احفظ التنزيلات والإعدادات وقائمتك وسجل المشاهدة في مجلد MEDFLIX على الهاتف، لتبقى حتى بعد حذف التطبيق وإعادة تثبيته.', storageAllow: 'السماح بالوصول', storageOn: 'مفعّل', storageOff: 'يحتاج إذن الوصول إلى كل الملفات', storageReady: 'تم حفظ بياناتك في مجلد MEDFLIX', storageAsk: 'اسمح للتطبيق بالوصول إلى الملفات ليحفظ قائمتك وسجل المشاهدة والإعدادات والتنزيلات في مجلد MEDFLIX على الهاتف. هكذا تبقى بعد حذف التطبيق، وتعود تلقائيًا عند إعادة تثبيته والسماح مرة أخرى.', later: 'لاحقًا', close: 'إغلاق', reverse: 'عكس الترتيب', dockTitle: 'أزرار الشريط السفلي', dockHint: 'اختر حتى 5 أزرار تظهر في الشريط السفلي على الهاتف، والباقي تجده في القائمة الجانبية ☰.',
-    dataTitle: 'بياناتك', dataHint: 'قائمتك وسجل المشاهدة وإعداداتك محفوظة في هذا المتصفح فقط. احفظ نسخة منها لتنقلها إلى جهاز آخر أو تستعيدها لاحقًا.', backup: 'حفظ نسخة من بياناتي', restore: 'استعادة نسخة محفوظة', restored: 'تمت استعادة بياناتك', restoreBad: 'هذا الملف ليس نسخة من بياناتك', clearCache: 'مسح الصفحات المحفوظة', getApp: 'تطبيق أندرويد', getAppHint: 'التنزيلات، والعرض على التلفاز، وكل مصادر الأنمي.', getAppBtn: 'تحميل التطبيق', interfaceLang: 'لغة الواجهة', runtime: (h, m) => [h && `\u2066${h}\u2069 س`, m && `\u2066${m}\u2069 د`].filter(Boolean).join(' '),
+    dataTitle: 'بياناتك', dataHint: 'قائمتك وسجل المشاهدة وإعداداتك محفوظة في هذا المتصفح فقط. احفظ نسخة منها لتنقلها إلى جهاز آخر أو تستعيدها لاحقًا.', backup: 'حفظ نسخة من بياناتي', restore: 'استعادة نسخة محفوظة', restored: 'تمت استعادة بياناتك', restoreBad: 'هذا الملف ليس نسخة من بياناتك', clearCache: 'مسح الصور والصفحات المحفوظة', getApp: 'تطبيق أندرويد', getAppHint: 'التنزيلات، والعرض على التلفاز، وكل مصادر الأنمي.', getAppBtn: 'تحميل التطبيق', interfaceLang: 'لغة الواجهة', runtime: (h, m) => [h && `\u2066${h}\u2069 س`, m && `\u2066${m}\u2069 د`].filter(Boolean).join(' '),
     inDock: 'في الشريط', available: 'أزرار أخرى', dockFull: 'الشريط ممتلئ: أزل زرًا أولًا', dockMin: 'يجب أن يبقى زر واحد على الأقل', language: 'اللغة',
     moveUp: 'تحريك للأعلى', moveDown: 'تحريك للأسفل', removeDock: 'إزالة من الشريط', addDock: 'إضافة إلى الشريط',
     rfChip: 'التقييم', rfTitle: 'التصفية حسب التقييم', rfHint: 'فعّل التقييمات التي تهمك وحدد أقل درجة تقبلها. تبقى اختياراتك محفوظة.', rfFilms: 'الأفلام والمسلسلات', rfAnime: 'الأنمي والمانجا', rfMatch: 'يجب أن يحقق العمل', rfAll: 'كلها', rfAny: 'أيًا منها', rfKeep: 'إبقاء الأعمال بلا تقييم', rfKeepHint: 'تبقى في النتائج رغم عدم العثور على درجتها', rfBest: 'الأقرب للبحث', rfShow: 'عرض ⁦%d⁩ من النتائج', rfDone: 'تم', rfChecking: 'جارٍ فحص التقييمات… ⁦%d/%d⁩', rfHidden: 'أخفت التصفية ⁦%d⁩ من النتائج', rfNone: 'لا توجد نتائج بهذا التقييم', rfNoneHint: 'خفّض الدرجة الدنيا أو أوقف أحد التقييمات', rfStart: 'اكتب اسم عمل، أو فعّل تصفية التقييم لتجد الأعمال دون كتابة', rfWalking: 'جارٍ البحث في الأعمال…', rfWent: 'تم فحص ⁦%d⁩ عملًا', rfMore: 'البحث عن المزيد', rfPick: 'مصدر التقييم', rfNoScore: 'بلا تقييم', rfEverywhere: 'البحث في كل الأعمال', rfNotHere: 'لا يوجد تطابق في نتائج التصفية',
@@ -28,7 +28,7 @@ const STR = {
     feedback: 'ملاحظات وبلاغات', feedbackHint: 'اقتراح أو مشكلة واجهتك؟ اكتبها هنا وستصلنا مباشرة.', feedbackEmail: 'بريدك الإلكتروني (اختياري، لنرد عليك)', feedbackMsg: 'اكتب رسالتك…', feedbackSend: 'إرسال', feedbackSending: 'جارٍ الإرسال…', feedbackSent: 'تم إرسال رسالتك، شكرًا لك', feedbackFailed: 'تعذّر الإرسال، حاول مرة أخرى',
     play: 'تشغيل', moreInfo: 'المزيد', details: 'التفاصيل', charactersCast: 'الشخصيات والممثلون', viewAllCast: 'عرض الكل', enlargeImage: 'عرض الصورة بحجم كامل', loadMoreCast: 'تحميل المزيد', castSearch: 'ابحث عن شخصية أو ممثل…', loadingCast: 'جارٍ تحميل الشخصيات…', noCast: 'لا تتوفر معلومات عن الشخصيات لهذا العنوان.', castUnavailable: 'تعذّر تحميل الشخصيات حالياً.', japaneseVoice: 'الصوت الياباني', actor: 'الممثل', prev: 'السابق', next: 'التالي',
     results: q => `نتائج البحث عن «${q}»`, listEmpty: 'قائمتك فارغة', listHint: 'اضغط + على أي بطاقة لتحفظها هنا، وتعود إليها متى شئت.',
-    resume: e => `متابعة الحلقة ${e}`, inList: 'في قائمتي', trailer: 'الإعلان', episodes: 'الحلقات', jump: 'انتقل إلى حلقة…', moreLike: 'أعمال مشابهة',
+    resume: e => `متابعة الحلقة ${e}`, inList: 'في قائمتي', sound: 'الصوت', homeNovels: 'روايات رائجة', homeTopNovels: 'أكثر الروايات قراءة', homeTopMovies: 'أفضل الأفلام تقييماً', homeTopSeries: 'أفضل المسلسلات تقييماً', trailer: 'الإعلان', episodes: 'الحلقات', loadingEpisodes: 'جارٍ تحميل بقية الحلقات…', moreEpisodes: 'عرض المزيد من الحلقات', moreChapters: 'عرض المزيد من الفصول', holdOn: 'لحظة من فضلك، التحميل يستغرق وقتاً أطول من المعتاد…', chaptersShown: (n, total) => `عرض ${n} من ${total} فصل`, episodesShown: (n, total) => `عرض ${n} من ${total} حلقة`, jump: 'انتقل إلى حلقة…', moreLike: 'أعمال مشابهة',
     back: 'رجوع (Esc)', loadingServers: 'جارٍ تحميل السيرفرات…', openBrowser: 'فتح في المتصفح', openBrowserTip: 'إذا لم يعمل المشغّل داخل التطبيق', cast: 'عرض على التلفاز', casting: 'يُعرض الآن على التلفاز', plyr: { restart: 'من البداية', rewind: 'رجوع {seektime} ث', play: 'تشغيل', pause: 'إيقاف مؤقت', fastForward: 'تقديم {seektime} ث', seek: 'انتقال', seekLabel: '{currentTime} من {duration}', played: 'تم تشغيله', buffered: 'محمّل', currentTime: 'الوقت الحالي', duration: 'المدة', volume: 'الصوت', mute: 'كتم الصوت', unmute: 'تشغيل الصوت', pip: 'صورة داخل صورة', enterFullscreen: 'ملء الشاشة', exitFullscreen: 'إنهاء ملء الشاشة', settings: 'الإعدادات', menuBack: 'رجوع', speed: 'السرعة', normal: 'عادية' }, castLooking: 'جارٍ إرسال الفيديو إلى التلفاز…', castNoFile: 'لا يوجد ملف لهذه الحلقة يمكن تشغيله على التلفاز', castNoTv: 'لم يُعثر على تلفاز على هذه الشبكة', castBrowser: 'العرض على التلفاز يعمل في Chrome أو Edge', castPlayFirst: 'شغّل الفيديو هنا أولاً، ثم اعرضه على التلفاز', castHost: 'لا يمكن عرض هذا السيرفر على التلفاز من المتصفح، اختر سيرفراً آخر', castWifi: 'اتصل بشبكة الواي فاي نفسها التي يتصل بها التلفاز', castFailed: 'تعذّر التشغيل على التلفاز، جرّب سيرفراً آخر',
     // witanime's row headings, always Arabic and vague: its heading stays the row's key (SECTIONS), this is what's shown
     'الأكثر مشاهدة': 'أكثر حلقات الأنمي مشاهدة',
@@ -39,7 +39,7 @@ const STR = {
     'أشهر أنميات الموسم': 'أشهر أنميات الموسم',
     genreRow: g => `أنمي ${g}`, becauseWatched: n => `لأنك شاهدت «\u2068${n}\u2069»`, // the website's feed (risto.js)
 homeHotManga: 'المانجا الرائجة', homeLatestManga: 'أحدث فصول المانجا', homeHotNovels: 'الروايات الرائجة', homeLatestNovels: 'أحدث فصول الروايات', epFinal: 'والأخيرة',
-    prevEp: 'الحلقة السابقة', nextEp: 'الحلقة التالية', skipIntro: 'تخطي المقدمة', playback: 'تشغيل الفيديو', skipIntroSet: 'زر تخطي المقدمة', skipIntroHint: 'يظهر زر لتخطي مقدمة الحلقة أثناء عرضها.', chooseServer: 'اختر سيرفرًا', searchingServers: 'جارٍ البحث عن سيرفرات…', searching: 'جارٍ البحث…',
+    prevEp: 'الحلقة السابقة', nextEp: 'الحلقة التالية', skipIntro: 'تخطي المقدمة', playback: 'تشغيل الفيديو', heroTrailerSet: 'تشغيل المقطع الدعائي تلقائياً في الواجهة', skipIntroSet: 'زر تخطي المقدمة', skipIntroHint: 'يظهر زر لتخطي مقدمة الحلقة أثناء عرضها.', chooseServer: 'اختر سيرفرًا', searchingServers: 'جارٍ البحث عن سيرفرات…', searching: 'جارٍ البحث…',
     server: 'سيرفر', noneWorked: 'لم يعمل أي سيرفر', noneWorkedHint: 'جرّب سيرفرًا آخر من القائمة أو افتح الحلقة في المتصفح.',
     rateLimited: 'الموقع يطلب الانتظار قليلًا', rateLimitedHint: 'طلبات كثيرة في وقت قصير. انتظر دقيقة أو دقيقتين ثم أعد المحاولة.', noServers: 'لا توجد سيرفرات لهذه الحلقة', noServersHint: 'لم يتم العثور عليها في أي مصدر.', noServersEdHint: 'لم يتم العثور عليها في المصدر.', verify: 'التحقق من الوصول', verifyFailed: 'لم يكتمل التحقق', today: 'اليوم',
     downloads: 'التنزيلات', download: 'تحميل الحلقة', dlPreparing: 'جارٍ تجهيز التحميل…', dlStarted: 'بدأ التحميل', dlFinished: n => `اكتمل تحميل «\u2068${n}\u2069»`,
@@ -55,7 +55,7 @@ homeHotManga: 'المانجا الرائجة', homeLatestManga: 'أحدث فصو
   en: {
     home: 'Home', anime: 'Anime', remove: 'Remove', series: 'Series', movies: 'Anime Movies', cinema: 'Movies & TV', dubbed: 'Dubbed', schedule: 'Anime Schedule', myList: 'My List', searchPh: 'Titles, series, movies…', listSearchPh: 'Search my list…', cancel: 'Cancel', clear: 'Clear',
     settings: 'Settings', more: 'More', storage: 'App folder', storageHint: 'Keep downloads, settings, your list and watch history in a MEDFLIX folder on the phone, so they survive uninstalling and reinstalling the app.', storageAllow: 'Allow access', storageOn: 'Active', storageOff: 'Needs all-files access', storageReady: 'Your data is now saved in the MEDFLIX folder', storageAsk: 'Allow file access so your list, watch history, settings and downloads are kept in a MEDFLIX folder on the phone. They then survive uninstalling the app, and come back when you reinstall and allow access again.', later: 'Later', close: 'Close', reverse: 'Reverse order', dockTitle: 'Bottom bar buttons', dockHint: "Pick up to 5 buttons for the phone's bottom bar; everything else is in the side menu ☰.",
-    dataTitle: 'Your data', dataHint: 'Your list, watch history and settings are kept in this browser only. Save a copy to move them to another device or bring them back later.', backup: 'Save a copy of my data', restore: 'Restore a saved copy', restored: 'Your data was restored', restoreBad: 'This file isn’t a copy of your data', clearCache: 'Clear saved pages', getApp: 'Android app', getAppHint: 'Downloads, casting to TV, and every anime source.', getAppBtn: 'Get the app', interfaceLang: 'Interface language', runtime: (h, m) => [h && `${h}h`, m && `${m}m`].filter(Boolean).join(' '),
+    dataTitle: 'Your data', dataHint: 'Your list, watch history and settings are kept in this browser only. Save a copy to move them to another device or bring them back later.', backup: 'Save a copy of my data', restore: 'Restore a saved copy', restored: 'Your data was restored', restoreBad: 'This file isn’t a copy of your data', clearCache: 'Clear cached images & pages', getApp: 'Android app', getAppHint: 'Downloads, casting to TV, and every anime source.', getAppBtn: 'Get the app', interfaceLang: 'Interface language', runtime: (h, m) => [h && `${h}h`, m && `${m}m`].filter(Boolean).join(' '),
     inDock: 'In the bar', available: 'Other buttons', dockFull: 'The bar is full: remove one first', dockMin: 'Keep at least one button', language: 'Language',
     moveUp: 'Move up', moveDown: 'Move down', removeDock: 'Remove from bar', addDock: 'Add to bar',
     rfChip: 'Rating', rfTitle: 'Filter by rating', rfHint: 'Turn on the scores you care about and set the lowest you\'ll accept. Your choices are kept.', rfFilms: 'Films & series', rfAnime: 'Anime & manga', rfMatch: 'A title must pass', rfAll: 'All of them', rfAny: 'Any of them', rfKeep: 'Keep titles with no score', rfKeepHint: 'They stay in the results when no score is found', rfBest: 'Best match', rfShow: 'Show ⁦%d⁩ results', rfDone: 'Done', rfChecking: 'Checking scores… ⁦%d/%d⁩', rfHidden: '%d hidden by your filter', rfNone: 'No results at this rating', rfNoneHint: 'Lower the minimum or turn a score off', rfStart: 'Type a title, or turn on a rating filter to find titles without typing', rfWalking: 'Looking through titles…', rfWent: 'Checked ⁦%d⁩ titles', rfMore: 'Find more', rfPick: 'Rating from', rfNoScore: 'No score', rfEverywhere: 'Search all titles', rfNotHere: 'Nothing in these filtered results matches',
@@ -74,10 +74,10 @@ homeHotManga: 'المانجا الرائجة', homeLatestManga: 'أحدث فصو
     feedback: 'Feedback & issues', feedbackHint: 'An idea, or something not working? Write it here and it reaches us directly.', feedbackEmail: 'Your email (optional, for a reply)', feedbackMsg: 'Write your message…', feedbackSend: 'Send', feedbackSending: 'Sending…', feedbackSent: 'Message sent, thank you', feedbackFailed: 'Could not send, try again',
     play: 'Play', moreInfo: 'More Info', details: 'Details', charactersCast: 'Characters & cast', viewAllCast: 'View all', enlargeImage: 'View image fullscreen', loadMoreCast: 'Load more', castSearch: 'Search characters or actors…', loadingCast: 'Loading characters…', noCast: 'Character and cast information is not available for this title.', castUnavailable: 'Character information could not be loaded right now.', japaneseVoice: 'Japanese voice', actor: 'Actor', prev: 'Prev', next: 'Next',
     results: q => `Results for “${q}”`, listEmpty: 'Your list is empty', listHint: 'Press + on any card to save it here and come back to it anytime.',
-    resume: e => `Resume Ep ${e}`, inList: 'In My List', trailer: 'Trailer', episodes: 'Episodes', jump: 'Jump to ep…', moreLike: 'More Like This',
+    resume: e => `Resume Ep ${e}`, inList: 'In My List', sound: 'Sound', homeNovels: 'Trending novels', homeTopNovels: 'Most read novels', homeTopMovies: 'Top rated movies', homeTopSeries: 'Top rated series', trailer: 'Trailer', episodes: 'Episodes', loadingEpisodes: 'Loading remaining episodes…', moreEpisodes: 'Show more episodes', moreChapters: 'Show more chapters', holdOn: 'Hold on a little, this is taking longer than usual…', chaptersShown: (n, total) => `Showing ${n} of ${total} chapters`, episodesShown: (n, total) => `Showing ${n} of ${total} episodes`, jump: 'Jump to ep…', moreLike: 'More Like This',
     back: 'Back (Esc)', loadingServers: 'Loading servers…', openBrowser: 'Open in browser', openBrowserTip: "If the in-app player won't load", cast: 'Cast to TV', casting: 'Playing on the TV', plyr: { restart: 'Restart', rewind: 'Back {seektime}s', play: 'Play', pause: 'Pause', fastForward: 'Forward {seektime}s', seek: 'Seek', seekLabel: '{currentTime} of {duration}', played: 'Played', buffered: 'Buffered', currentTime: 'Current time', duration: 'Duration', volume: 'Volume', mute: 'Mute', unmute: 'Unmute', pip: 'Picture in picture', enterFullscreen: 'Fullscreen', exitFullscreen: 'Exit fullscreen', settings: 'Settings', menuBack: 'Back', speed: 'Speed', normal: 'Normal' }, castLooking: 'Sending the video to the TV…', castNoFile: 'No file of this episode can play on a TV', castNoTv: 'No TV found on this network', castBrowser: 'Casting works in Chrome or Edge', castPlayFirst: 'Start the video here first, then cast it', castHost: 'This server can’t be cast from the browser: pick another one', castWifi: 'Connect to the same Wi-Fi as the TV', castFailed: "Couldn't play it on the TV, try another server",
 homeHotManga: 'Trending manga', homeLatestManga: 'Latest manga chapters', homeHotNovels: 'Trending novels', homeLatestNovels: 'Latest novel chapters', epFinal: '(final)',
-    prevEp: 'Previous', nextEp: 'Next', skipIntro: 'Skip intro', playback: 'Playback', skipIntroSet: 'Skip intro button', skipIntroHint: "Shows a button to skip an episode's opening while it plays.", chooseServer: 'Choose server', searchingServers: 'Searching servers…', searching: 'Searching…',
+    prevEp: 'Previous', nextEp: 'Next', skipIntro: 'Skip intro', playback: 'Playback', heroTrailerSet: 'Auto-play trailers in the home carousel', skipIntroSet: 'Skip intro button', skipIntroHint: "Shows a button to skip an episode's opening while it plays.", chooseServer: 'Choose server', searchingServers: 'Searching servers…', searching: 'Searching…',
     server: 'Server', noneWorked: 'No server worked', noneWorkedHint: 'Try another one above, or open in browser.',
     rateLimited: 'The site asks to slow down', rateLimitedHint: 'Too many requests in a short time. Wait a minute or two, then retry.', noServers: 'No servers for this episode', noServersHint: 'Not found on any source.', noServersEdHint: 'Not found on the source.', verify: 'Verify access', verifyFailed: 'Check not passed', today: 'Today',
     downloads: 'Downloads', download: 'Download episode', dlPreparing: 'Preparing download…', dlStarted: 'Download started', dlFinished: n => `Downloaded “\u2068${n}\u2069”`,
@@ -95,7 +95,7 @@ homeHotManga: 'Trending manga', homeLatestManga: 'Latest manga chapters', homeHo
     genreRow: g => `\u2068${g}\u2069 anime`, becauseWatched: n => `Because you watched \u2068${n}\u2069`,
   },
 };
-let lang = 'ar';
+let lang = 'en';
 // t('key') or t('key', args…); unknown keys (e.g. untranslated site text) come back as-is
 if (api.web) { Object.assign(STR.ar,WebDownloads.strings.ar); Object.assign(STR.en,WebDownloads.strings.en); }
 const t = (k, ...a) => { const v = STR[lang][k] ?? k; return typeof v === 'function' ? v(...a) : v; };
@@ -106,14 +106,20 @@ function applyLang() {
   document.querySelectorAll('[data-tp]').forEach(el => el.placeholder = t(el.dataset.tp));
   document.querySelectorAll('[data-ta]').forEach(el => el.ariaLabel = t(el.dataset.ta));
   renderNav();
-  document.querySelectorAll('.lang [data-l]').forEach(b => b.classList.toggle('on', b.dataset.l === lang));
+  document.querySelectorAll('.lang [data-l]').forEach(b => {
+    const selected = b.dataset.l === lang;
+    b.classList.toggle('on', selected); b.setAttribute('aria-pressed', String(selected));
+  });
 }
-document.addEventListener('click', e => { // language buttons: nav pill, drawer and settings
-  const l = e.target.closest('.lang [data-l]')?.dataset.l;
-  if (!l || l === lang) return;
-  lang = store.prefs.lang = l; persist('prefs');
+function setLanguage(next) {
+  if (!['ar', 'en'].includes(next) || next === lang) return;
+  lang = store.prefs.lang = next; persist('prefs');
   applyLang(); route();
   if (settingsModal()) settingsView(settingsModal()); // the modal, drawn again in it
+}
+document.addEventListener('click', e => { // the drawer and settings use the same saved preference as the native selector
+  const next = e.target.closest('.lang [data-l]')?.dataset.l;
+  if (next) setLanguage(next);
 });
 
 // ---------- navigation ----------
@@ -143,7 +149,11 @@ function renderNav() {
     <nav class="dr-links">${NAV.map(n => `<a href="${n.href}">${navSvg(n.id)}<span>${t(n.id)}</span></a>`).join('')}</nav>
     <div class="dr-sep"></div>
     <nav class="dr-links"><a href="#/settings">${ICON.settings}<span>${t('settings')}</span></a><button type="button" id="drFeedback">${ICON.info}<span>${t('feedback')}</span></button></nav>
-    <div class="lang dr-lang"><button data-l="ar">ع</button><button data-l="en">EN</button></div>`;
+    <div class="dr-language"><span class="dr-language-label">${ICON.textAa}${t('language')}</span>
+      <div class="lang dr-lang" role="group" aria-label="${t('interfaceLang')}">
+        <button type="button" data-l="ar" lang="ar" aria-pressed="${lang === 'ar'}" class="${lang === 'ar' ? 'on' : ''}"><span>العربية</span><i class="language-check">${ICON.check}</i></button>
+        <button type="button" data-l="en" lang="en" aria-pressed="${lang === 'en'}" class="${lang === 'en' ? 'on' : ''}"><span>English</span><i class="language-check">${ICON.check}</i></button>
+      </div></div>`;
   markActive();
 }
 function markActive() {
@@ -329,7 +339,7 @@ function settingsView(root = view) {
   const secs = [
     api.storage && { id: 'stor', icon: ICON.folder, title: t('storage'), hint: t('storageHint'), body: '<div class="set-stor" id="stor"></div>' },
     { id: 'play', icon: ICON.play, title: t('playback'), hint: t('skipIntroHint'),
-      body: `<div class="set-list"><label class="set-row"><i class="set-tile">${ICON.skipForward}</i><span>${t('skipIntroSet')}</span><input type="checkbox" id="intro-on" ${store.prefs.skipIntro === false ? '' : 'checked'}></label></div>` },
+      body: `<div class="set-list"><label class="set-row"><i class="set-tile">${ICON.skipForward}</i><span>${t('skipIntroSet')}</span><input type="checkbox" id="intro-on" ${store.prefs.skipIntro === false ? '' : 'checked'}></label><label class="set-row"><i class="set-tile">${ICON.play}</i><span>${t('heroTrailerSet')}</span><input type="checkbox" id="trailer-on" ${store.prefs.heroTrailer === false ? '' : 'checked'}></label></div>` },
     { id: 'hidden', icon: ICON.eyeSlash, title: t('hiddenTitle'), hint: t('hiddenHint'),
       // the modal shows them in its tab (their ✕ brings one back); the page links to #/hidden
       body: modal ? `<div class="set-hidden">${hiddenGrid('h3')}</div>`
@@ -341,7 +351,7 @@ function settingsView(root = view) {
     api.web && { id: 'app', icon: ICON.download, title: t('getApp'), hint: t('getAppHint'),
       body: `<div class="set-list"><a class="set-row set-link" href="https://github.com/Medamine-Bahassou/Medflix/releases/latest" target="_blank" rel="noopener"><i class="set-tile">${ICON.download}</i><span>${t('getAppBtn')}</span>${ICON.external}</a></div>` },
     !modal && { id: 'lang', icon: ICON.textAa, title: t('language'), // the modal leaves it to the top bar's switch, beside the gear that opens it; the label shows only in the desktop card
-      body: `<div class="set-lang-row"><span>${t('interfaceLang')}</span><div class="lang set-lang"><button data-l="ar" class="${lang === 'ar' ? 'on' : ''}">العربية</button><button data-l="en" class="${lang === 'en' ? 'on' : ''}">English</button></div></div>` },
+      body: `<div class="set-lang-row"><span>${t('interfaceLang')}</span><div class="lang set-lang" role="group" aria-label="${t('interfaceLang')}"><button type="button" data-l="ar" lang="ar" aria-pressed="${lang === 'ar'}" class="${lang === 'ar' ? 'on' : ''}">العربية</button><button type="button" data-l="en" lang="en" aria-pressed="${lang === 'en'}" class="${lang === 'en' ? 'on' : ''}">English</button></div></div>` },
   ].filter(Boolean);
   if (!secs.some(s => s.id === setTab)) setTab = secs[0].id;
   root.innerHTML = `<div class="page settings"><h1>${t('settings')}${modal ? `<button class="icon-btn set-x" title="${t('close')}" aria-label="${t('close')}">${ICON.x}</button>` : ''}</h1><div class="set-wrap">
@@ -359,6 +369,7 @@ function settingsView(root = view) {
     ${window.BUILD ? `<p class="set-build" dir="ltr">Build ${esc(BUILD)}</p>` : ''}</div></div></div></div>`;
   if (api.storage) drawStorage();
   $('#intro-on').onchange = e => { store.prefs.skipIntro = e.target.checked; persist('prefs'); };
+  $('#trailer-on').onchange = e => { store.prefs.heroTrailer = e.target.checked; persist('prefs'); };
   if (api.web) webData();
   root.querySelector('.settings').onclick = e => {
     if (e.target.closest('.set-x')) return closeSettings();
@@ -473,12 +484,13 @@ function card(c, i = 0) {
       <div class="s">${c.year ? `<span>${esc(c.year)}</span>` : ''}${h?.ep ? `<span>${t('epShort')} ${esc(h.ep)}</span>` : ''}</div></div>
   </div>`;
 }
-const row = (title, items, href) => !items?.length ? '' : `<section class="row"><h3>${href ? `<a href="${href}">${esc(t(title))} ${ICON.next}</a>` : esc(t(title))}</h3>
-  <div class="track-wrap"><button class="arrow l" aria-label="${t('prev')}">${ICON.caretLeft}</button><div class="track">${items.map(card).join('')}</div><button class="arrow r" aria-label="${t('next')}">${ICON.caretRight}</button></div></section>`;
+// top: the most viewed, as a ranking: its first ten, each behind its big number (style.css .top10)
+const row = (title, items, href, top) => !items?.length ? '' : `<section class="row${top ? ' top10' : ''}"><h3>${href ? `<a href="${href}">${esc(t(title))} ${ICON.next}</a>` : esc(t(title))}</h3>
+  <div class="track-wrap"><button class="arrow l" aria-label="${t('prev')}">${ICON.caretLeft}</button><div class="track">${(top ? items.slice(0, 10) : items).map(card).join('')}</div><button class="arrow r" aria-label="${t('next')}">${ICON.caretRight}</button></div></section>`;
 // an empty page: the section's icon in gray, then what's missing
 const emptyState = (icon, title, hint) => `<div class="empty rich"><i class="empty-icon" aria-hidden="true">${icon}</i><b>${title}</b><p>${hint}</p></div>`;
 const grid = items => items.length ? `<div class="grid">${items.map(card).join('')}</div>` : `<div class="empty"><b>${t('nothing')}</b>${t('tryElse')}</div>`;
-const spinner = () => { view.innerHTML = '<div class="center"><div class="spin"></div></div>'; };
+const spinner = () => { view.innerHTML = `<div class="center"><div class="spin"></div><p class="slow-msg" role="status">${t('holdOn')}</p></div>`; }; // the message fades in only if it takes long (css)
 // error text shown on screen, without the sources' names or addresses ("no answer from witanime.site" -> "no answer from the site")
 const noNames = m => String(m || '').replace(/https?:\/\/\S+|\b[\w.-]*(wit ?anime|anime ?rco|egy ?dead|my ?seed|arab ?seed|appswat|mesh ?manga|manga ?swat|olympus ?staff|team-?x|anime ?schedule|mega ?max)[\w.-]*/gi, t('theSite'));
 const failed = e => { view.innerHTML = `<div class="center"><div class="empty"><b>${t('unreachable')}</b>${esc(noNames(e.message))}<br><br><button class="btn red">${t('retry')}</button></div></div>`; $('.empty .btn').onclick = route; };
@@ -520,7 +532,7 @@ function contextMenu(title,opts,cur,onPick,point) {
   closeContextMenu();
   contextFocus=point.target?.matches('a,button') ? point.target : point.target?.querySelector('a,button') || document.activeElement;
   const menu=document.createElement('div');menu.className='context-menu';menu.setAttribute('role','menu');menu.setAttribute('aria-label',title);
-  menu.innerHTML=`<div class="context-title">${esc(title)}</div>${opts.map(([v,label])=>`<button type="button" class="dd-item ${v===cur?'on':''}" role="menuitem" data-v="${esc(v)}">${esc(label)}</button>`).join('')}`;
+  menu.innerHTML=`<div class="context-title">${esc(title)}</div>${opts.map(([v,label])=>`<button type="button" class="dd-item ${v===cur?'on':''}" role="menuitem" data-v="${esc(v)}">${esc(label)}${cur && v === cur ? `<span class="ck">${ICON.check}</span>` : ''}</button>`).join('')}`; // the picked one ends in a check
   document.body.append(menu);
   const box=menu.getBoundingClientRect();
   menu.style.left=Math.max(8,Math.min(point.x,innerWidth-box.width-8))+'px';menu.style.top=Math.max(8,Math.min(point.y,innerHeight-box.height-8))+'px';
@@ -738,10 +750,19 @@ $('.search-x').onclick = () => openSearch(false);
 $('.search-clr').onmousedown = e => e.preventDefault(); // the box keeps focus (and the phone its keyboard)
 $('.search-clr').onclick = () => { $('#search').q.value = ''; $('#search').q.focus(); };
 $('#nav').addEventListener('click', e => e.target === e.currentTarget && closeSearch()); // tap on the dimmed backdrop (#nav::after)
+let searchTyped;
+$('#search').q.addEventListener('input', e => { // on the search page: asks again once typing stops, in the same history entry
+  clearTimeout(searchTyped);
+  const q = e.target.value.trim();
+  if (!q || !location.hash.startsWith('#/search/')) return;
+  searchTyped = setTimeout(() => location.replace('#/search/' + encodeURIComponent(q) + (location.hash.match(/\?in=\w+$/)?.[0] || '')), 400);
+});
 $('#search').onsubmit = e => {
   e.preventDefault();
   const q = e.target.q.value.trim();
-  if (q) { closeSearch(); location.hash = location.hash.startsWith('#/novels') ? '#/novels/browse?search=' + encodeURIComponent(q) : '#/search/' + encodeURIComponent(q); }
+  // inside a section the box asks that section alone (the search page's chip for it), as on Android
+  const section = location.hash.match(/^#\/(novels|manga|cinema)(?:\/|$|\?)/)?.[1];
+  if (q) { closeSearch(); location.hash = section === 'novels' ? '#/novels/browse?search=' + encodeURIComponent(q) : '#/search/' + encodeURIComponent(q) + (section ? '?in=' + section : ''); }
 };
 
 // ---------- views ----------
@@ -759,53 +780,195 @@ function continued(kinds) {
 }
 
 // a page under a cover slider of { banner, title, desc, info: hash, play?: hash }; refresh redraws it with fresh data
-let heroTimer;
-const heroArt = new Map(); // a redraw (the page came back changed) starts on the sharp picture, with no flash of the poster
+let heroTimer, heroMsg, heroState = null;
+// the billboard's trailer (heroPage): a YouTube id per anime or film on the slider, '' for none. an anime's from AniList (the website) or its page,
+// a film's from its page (cinema.js); manga and novels have none
+const heroTrailers = new Map(), heroTrailerLoads = new Map();
+const youtubeId = value => {
+  const text = String(value || '').trim();
+  if (/^[\w-]{11}$/.test(text)) return text;
+  const links = text.match(/(?:https?:)?\/\/[^\s"'<>]+/g) || (/^(?:(?:www|m)\.)?(?:youtube(?:-nocookie)?\.com|youtu\.be)\//i.test(text) ? ['https://' + text] : []);
+  for (const link of links) {
+    try {
+      const u = new URL(link.replaceAll('&amp;', '&'), 'https://www.youtube.com');
+      const host = u.hostname.toLowerCase().replace(/^(?:www\.|m\.|music\.)/, '');
+      const id = host === 'youtu.be' ? u.pathname.split('/')[1] : /^(?:youtube\.com|youtube-nocookie\.com)$/.test(host)
+        ? u.searchParams.get('v') || u.pathname.match(/^\/(?:embed|shorts|live|v)\/([^/]+)/)?.[1] : '';
+      if (/^[\w-]{11}$/.test(id || '')) return id;
+    } catch {}
+  }
+  return '';
+};
+const trailerId = async h => {
+  const supplied = youtubeId(h.trailer);
+  if (supplied) return supplied;
+  if (!/^#\/(title|cinema)\//.test(h.info)) return '';
+  const hit = heroTrailers.get(h.info);
+  if (hit && Date.now() - hit.at < (hit.id ? 24 * 3600e3 : 60e3)) return hit.id;
+  if (!heroTrailerLoads.has(h.info)) {
+    const task = (async () => {
+      let id = '';
+      if (h.info.startsWith('#/cinema/')) {
+        let slug = decodeURIComponent(h.info.slice(9));
+        const visited = new Set();
+        while (slug && !visited.has(slug) && visited.size < 3) {
+          visited.add(slug);
+          let d = await edMovieOf(slug);
+          id = youtubeId(d.trailer);
+          // older cached pages may predate the source's new trailer markup.
+          if (!id) { d = await edMovieOf(slug, true); id = youtubeId(d.trailer); }
+          if (id) break;
+          slug = d.up;
+        }
+      } else {
+        const path = decodeURIComponent(h.info.slice(7));
+        if (scraper.trailer) id = youtubeId(await scraper.trailer(h.title, h.alt, path));
+        else id = youtubeId((await scraper.details(path, false, true)).trailer);
+      }
+      heroTrailers.set(h.info, { id, at: Date.now() });
+      return id;
+    })().finally(() => heroTrailerLoads.delete(h.info));
+    heroTrailerLoads.set(h.info, task);
+  }
+  return heroTrailerLoads.get(h.info);
+};
+const SOUND = ['<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 4V5L7 9H3z"/><path d="m15 9.5 5 5m0-5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/></svg>',
+  '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 4V5L7 9H3zm11-5.8v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6zM16.5 12A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4z"/></svg>']; // muted, sound on
+// choose one verified wide image per title; redraws reuse it, including an empty result.
+const heroArt = new Map(), backdropLoads = new Map();
+const backdropKey = h => { try { return decodeURIComponent(h.info); } catch { return h.info; } };
+const resolveBackdrop = h => {
+  const key = backdropKey(h);
+  if (heroArt.has(key)) return Promise.resolve(heroArt.get(key));
+  if (!backdropLoads.has(key)) {
+    const task = (async () => {
+      const art = await Ratings.art(h).catch(() => '');
+      for (const url of new Set([art, h.banner !== h.poster && h.banner].filter(Boolean))) {
+        const wide = await new Promise(resolve => {
+          const pic = new Image();
+          pic.onload = () => resolve(pic.naturalWidth >= 1280 && pic.naturalHeight > 0 && pic.naturalWidth / pic.naturalHeight >= 1.3);
+          pic.onerror = () => resolve(false);
+          pic.src = img(url);
+        });
+        if (wide) { heroArt.set(key, url); return url; }
+      }
+      heroArt.set(key, '');
+      return '';
+    })().finally(() => backdropLoads.delete(key));
+    backdropLoads.set(key, task);
+    if (heroArt.size > 64) heroArt.delete(heroArt.keys().next().value);
+  }
+  return backdropLoads.get(key);
+};
+// carousel covers are independent of the show page's high-resolution-only backdrops.
+const carouselArt = new Map();
+const carouselImage = h => {
+  const key = backdropKey(h);
+  if (!carouselArt.has(key)) {
+    const url = heroArt.get(key) || h.banner;
+    if (url) carouselArt.set(key, url);
+    if (carouselArt.size > 64) carouselArt.delete(carouselArt.keys().next().value);
+  }
+  return carouselArt.get(key) || '';
+};
 function heroPage(hero, rows, refresh) {
+  const key = location.hash;
+  if (!heroState || heroState.key !== key) heroState = { key, slides: [], active: '' };
+  // late sources append slides instead of replacing the first picture and restarting the carousel.
+  const merged = new Map(heroState.slides.map(h => [h.info, h]));
+  hero.forEach(h => merged.set(h.info, h));
+  hero = heroState.slides = [...merged.values()];
+  const state = heroState;
   view.innerHTML = `
-    <div class="hero">${hero.map((h, i) => `<div class="slide ${i ? '' : 'on'}"><img src="${esc(img(heroArt.get(h.info) || h.banner))}" alt=""></div>`).join('')}
-      <div class="info"></div><div class="dots">${hero.map((_, i) => `<i data-i="${i}" class="${i ? '' : 'on'}"></i>`).join('')}</div></div>
+    <div class="hero">${hero.map((h, i) => `<div class="slide ${i ? '' : 'on'}"><img ${carouselImage(h) ? `src="${esc(img(carouselImage(h)))}"` : 'hidden'} alt=""></div>`).join('')}
+      <div class="info"></div><button class="hero-mute" hidden aria-label="${t('sound')}"></button><div class="dots">${hero.map((_, i) => `<i data-i="${i}" class="${i ? '' : 'on'}"></i>`).join('')}</div></div>
     <div class="rows">${rows}
-      <div style="padding:0 4%"><button class="btn ghost small refresh" id="rf">${ICON.refresh} ${t('refreshSite')}</button></div>
     </div>`;
-  pageRefresh = refresh;
-  $('#rf').onclick = () => pageRefresh().then(() => toast(t('updated')));
+  pageRefresh = () => { heroState = null; return refresh?.(); };
   if (!hero.length) $('.hero').style.height = '120px';
-  let cur = 0;
+  let cur = Math.max(0, hero.findIndex(h => h.info === state.active)), slideVersion = 0;
+  const root = $('.hero'), live = () => root.isConnected && $('.hero') === root;
   const pics = [...view.querySelectorAll('.hero .slide img')];
-  // a portrait cover on a wide screen shows whole, on a blurred copy of itself (style.css): stretched across it, it was the blur
-  const fit = p => { const tall = p.naturalWidth < p.naturalHeight * 1.1; p.parentNode.classList.toggle('tall', tall); p.parentNode.style.setProperty('--art', tall ? `url("${p.src}")` : 'none'); };
-  pics.forEach(p => { p.addEventListener('load', () => fit(p)); if (p.complete) fit(p); });
-  // only as a slide comes up: a page of them at full size is megabytes. Swapped in once loaded, so nothing goes blank
-  const asked = new Set();
-  const sharpen = i => {
-    if (asked.has(i)) return;
-    asked.add(i);
-    Ratings.art(hero[i]).then(url => {
-      if (!url) return;
-      const next = new Image();
-      next.onload = () => { heroArt.set(hero[i].info, url); pics[i].src = next.src; };
-      next.src = img(url);
-    }).catch(() => {}); // offline, or the site's down: its own picture stays
+  const fit = p => {
+    if (!p.naturalWidth) return;
+    const portrait = p.naturalWidth < p.naturalHeight * 1.3;
+    p.parentNode.classList.toggle('portrait', portrait);
+    p.parentNode.style.setProperty('--art', portrait ? `url("${String(p.currentSrc || p.src).replaceAll('"', '%22')}")` : 'none');
+  };
+  pics.forEach(p => {
+    p.addEventListener('load', () => fit(p));
+    p.addEventListener('error', () => { p.hidden = true; });
+    if (p.complete) fit(p);
+  });
+  const artAsked = new Set();
+  const loadArt = i => {
+    if (artAsked.has(i) || !pics[i]) return;
+    artAsked.add(i);
+    resolveBackdrop(hero[i]).then(url => {
+      if (!url || !live()) return; // a miss keeps the cover and its blurred copy
+      carouselArt.set(backdropKey(hero[i]), url);
+      if (pics[i].getAttribute('src') !== img(url)) pics[i].src = img(url);
+      pics[i].hidden = false;
+    }).catch(() => {});
+  };
+  // Netflix's billboard: a moment on the picture, then the anime's trailer plays muted over it, and when it ends the next slide comes
+  let trailerT, muted = true, trailerWait = 0;
+  const stopTrailer = () => { trailerWait = 0; clearTimeout(trailerT); if (!live()) return; $('.hero .tv')?.remove(); $('.hero')?.classList.remove('trailing'); $('.hero-mute').hidden = true; };
+  const cmd = func => $('.hero .tv iframe')?.contentWindow.postMessage(JSON.stringify({ event: 'command', func, args: '' }), 'https://www.youtube.com');
+  const startTrailer = async (i, version, lookup) => {
+    const h = hero[i];
+    if (!/^#\/(title|cinema)\//.test(h.info) || document.hidden || matchMedia('(prefers-reduced-motion: reduce)').matches || navigator.connection?.saveData) return;
+    const id = await lookup;
+    if (!live() || version !== slideVersion || cur !== i) return;
+    if (!id) { trailerWait = 0; return; }
+    muted = true;
+    $('.hero').insertAdjacentHTML('beforeend', `<div class="tv"><iframe tabindex="-1" allow="autoplay; encrypted-media" referrerpolicy="strict-origin-when-cross-origin"
+      src="https://www.youtube.com/embed/${id}?autoplay=1&mute=1&controls=0&disablekb=1&fs=0&iv_load_policy=3&modestbranding=1&playsinline=1&rel=0&enablejsapi=1${location.protocol.startsWith('http') ? '&origin=' + encodeURIComponent(location.origin) : ''}"></iframe></div>`);
+    const f = $('.hero .tv iframe');
+    f.onload = () => f.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 1 }), 'https://www.youtube.com'); // it answers with its state
+    trailerT = setTimeout(stopTrailer, 20000); // never started (blocked, a removed video): the picture stays
   };
   const show = i => {
     const was = cur;
     cur = (i + hero.length) % hero.length;
-    const h = hero[cur];
-    sharpen(cur);
-    sharpen((cur + 1) % hero.length);
+    stopTrailer();
+    const version = ++slideVersion, h = hero[cur];
+    state.active = h.info;
+    const lookup = trailerId(h).catch(() => '');
+    const auto = store.prefs.heroTrailer !== false && /^#\/(title|cinema)\//.test(h.info) && !document.hidden && !matchMedia('(prefers-reduced-motion: reduce)').matches && !navigator.connection?.saveData;
+    if (auto) { trailerWait = Date.now() + 20000; trailerT = setTimeout(() => startTrailer(cur, version, lookup), 2500); }
+    trailerId(hero[(cur + 1) % hero.length]).catch(() => {}); // ready before the next slide's picture delay ends
+    loadArt(cur); loadArt((cur + 1) % hero.length);
     // the one leaving keeps its zoom going while it fades (dropping it snapped the picture back mid-fade: a flicker)
     document.querySelectorAll('.hero .slide').forEach((s, j) => { s.classList.toggle('on', j === cur); s.classList.toggle('out', j === was && j !== cur); });
     document.querySelectorAll('.dots i').forEach((s, j) => s.classList.toggle('on', j === cur));
     $('.hero .info').innerHTML = `<h2>${esc(h.title)}</h2><p dir="auto">${esc(h.desc)}</p>
       <div class="actions">${h.play ? `<a class="btn play" href="${esc(h.play)}">${ICON.play} ${t('play')}</a>` : ''}
-      <a class="btn ghost" href="${esc(h.info)}">${ICON.info} ${t('moreInfo')}</a></div>`;
+      <a class="btn ghost" href="${esc(h.info)}">${ICON.info} ${t('moreInfo')}</a><button class="btn ghost hero-trailer" hidden>${ICON.play} ${t('trailer')}</button></div>`;
+    lookup.then(id => {
+      if (!id || !live() || version !== slideVersion) return;
+      const button = root.querySelector('.hero-trailer');
+      button.hidden = false; button.onclick = () => showTrailer('https://www.youtube.com/embed/' + id + '?autoplay=1');
+    });
   };
   if (hero.length) {
-    show(0);
+    show(cur);
     $('.dots').onclick = e => e.target.dataset.i && (show(+e.target.dataset.i), restart());
-    const restart = () => { clearInterval(heroTimer); heroTimer = setInterval(() => $('.hero .info :focus') || show(cur + 1), 8000); }; // not under a TV remote's ring: its button would vanish
+    const restart = () => { clearInterval(heroTimer); heroTimer = setInterval(() => !live() || $('.hero .info :focus') || $('.hero.trailing') || trailerWait > Date.now() || show(cur + 1), 8000); }; // not under a TV remote's ring: its button would vanish
     restart();
+    const sound = () => { $('.hero-mute').innerHTML = SOUND[+!muted]; };
+    $('.hero-mute').onclick = () => { muted = !muted; cmd(muted ? 'mute' : 'unMute'); sound(); };
+    removeEventListener('message', heroMsg);
+    addEventListener('message', heroMsg = e => {
+      const tv = $('.hero .tv');
+      if (!live() || !tv || e.origin !== 'https://www.youtube.com' || e.source !== tv.firstChild.contentWindow) return;
+      let d; try { d = JSON.parse(e.data); } catch { return; }
+      if (d.event === 'onReady') { cmd('mute'); cmd('playVideo'); }
+      const s = d.event === 'onStateChange' ? d.info : d.info?.playerState;
+      if (s === 1) { trailerWait = 0; clearTimeout(trailerT); tv.classList.add('on'); $('.hero').classList.add('trailing'); $('.hero-mute').hidden = false; sound(); }
+      else if (s === 2 && !document.hidden) cmd('playVideo'); // paused by the browser (autoplay rules): it's a background, never left stopped on its pause mark
+      else if (s === 0 || d.event === 'onError') { stopTrailer(); if (s === 0) { show(cur + 1); restart(); } }
+    });
     // swipe to the next / previous slide (the way pages turn: right to left is next, the other way in Arabic)
     let x0, y0;
     $('.hero').addEventListener('touchstart', e => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
@@ -820,18 +983,31 @@ function heroPage(hero, rows, refresh) {
 const animeHero = d => d.hero.map(h => ({ ...h, info: '#/title' + h.path, play: h.watch && playHash(h.watch) }));
 // section chips under the slider
 const chips = links => `<div style="padding:0 4%"><div class="fchips">${links.map(([label, href]) => `<a class="fchip" href="${href}">${label}</a>`).join('')}</div></div>`;
-const animeRows = d => d.rows.map(r => row(r.title, r.items, '#/section/' + encodeURIComponent(r.title))).join('');
+const animeRowList = d => d.rows.map(r => row(r.title, r.items, '#/section/' + encodeURIComponent(r.title), SECTIONS[r.title]?.includes('Most Viewed')));
+const animeRows = d => animeRowList(d).sort((a, b) => Number(isTop(b)) - Number(isTop(a))).join('');
+// one row from each list in turn (anime, films, manga, novels, anime...), so no section buries the others.
+// a section's ranking (its Top 10) comes before its other rows
+const isTop = h => h.includes('class="row top10"');
+// (the first round takes two from each: its Top 10, then its first regular row; the rest follow one by one)
+const interleave = lists => { lists = lists.map(l => [...l.filter(isTop), ...l.filter(h => !isTop(h))]); const out = lists.flatMap(l => l.slice(0, 2)); for (let i = 2; lists.some(l => i < l.length); i++) lists.forEach(l => l[i] && out.push(l[i])); return out.join(''); };
 
 // Home: a bit of every section. A site that doesn't answer just leaves its rows out.
 async function home(force) {
   const hash = location.hash;
-  const [d, hot, latest, films, oLatest] = await firstSections([
+  const [d, hot, latest, films, oLatest, foreign, asian, novels, popular, readNovels] = await firstSections([
     () => scraper.home(force),
     () => load('mangaList', mUrl('series/', { is_hot:true, page_size:30 }), force),
     () => load('mangaLatest', mUrl('chapters/', { page_size:60, order_by:'-created_at' }), force),
     () => edList('all',1,force),
     () => olyLatest(force),
+    () => edList('english', 1, force),
+    () => edList('asian', 1, force),
+    () => api.web ? nvLoad('/novels', { language: 'ar', limit: 24, sort: 'trending' }, force) : null, // the novels section is the website's
+    () => load('mangaList', mUrl('series/', { order_by: '-views_count', page_size: 30 }), force),
+    () => api.web ? nvLoad('/novels', { language: 'ar', limit: 24, sort: 'views' }, force) : null,
   ]);
+  // films have no most-viewed list: the best scored of the ones loaded
+  const scored = [...new Map([...films?.items || [], ...foreign?.items || [], ...asian?.items || []].map(c => [c.path, c])).values()].filter(c => +c.rating).sort((x, y) => y.rating - x.rating).slice(0, 10);
   if (location.hash !== hash) return;
   // posters are already available on the cards: title-page requests must not hold up navigation.
   const m = (hot?.items || []).slice(0,3).map(c=>({banner:c.poster,title:c.title,desc:c.desc || '',info:'#'+c.path}));
@@ -842,10 +1018,11 @@ async function home(force) {
   heroPage(hero, `
       ${row(t('continueWatching'), continued(['anime', 'cinema', 'manga', 'novel']))}
       ${row(t('myList'), Object.values(store.list).sort((a, b) => b.at - a.at), '#/list')}
-      ${d ? animeRows(d) : ''}
-      ${row(t('homeHotManga'), hot?.items, '#/manga/browse/1?is_hot=true')}
-      ${row(t('homeLatestManga'), mMerge([latest?.items, oLatest?.items]), '#/manga')}
-      ${row(t('cinema'), dubbed(films?.items), '#/cinema')}`, () => home(true));
+      ${interleave([
+        d ? animeRowList(d) : [],
+        [row(t('cinema'), dubbed(films?.items), '#/cinema'), scored.length > 4 ? row(t('homeTopMovies'), dubbed(scored), '#/cinema', true) : '', row(eCatName(eCat('english')), dubbed(foreign?.items), '#/cinema/browse/english'), row(eCatName(eCat('asian')), dubbed(asian?.items), '#/cinema/browse/asian')],
+        [row(t('homeHotManga'), hot?.items, '#/manga/browse/1?is_hot=true'), row(t('mPopular'), popular?.items, '#/manga/browse/1?order_by=-views_count', true), row(t('homeLatestManga'), mMerge([latest?.items, oLatest?.items]), '#/manga')],
+        [row(t('homeNovels'), novels?.data?.map(nvCard), '#/novels'), row(t('homeTopNovels'), readNovels?.data?.map(nvCard), '#/novels/browse?sort=views', true)]])}`, () => home(true));
 }
 
 // Anime: witanime's series, films and schedule
@@ -877,8 +1054,8 @@ function lazyGrid(box, pages, next) {
 
 // later pages are fetched fresh (force): a background re-check of a cached one would redraw the view from page 1
 function listView(label, d, next, refresh) {
-  view.innerHTML = `<div class="page"><h1>${esc(t(label))} <button class="btn ghost small refresh" id="rf">${ICON.refresh} ${t('refresh')}</button></h1>${grid(d.items)}</div>`;
-  $('#rf').onclick = pageRefresh = refresh;
+  view.innerHTML = `<div class="page"><h1>${esc(t(label))}</h1>${grid(d.items)}</div>`;
+  pageRefresh = refresh; // pull down on a phone; every page is also asked again in the background (quietCheck)
   lazyGrid($('.page'), d.pages, next);
 }
 
@@ -920,7 +1097,7 @@ async function schedule(force) {
     : fmt({ weekday: 'long', day: 'numeric', month: 'short' }, s.at))(Math.round((day(s.at) - today) / 864e5))
     + ' · ' + fmt({ hour: 'numeric', minute: '2-digit' }, s.at) + (s.ep ? ` · ${t('epShort')} ${s.ep}` : '');
   const all = Object.values(days).flat().sort((a, b) => a.at - b.at);
-  view.innerHTML = `<div class="page sched"><h1>${t('schedule')} <button class="btn ghost small refresh" id="rf">${ICON.refresh} ${t('refresh')}</button></h1>
+  view.innerHTML = `<div class="page sched"><h1>${t('schedule')}</h1>
     <label class="sched-q">${ICON.search}<input type="search" id="sq" placeholder="${t('schedSearch')}" enterkeyhint="search" autocomplete="off" spellcheck="false" value="${esc(schedQ)}">
       <button type="button" class="search-clr" id="sqx" title="${t('clear')}" aria-label="${t('clear')}">${ICON.x}</button></label>
     <div id="sh"></div></div>
@@ -941,7 +1118,6 @@ async function schedule(force) {
   $('#sqx').onclick = () => { $('#sq').value = schedQ = ''; find(); $('#sq').focus(); };
   find();
   pageRefresh = () => schedule(true);
-  $('#rf').onclick = () => pageRefresh().then(() => toast(t('updated')));
 }
 
 // a schedule card (#/airing/<animeschedule slug>): its title searched among the anime (witanime may not list it yet, or spell
@@ -953,6 +1129,8 @@ async function airing(route) {
 
 // loading placeholders: n cards (their image box already shimmers, see .card .img), and rows of them
 const skel = n => Array.from({ length: n }, (_, i) => `<div class="card skel" style="--i:${i}"><div class="img"></div><div class="meta"><span class="bar"></span></div></div>`).join('');
+// separate from the real list: placeholders never become selectable or playable episodes.
+const epSkeleton = (n = 6) => n > 0 ? `<div class="ep-loading" role="status" aria-label="${t('loadingEpisodes')}">${Array.from({ length: n }, () => '<div class="ep skel ep-skel" aria-hidden="true"><div class="ep-thumb"></div><span><i class="bar"></i><i class="bar"></i></span></div>').join('')}</div>` : '';
 // after a server menu's rows while more are still being looked up (play, cinema.js)
 const ddSkel = () => `<div class="dd-skel" role="status" aria-label="${t('searchingServers')}"><span></span><span></span></div>`;
 const skelRows = n => Array.from({ length: n }, () => `<section class="row"><h3><span class="bar"></span></h3><div class="track">${skel(8)}</div></section>`).join('');
@@ -1051,36 +1229,45 @@ async function fuzzySearch(q, kind, ask) {
 }
 
 let searchRun = 0;
-// #/search/<q>?in=<section>: only that section is asked, its matches in one grid
+// #/search/<q>?in=<section>: all: one row per section, each filling in as its site answers (like the Android app);
+// ?in=: only that section is asked, its matches in one grid. novels are the website's only
 async function search(q) {
   const run = ++searchRun, hash = location.hash, current = () => run === searchRun && hash === location.hash;
-  const IN = /\?in=(anime|manga|cinema)$/, s = q.match(IN)?.[1] || '';
+  const IN = /\?in=(anime|manga|cinema|novels)$/, s = q.match(IN)?.[1] || '';
   q = q.replace(IN, '');
   $('#search').q.value = q;
-  const tabs = `<div class="fchips">${['', 'anime', 'manga', 'cinema'].map(k =>
+  const tabs = `<div class="fchips">${['', 'anime', 'cinema', 'manga', ...(api.web ? ['novels'] : [])].map(k =>
     `<a class="fchip ${k === s ? 'on' : ''}" href="#/search/${encodeURIComponent(q)}${k && '?in=' + k}">${t(k || 'all')}</a>`).join('')}</div>`;
   const head = `<h1>${esc(t('results', q))} <a class="btn ghost small h1-btn" href="#/filter/1?search=${encodeURIComponent(q)}">${ICON.filter} ${t('filter')}</a></h1>${tabs}`;
-  if (s === 'manga' || s === 'cinema') {
+  const animeP = () => fuzzySearch(q, 'anime', v => scraper.search(v).then(r => r.items)).catch(() => []);
+  const novelsP = limit => nvLoad('/novels', { language: 'ar', limit, search: q }).then(j => j.data.map(nvCard)).catch(() => []);
+  if (s) { // one section: a grid
     view.innerHTML = `<div class="page">${head}<div class="grid" id="sres">${skel(12)}</div></div>`;
-    const html = await moreResults(s === 'manga' && { search: q }, s === 'cinema' && { search: q }, [], true);
+    if (s === 'anime') { const items = await animeP(); if (current()) view.innerHTML = `<div class="page">${head}${grid(items)}</div>`; return; }
+    const html = s === 'novels' ? grid(await novelsP(30)) : await moreResults(s === 'manga' && { search: q }, s === 'cinema' && { search: q }, [], true);
     if (current() && $('#sres')) $('#sres').outerHTML = html;
     return;
   }
-  view.innerHTML = `<div class="page">${head}<div class="grid">${skel(12)}</div></div><div class="rows sched-rows">${skelRows(2)}</div>`;
-  const d = { items: await fuzzySearch(q, 'anime', v => scraper.search(v).then(r => r.items)) };
-  if (!current()) return;
-  // "nothing here" only once the manga and film rows came back empty too
-  view.innerHTML = `<div class="page">${head}${d.items.length ? grid(d.items) : ''}</div><div class="rows sched-rows" id="mres">${skelRows(2)}</div>`;
-  const more = s ? '' : await moreResults({ search: q }, { search: q }, d.items); // ?in=anime: witanime's alone
-  if (!current() || !$('#mres')) return;
-  $('#mres').innerHTML = more;
-  if (!more && !d.items.length) $('.page').insertAdjacentHTML('beforeend', grid([]));
+  const ids = ['anime', 'cinema', 'manga', ...(api.web ? ['novels'] : [])];
+  view.innerHTML = `<div class="page">${head}<div id="sempty"></div></div>` + ids.map(k => `<div class="rows sched-rows" id="s-${k}">${skelRows(1)}</div>`).join('');
+  const more = (k, items) => items.length ? row(k, items, `#/search/${encodeURIComponent(q)}?in=${k}`) : '';
+  const got = {};
+  const done = (k, html) => { got[k] = html; if (!current()) return; $('#s-' + k).innerHTML = html;
+    // "nothing here" only once every section has come back empty
+    if (ids.every(i => i in got) && !ids.some(i => got[i])) $('#sempty').innerHTML = grid([]); };
+  const anime = animeP();
+  anime.then(items => done('anime', more('anime', items)));
+  // films: the same title as an anime film is listed once, under anime (moreResults)
+  anime.then(items => moreResults(null, { search: q }, items).catch(() => '')).then(html => done('cinema', html));
+  moreResults({ search: q }, null).catch(() => '').then(html => done('manga', html));
+  if (api.web) novelsP(12).then(items => done('novels', more('novels', items)));
 }
 // manga and film matches, as rows (the search page, and the filter page). mq: a manga browse query (MangaSwat's terms; and:
 // more genre ids each card must have), fq: films (see filmQuery in filter.js; { search } alone for the search page); either
 // null to leave that section out. egydead's anime films are already dropped by category; this also drops one it filed
 // elsewhere when witanime listed the same film (same title, same year). asGrid: one grid of both (a search in one section)
 async function moreResults(mq, fq, anime = [], asGrid) {
+  mq ||= null; fq ||= null; // callers pass `false` for a section left out; `false?.filter` would throw
   const { and = [], ...api } = mq || {}, oq = mq && !and.length && olyQuery(new URLSearchParams(api));
   const ask = (kind, fn, s) => s ? fuzzySearch(s, kind, fn) : fn(); // a search: what was meant too (see fuzzySearch)
   const [m, tm, f] = await Promise.all([
@@ -1504,10 +1691,10 @@ const detTabs = (list, n) => `<div class="det-tabs" role="tablist">${[['det', t(
   .map(([k, s]) => `<button role="tab" data-tab="${k}">${s}</button>`).join('')}</div>`;
 // a title's top, all four kinds, one part after another: wide screens show them beside the poster, phones lay them out as the native app's
 // page (style.css, Screens.kt DetailPage). kinds: its type and status, red under the names there. more: its ⋮ menu there, the same buttons
-const detHead = ({ list, banner, poster, title, alt, meta = [], kinds = [], views, chips = [], desc, rating = '', play, actions = '', more = '', refresh }) => `
+const detHead = ({ list, banner, poster, blur = false, title, alt, meta = [], kinds = [], views, chips = [], desc, rating = '', play, actions = '', more = '' }) => `
   <div class="det-bar"><button class="icon-btn" id="det-back" aria-label="${t('back')}">${ICON.back}</button><b dir="auto">${esc(title)}</b><button class="icon-btn" id="det-dots" aria-label="${t('more')}">${ICON.dots}</button></div>
   ${list ? detTabs(...list) : ''}
-  <div class="det-hero"><div class="bg" style="background-image:url('${esc(String(banner || '').replaceAll("'", '%27'))}')"></div>
+  <div class="det-hero"><div class="bg${blur ? ' blur' : ''}" data-banner="${esc(banner || '')}"></div>
     <div class="det ${poster ? '' : 'bare'}">
       ${poster ? `<img class="poster" src="${esc(poster)}" alt="">` : ''}
       <div class="det-main">
@@ -1524,22 +1711,29 @@ const detHead = ({ list, banner, poster, title, alt, meta = [], kinds = [], view
           ${rating}
           ${views ? `<span class="det-stat">${ICON.eye}<b>${views}</b></span>` : ''}
           <div class="actions">
-            ${play ? `<a class="btn red" href="${esc(play.href)}">${play.icon || ICON.play} ${esc(play.label)}</a>` : ''}
+            ${play ? `<a class="btn play" href="${esc(play.href)}">${play.icon || ICON.play} ${esc(play.label)}</a>` : ''}
             ${actions}
-            <div class="det-more">${more}${refresh ? `<button class="icon-btn det-rf" id="rf" title="${t('refresh')}" aria-label="${t('refresh')}">${ICON.refresh}<span>${t('refresh')}</span></button>` : ''}</div>
+            <div class="det-more">${more}</div>
           </div>
         </div>
       </div>
     </div>
   </div>
-  ${play ? `<a class="btn red det-fab" data-pane="eps" href="${esc(play.href)}">${play.icon || ICON.play} ${esc(play.label)}</a>` : ''}`;
+  ${play ? `<a class="btn play det-fab" data-pane="eps" href="${esc(play.href)}">${play.icon || ICON.play} ${esc(play.label)}</a>` : ''}`;
 // the ⋮ menu: any tap closes it, on an entry too (toggled by its own button)
 document.addEventListener('click', e => e.target.closest('#det-dots') || $('.det-more.open')?.classList.remove('open'));
 function wireDetTabs() {
+  const bg = $('.det-hero .bg'), hash = location.hash;
+  if (bg) {
+    const h = { info: hash, title: $('.det h1')?.textContent || '', alt: $('.det .alt')?.textContent || '', banner: bg.dataset.banner, poster: $('.det .poster')?.getAttribute('src') || '' };
+    const paint = url => { if (url && bg.isConnected && location.hash === hash) bg.style.backgroundImage = `url("${String(img(url)).replaceAll('"', '%22')}")`; };
+    if (bg.classList.contains('blur')) paint(bg.dataset.banner); // the cover itself, blurred to its colours: no wide art is looked up
+    else { paint(heroArt.get(backdropKey(h))); resolveBackdrop(h).then(paint).catch(() => {}); }
+  }
   document.body.classList.add('det-open'); // on phones its bar takes the nav's place and the dock goes: route() brings them back
   $('#det-back').onclick = () => history.length > 1 ? history.back() : (location.hash = '#/');
   const more = $('.det-more'), dots = $('#det-dots');
-  dots.hidden = ![...more.children].some(b => getComputedStyle(b).display !== 'none'); // refresh is hidden on touch screens (they pull down): it alone is no menu
+  dots.hidden = ![...more.children].some(b => getComputedStyle(b).display !== 'none');
   dots.onclick = () => more.classList.toggle('open');
   $('.det .desc')?.addEventListener('click', e => e.currentTarget.classList.toggle('more')); // five lines on a phone, the rest on a tap
   const p = $('.det-page'), bs = [...document.querySelectorAll('.det-tabs button')];
@@ -1549,52 +1743,102 @@ function wireDetTabs() {
   bs.forEach(b => b.onclick = () => { set(b.dataset.tab); scrollTo(0, 0); });
 }
 
+// keep the same visible episode (or the section below it) when older rows arrive above it.
+function keepEpisodePosition(list, update, reserve = false) {
+  const page = list.closest('.det-page'), section = list.closest('[data-pane="eps"]');
+  const candidates = [...list.querySelectorAll('[data-pick]'), ...page.querySelectorAll('#title-cast, #title-related')];
+  const anchor = candidates.find(el => { const r = el.getBoundingClientRect(); return r.bottom > 96 && r.top < innerHeight; });
+  const pick = anchor?.dataset.pick, top = anchor?.getBoundingClientRect().top, y = scrollY;
+  const focused = document.activeElement?.closest('#eps [data-pick]')?.dataset.pick;
+  if (reserve) section.style.minHeight = section.getBoundingClientRect().height + 'px';
+  update();
+  const rows = [...list.querySelectorAll('[data-pick]')];
+  const next = pick ? rows.find(el => el.dataset.pick === pick) : anchor;
+  if (focused) rows.find(el => el.dataset.pick === focused)?.focus({ preventScroll: true });
+  const target = next?.isConnected ? scrollY + next.getBoundingClientRect().top - top : y;
+  if (Math.abs(target - scrollY) > .5) scrollTo({ top: target, behavior: 'instant' });
+}
 async function title(path, force) {
   const d = await scraper.details(path, force);
   if (d.path && decodeURIComponent(d.path) !== path) return location.replace('#/title' + d.path); // found under another address (the website's episode cards, risto.js): its own
   const h = store.history[path];
   const type = path.startsWith('/movie') ? 'movie' : 'anime';
   const first = h?.epPath || d.episodes[0]?.path, hasEps = d.episodes.length > 1 || type === 'anime';
-  view.innerHTML = `<div class="det-page">${detHead({ list: hasEps && [t('episodes'), d.episodes.length], banner: img(d.banner), poster: d.poster && img(d.poster), title: d.title, alt: d.alt,
-      chips: [...d.tags.filter(x => !/^\d+\.\d+$/.test(x)), ...d.genres], desc: d.desc, rating: Ratings.slot({title:d.title, alt:d.alt, type:"anime", path}), refresh: true,
+  const count = d.episodes.length + (d.episodesPending ? '+' : '');
+  view.innerHTML = `<div class="det-page">${detHead({ list: hasEps && [t('episodes'), count], banner: img(d.banner), poster: d.poster && img(d.poster), title: d.title, alt: d.alt,
+      chips: [...d.tags.filter(x => !/^\d+\.\d+$/.test(x)), ...d.genres], desc: d.desc, rating: Ratings.slot({title:d.title, alt:d.alt, type:"anime", path}),
       play: first && { href: playHash(first), label: h ? t('resume', h.ep) : t('play') },
       actions: `${api.web && type==='movie' && first ? `<button class="btn ghost" id="web-film-dl">${ICON.download} ${t('downloadShort')}</button>` : ''}
             <button class="btn ghost" id="fav">${inList(path) ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList')}</button>`,
       more: `${d.trailer ? `<button class="btn ghost" id="trl">${ICON.play} ${t('trailer')}</button>` : ''}
             ${type === 'anime' ? `<button class="btn ghost" id="grf">${ICON.star} ${t('epRatings')}</button>` : ''}` })}
     ${d.info.length ? `<div class="infos">${d.info.map(([k, v]) => `<div><span>${esc(k)}</span>${esc(v)}</div>`).join('')}</div>` : ''}
-    ${hasEps ? `<div class="section" data-pane="eps"><h2>${t('episodes')} <small>${d.episodes.length}</small>
+    ${hasEps ? `<div class="section" data-pane="eps"><h2>${t('episodes')} <small>${count}</small>
       <div class="ep-tools"><input id="epf" placeholder="${t('jump')}" type="number"><button class="btn ghost small ${store.prefs.hideFiller ? 'on' : ''}" id="hfl" aria-label="${t('hideFiller')}" title="${t('hideFiller')}" aria-pressed="${!!store.prefs.hideFiller}" hidden>${ICON.eyeSlash}</button><button class="btn ghost small" id="rev" aria-label="${t('reverse')}" title="${t('reverse')}">${ICON.sort}</button>
         ${selBtn('btn ghost small')}</div></h2>
-      ${selBar()}<div class="eps list" id="eps"></div></div>` : ''}
+      ${selBar()}<div class="eps list" id="eps" aria-busy="${!!d.episodesPending}"></div>
+      <div class="ep-pagination"><span id="ep-count" aria-live="polite"></span><button type="button" class="btn ghost" id="ep-more" aria-controls="eps">${t('moreEpisodes')}${ICON.caretDown}</button></div></div>` : ''}
     <section class="section" id="title-cast" hidden></section>
-    ${d.related.length ? row(t('moreLike'), d.related) : ''}</div>`;
+    <div id="title-related">${d.related.length ? row(t('moreLike'), d.related) : ''}</div></div>`;
   wireDetTabs();
 
   CastInfo.mount($('#title-cast'), [d.title, ...(d.alt || '').split(/[,،]/)], 'anime');
   if (type === 'anime') $('#grf').onclick = () => ratingsSheet([d.title, ...(d.alt || '').split(/[,،]/)], '', true);
-  const eps = $('#eps');
-  let rev = false, info = {}, kinds = {};
-  const shown = (f = $('#epf')?.value) => (rev ? [...d.episodes].reverse() : d.episodes)
+  const eps = $('#eps'), root = $('.det-page'), hash = location.hash;
+  const actionEpisodes = d.episodes.map(e => ({ id: e.path, ep: e.ep }));
+  const EPISODE_BATCH = 24;
+  let rev = false, info = {}, kinds = {}, episodeLimit = EPISODE_BATCH;
+  const matching = (f = $('#epf')?.value) => (rev ? [...d.episodes].reverse() : d.episodes)
     .filter(e => f ? parseFloat(e.ep) === +f // the number itself: 1 is episode 1, not 10-19. Typed, it shows even if hidden
       : !store.prefs.hideFiller || kinds[+e.ep] !== 'filler' || h?.epPath === e.path); // the one left off at stays: mixed ones too, they hold canon
-  const drawEps = () => eps && (eps.innerHTML = shown()
-    .map(e => epRow(e.ep, { ...info[+e.ep], kind: kinds[+e.ep] }, d.banner || d.poster, playHash(e.path), store.seen[e.path], h?.epPath === e.path, e.path)).join(''));
+  const shown = () => matching().slice(0, episodeLimit);
+  const drawEps = () => eps && keepEpisodePosition(eps, () => {
+    const visible = shown(), total = matching().length;
+    eps.innerHTML = visible.map(e => epRow(e.ep, { ...info[+e.ep], kind: kinds[+e.ep] }, d.banner || d.poster, playHash(e.path), store.seen[e.path], h?.epPath === e.path, e.path)).join('')
+      + (d.episodesPending ? epSkeleton(Math.max(0, episodeLimit - visible.length)) : '');
+    const button = $('#ep-more');
+    button.style.visibility = total > visible.length || d.episodesPending ? '' : 'hidden';
+    button.disabled = !!d.episodesPending && total <= visible.length;
+    $('#ep-count').textContent = d.episodesPending ? t('loadingEpisodes') : t('episodesShown', visible.length, total);
+  });
   drawEps();
   if (eps) {
     scraper.episodeInfo([d.title, ...(d.alt || '').split(/\s*[,،]\s*/)]).then(i => { info = i; drawEps(); }).catch(() => {}); // names are extras: the numbers stand without them
     const hfl = $('#hfl');
     if (type === 'anime') scraper.filler([d.title, ...(d.alt || '').split(/\s*[,،]\s*/)]).then(k => { kinds = k; hfl.hidden = !Object.values(k).includes('filler'); drawEps(); }).catch(() => {}); // so are these marks
     hfl.onclick = () => { const on = store.prefs.hideFiller = !store.prefs.hideFiller; persist('prefs'); hfl.classList.toggle('on', on); hfl.setAttribute('aria-pressed', on); drawEps(); };
-    $('#epf').oninput = drawEps;
+    $('#epf').oninput = () => { episodeLimit = EPISODE_BATCH; eps.closest('[data-pane="eps"]').style.minHeight = ''; drawEps(); };
+    $('#ep-more').onclick = () => {
+      const before = shown().length; episodeLimit += EPISODE_BATCH; drawEps();
+      eps.querySelectorAll('[data-pick]')[before]?.focus({ preventScroll: true });
+    };
     $('#rev').onclick = () => { rev = !rev; drawEps(); };
-    epActions(eps, d.episodes.map(e => ({ id: e.path, ep: e.ep })), () => shown().map(e => e.path), drawEps,
+    epActions(eps, actionEpisodes, () => shown().map(e => e.path), drawEps,
       e => ({ id: e.id, epPath: e.id, show: showOf(e.id), title: d.title, ep: e.ep, poster: d.poster }), d.title);
+  }
+  if (type === 'anime' && eps) {
+    const signature = data => JSON.stringify([data.title, data.alt, data.desc, data.poster, data.tags, data.genres, data.info]);
+    titleLive = { hash, root, async refresh() {
+      const next = await scraper.details(path);
+      if (location.hash !== hash || !root.isConnected) return true;
+      if (next.path && decodeURIComponent(next.path) !== path || signature(next) !== signature(d)) return false;
+      keepEpisodePosition(eps, () => {
+        const relatedChanged = JSON.stringify(d.related) !== JSON.stringify(next.related);
+        Object.assign(d, next);
+        actionEpisodes.splice(0, actionEpisodes.length, ...d.episodes.map(e => ({ id: e.path, ep: e.ep })));
+        drawEps();
+        const count = d.episodes.length + (d.episodesPending ? '+' : '');
+        root.querySelectorAll('.det-tabs [data-tab="eps"] small, [data-pane="eps"] h2 > small').forEach(el => { el.textContent = count; });
+        eps.setAttribute('aria-busy', String(!!d.episodesPending));
+        if (!h && d.episodes[0]) root.querySelectorAll('.btn.play').forEach(a => { a.href = playHash(d.episodes[0].path); });
+        if (relatedChanged) $('#title-related', root).innerHTML = d.related.length ? row(t('moreLike'), d.related) : '';
+      }, true);
+      return true;
+    } };
   }
   $('#web-film-dl')?.addEventListener('click',()=>WebDownloads.downloadVideo([{id:first,epPath:first,show:path,title:d.title,ep:'',poster:d.poster}]));
   $('#fav').onclick = e => { const on = toggleList({ path, title: d.title, poster: d.poster, type }); e.currentTarget.innerHTML = on ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList'); };
   pageRefresh = () => title(path, true);
-  $('#rf').onclick = () => pageRefresh().then(() => toast(t('updated')));
   if (d.trailer) $('#trl').onclick = () => showTrailer(d.trailer);
   else if (scraper.trailer) scraper.trailer(d.title, d.alt).then(url => { // the website's: an extra, it may come after the page
     if (!url || !$('.det-more') || $('#trl')) return;
@@ -1630,7 +1874,6 @@ function epActions(list, eps, ids, redraw, job, title) {
     (!one || !store.seen[ps[0]]) && ['seen', t('markWatched')],
     (!one || store.seen[ps[0]]) && ['unseen', t('markUnwatched')],
     pick(ps).some(free) && ['dl', t('downloadShort')],
-    api.web && ps.length>1 && ['zip', t('wbZip')],
     pick(ps).some(saved) && ['del', t(one ? 'delDownload' : 'delDownloads')],
     one && ['select', t('select')],
   ].filter(Boolean);
@@ -1664,7 +1907,7 @@ function overlay(html) {
   m.onclick = () => m.remove();
   document.body.append(m);
 }
-const showTrailer = url => overlay(`<iframe src="${esc(url)}" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`);
+const showTrailer = url => overlay(`<iframe src="${esc(youtubeId(url) ? 'https://www.youtube.com/embed/' + youtubeId(url) + '?autoplay=1' : url)}" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`);
 // a tap on a details page's poster, or a downloaded show's, shows it full size
 document.addEventListener('click', e => {
   const p = e.target.closest('.det .poster, .dl-hero > img, .cast-photo[data-full]');
@@ -2057,6 +2300,7 @@ let pageRefresh = null;
 
 // ---------- router ----------
 let routeVersion = 0;
+let titleLive = null;
 // the player's back button. A host in the player's iframe can add history entries of its own (a redirect, a click on its player), and
 // history.back() would only step that iframe, leaving the page where it is: those are counted and stepped over. history.length stops
 // growing at 50, so a step that didn't leave goes to the page by its address
@@ -2073,11 +2317,16 @@ async function route(soft) {
   if (soft && (/^#\/novels\/read\//.test(location.hash) || /^#\/(play|offline|manga\/read)\/|^#\/cinema\/([^/]+\/watch|episode\/)/.test(location.hash) || $('.sheet-wrap, .context-menu, .dd.open, body.searching, #ptr.busy'))) return;
   closeContextMenu();
   const version = ++routeVersion;
+  if (soft && titleLive?.hash === location.hash && titleLive.root.isConnected) {
+    try { if (await titleLive.refresh() || version !== routeVersion) return; }
+    catch (e) { console.error(e); return; } // a failed background update keeps the usable page
+  }
+  titleLive = null;
   let spinnerT;
   CastInfo.dispose();
   scraper.newView();
   clearInterval(heroTimer);
-  document.body.classList.remove('det-open');
+  if (!soft) document.body.classList.remove('det-open');
   cardData.clear();
   pageRefresh = pagePress = null;
   if (!soft) picks = null;
@@ -2098,6 +2347,7 @@ async function route(soft) {
   immersed = watching || (['manga', 'novels'].includes(a) && rest[0] === 'read');
   $('#nav').style.display = immersed ? 'none' : '';
   if (!soft) {
+    heroState = null;
     const waitingView = view.firstElementChild; // the player can render before its servers finish: don't erase it while awaiting them
     scrollTo(0, 0); spinnerT = setTimeout(() => { if (version === routeVersion && view.firstElementChild === waitingView) spinner(); }, 120);
   }
@@ -2144,7 +2394,7 @@ addEventListener('hashchange', () => route()); // not `route` directly: the even
   await Promise.all(Object.keys(store).map(async k => { store[k] = (await api.get(k)) || {}; }));
   for (const [p, s] of Object.entries(store.streams)) if (!(Date.now() - s.at < STREAMS_KEEP)) delete store.streams[p];
   if (api.web) WebDownloads.cleanupLegacyDownloads().catch(()=>{});
-  lang = store.prefs.lang || 'ar';
+  lang = store.prefs.lang || 'en';
   const ran = (await api.downloadStatus?.().catch(() => null)) || {}; // phones: downloads kept going after the app was swiped away
   for (const d of Object.values(store.downloads)) { // what the service did meanwhile, including items it started on its own (see dlSent)
     const r = ran[d.id];

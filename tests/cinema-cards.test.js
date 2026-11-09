@@ -27,3 +27,15 @@ test('movie metadata, series paths and TV categories remain accepted', () => {
     ['فيلم-whatsapp', 'أفلام أجنبية', 'فيلم WhatsApp'],
   ]) assert.equal(media(...row), true, row.join(' / '));
 });
+
+test('section rankings deduplicate and sort rated movies separately from series', () => {
+  const top = vm.runInNewContext(source.slice(source.indexOf('const edShowKey ='), source.indexOf('const edCards =')) + source.slice(source.indexOf('const edTopRated ='), source.indexOf('async function cinemaHome')) + '\nedTopRated');
+  const film = (id, rating) => ({ path: '/cinema/' + id, title: id, rating });
+  const lists = [{ items: [film('a', '7.1'), film('b', '9'), film('unrated', ''), film('serie/show', '9.5')] },
+    { items: [film('b', '9'), ...Array.from({ length: 12 }, (_, i) => film('extra-' + i, '6'))] }];
+  const movies = top(lists);
+  assert.equal(movies.length, 10);
+  assert.deepEqual(Array.from(movies.slice(0, 2), c => c.path), ['/cinema/b', '/cinema/a']);
+  assert.equal(new Set(movies.map(c => c.path)).size, movies.length);
+  assert.deepEqual(Array.from(top(lists, true), c => c.path), ['/cinema/serie/show']);
+});

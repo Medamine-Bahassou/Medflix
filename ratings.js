@@ -104,7 +104,10 @@ const Ratings = (() => {
   // the sites' own logos, the same files the app shows (android's drawable-nodpi/logo_*.png)
   const LOGO = { IMDb: 'imdb', 'Rotten Tomatoes': 'rt', Metacritic: 'mc', MyAnimeList: 'mal', AniList: 'anilist' };
   // one badge per source, its full name on hover: a percent for Rotten Tomatoes, Metacritic's score out of 100, the rest out of 10
-  const badge = (source, value) => `<span class="rb" title="${esc(source)}"><img src="assets/ratings/${LOGO[source] || 'anilist'}.png" alt="${esc(source)}"><b>${esc(value)}${source === 'Rotten Tomatoes' ? '%' : ''}</b>${source === 'Rotten Tomatoes' || source === 'Metacritic' ? '' : '<small>/10</small>'}</span>`;
+  const badge = (source, value) => {
+    const score = Number.isFinite(+value) ? String(+value) : String(value), percent = source === 'Rotten Tomatoes', scale = !percent && source !== 'Metacritic';
+    return `<span class="rb" role="img" aria-label="${esc(source + ': ' + score + (percent ? '%' : scale ? '/10' : '/100'))}"><img src="assets/ratings/${LOGO[source] || 'anilist'}.png" alt=""><span class="rb-name">${esc(source)}</span><span class="rb-score"><b>${esc(score)}${percent ? '%' : ''}</b>${scale ? '<small>/10</small>' : ''}</span></span>`;
+  };
   // ---------- the show page's graph: each episode's rating, as [season, episode, score] ----------
   // the sites spell a name their own way: "Shippuuden", "Shippūden", "Shippuden"
   const spelled = s => filmName(String(s || '').normalize('NFD').replace(/\p{M}/gu, '')).replace(/([ou])u/g, '$1');
@@ -302,14 +305,13 @@ const Ratings = (() => {
       still: h.images?.edges.map(e => e.node).find(i => i.width >= 1280 && i.width / i.height >= 1.3)?.url, // its portraits and small old ones would blur again
     }));
   };
-  // the sharpest picture of a slide, '' if it has none better: only a film's or an anime's, as nothing has more than the sites' covers for manga
-  // and novels (AniList's largest is 460px, its banners 400px high: the slider's own blur). Kept with the page cache, a miss too
-  const art = h => scraper.remember('art:' + h.title + '|' + (h.year || ''), async () => {
+  // wide stills only: portrait posters leave an empty backdrop instead of being stretched across it.
+  const art = h => scraper.remember('art:wide2:' + h.info + '|' + h.title + '|' + (h.year || ''), async () => {
     const name = filmName(h.title);
     if (!name) return ''; // only an Arabic name: IMDb has it under another
     if (/^#\/cinema\//.test(h.info)) { // by name, kind and year: two 2026 films are called The Odyssey
       const hit = filmPick(await frames(name), { title: h.title, year: h.year, path: decodeURIComponent(h.info.slice(1)) });
-      return hit?.still ? sized(hit.still, 'UX1920') : hit?.poster ? sized(hit.poster, 'UY1500') : '';
+      return hit?.still ? sized(hit.still, 'UX1920') : '';
     }
     if (!/^#\/title\//.test(h.info)) return '';
     // the animated one (One Piece has a live action of its name). A romaji name is often not IMDb's: AniList knows its English one

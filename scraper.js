@@ -312,9 +312,9 @@ const filler = names => remember('filler:' + names.map(foldName).join(), async (
 });
 
 // Everything scraped is kept for 90 days and shown straight from the cache, but the site is asked again on
-// every visit (at most once a minute per page); a changed page is saved and the current view redrawn.
+// every visit (at most once every five minutes per page); a changed page is saved and the current view redrawn.
 // force=true waits for the site instead.
-const KEEP = 90 * 24 * HOUR, RECHECK = 60e3;
+const KEEP = 90 * 24 * HOUR, RECHECK = 5 * 60e3;
 let cache = null, cacheReady = null, saveT = null, onChange = null;
 const used = new Set(), checking = new Set(), inflight = new Map(); // URLs the current view was built from; background checks in flight; deduplicated live fetches
 const viewed = new Map(); // the current view's own pages (url -> kind), asked again by recheck(); not keep's extras (kitsu's 20-episode pages)
@@ -372,19 +372,27 @@ async function load(kind, url, force = false, keep = false) {
 // lookups built from several requests (ratings, cast lists): the last answer at once, asked again behind it once a day (they
 // hardly change), kept 90 days like pages. A miss or an empty list isn't kept: it may be a blip
 let lookups = null, lookT = null;
+const lookupFlights = new Map();
 async function remember(key, task) {
   const all = await (lookups ||= api.get('lookups').then(l => {
     l ||= {};
     for (const [k, e] of Object.entries(l)) if (!(Date.now() - e.at < KEEP)) delete l[k];
     return l;
-  }));
+  }).catch(e => { lookups = null; throw e; }));
   const put = data => {
     if (data != null && !(Array.isArray(data) && !data.length)) { all[key] = { at: Date.now(), data }; clearTimeout(lookT); lookT = setTimeout(() => api.set('lookups', all), 1000); }
     return data;
   };
+  const run = () => {
+    if (!lookupFlights.has(key)) {
+      const pending = Promise.resolve().then(task).then(put).finally(() => lookupFlights.delete(key));
+      lookupFlights.set(key, pending);
+    }
+    return lookupFlights.get(key);
+  };
   const hit = all[key];
-  if (!hit) return put(await task());
-  if (Date.now() - (hit.checked || hit.at) > 24 * HOUR) { hit.checked = Date.now(); task().then(put, () => {}); } // offline: keep it
+  if (!hit) return run();
+  if (Date.now() - (hit.checked || hit.at) > 24 * HOUR) { hit.checked = Date.now(); run().catch(() => { delete hit.checked; }); } // offline: keep it
   return hit.data;
 }
 
@@ -422,7 +430,7 @@ window.scraper = {
   movies: (page, force) => scraper.list('/movies', page, force),
   newEpisodes: (page, force) => load('newEpisodes', `/new-episodes?page=${page}`, force),
   search: q => load('list', `/search?q=${encodeURIComponent(q)}`),
-  details: (path, force) => load('details', path, force),
+  details: (path, force, keep = false) => load('details', path, force, keep),
   episodeInfo,
   kitsuShow,
   filler,

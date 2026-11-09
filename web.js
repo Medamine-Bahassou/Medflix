@@ -6,18 +6,27 @@ if (!window.api) (() => {
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   // everything goes as GET (no cookies: no answer is the visitor's own), which Vercel's cache shares between all visitors
   // for a few minutes; a body too long for an address (a big GraphQL query) is POSTed
+  const proxyFlights = new Map();
   const viaProxy = async req => {
     const q = new URLSearchParams({ url: req.url, h: JSON.stringify(req.headers || {}), ...(req.method && { m: req.method }), ...(req.body && { b: req.body }) });
-    const r = q.toString().length < 6000 ? await fetch('/api/proxy?' + q)
-      : await fetch('/api/proxy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req) });
-    if (!r.ok) throw new Error((await r.json().catch(() => null))?.error || `proxy HTTP ${r.status}`);
-    return r.json();
+    const read = !req.method || req.method === 'GET' || /^(?:graphql\.anilist\.co|caching\.graphql\.imdb\.com)$/.test(new URL(req.url).hostname) && /^[\s]*(?:query\b|\{)/.test(JSON.parse(req.body || '{}').query || '');
+    const key = q.toString();
+    const request = async () => {
+      const r = key.length < 6000 ? await fetch('/api/proxy?' + q)
+        : await fetch('/api/proxy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req) });
+      if (!r.ok) throw new Error((await r.json().catch(() => null))?.error || `proxy HTTP ${r.status}`);
+      return r.json();
+    };
+    if (!read) return request(); // playback tokens and other POSTs must keep their own responses
+    if (!proxyFlights.has(key)) proxyFlights.set(key, request().finally(() => proxyFlights.delete(key)));
+    return proxyFlights.get(key);
   };
   const http = async (url, opt = {}) => {
     for (let i = 0; ; i++) { // rate-limited bursts (429): wait and retry (see main.js)
-      const res = await viaProxy({ url, ...opt });
-      if (res.status !== 429 || i === 3) return res;
-      await sleep((+res.headers['retry-after'] || 2 ** i) * 1000);
+      // a site's gateway timing out (502-504, novltime's API now and then) or the proxy failing to reach it: asked again, a plain read only (a POST may have landed)
+      const res = await viaProxy({ url, ...opt }).catch(e => { if (opt.method === 'POST' || i === 2) throw e; });
+      if (res && ![429, 502, 503, 504].includes(res.status) || i === 3 || res && res.status >= 500 && (opt.method === 'POST' || i === 2)) return res;
+      await sleep(res?.status === 429 ? (+res.headers['retry-after'] || 2 ** i) * 1000 : 800 * (i + 1));
     }
   };
   const refusal = res => res.headers['cf-mitigated'] ? ' · Cloudflare check' : '';
@@ -28,6 +37,19 @@ if (!window.api) (() => {
   };
   // Anime Witcher's backend (Firestore, Algolia) answers browsers itself
   const aw = AnimeWitcher.create(async (url, options) => { const r = await fetch(url, options); if (!r.ok) throw new Error(`AW HTTP ${r.status}`); return r.text(); });
+
+  // the worker caches images only; HTML, scripts, playback and user data keep their existing update paths.
+  if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
+    addEventListener('load', () => {
+      navigator.serviceWorker.register('image-cache-sw.js?v=' + encodeURIComponent(window.BUILD || '1'), { updateViaCache: 'none' }).catch(() => {});
+    }, { once: true });
+    document.addEventListener('error', e => {
+      if (e.target?.tagName === 'IMG') navigator.serviceWorker.controller?.postMessage({ type: 'image-error', url: e.target.currentSrc || e.target.src });
+    }, true); // don't keep an opaque response that turned out not to be a usable image
+  }
+  const clearImages = async () => {
+    if (typeof caches !== 'undefined') await Promise.all((await caches.keys()).filter(k => k.startsWith('medflix-images-')).map(k => caches.delete(k)));
+  };
 
   // --- storage: one IndexedDB key/value store (localStorage is too small for the page cache) ---
   const idb = new Promise((ok, fail) => {
@@ -116,7 +138,10 @@ if (!window.api) (() => {
       return res.data;
     },
     get: key => kv('readonly', s => s.get(key)),
-    set: (key, value) => kv('readwrite', s => s.put(value, key)),
+    async set(key, value) {
+      await kv('readwrite', s => s.put(value, key));
+      if (key === 'pages' && value && !Object.keys(value).length) await clearImages().catch(() => {});
+    },
 
     awSources: (title, alt, ep) => aw.sources(title, alt, ep),
     sources: epPath => Risto.sources(epPath),

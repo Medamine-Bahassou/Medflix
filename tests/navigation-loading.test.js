@@ -75,11 +75,20 @@ test('show page head: names escaped, play in the row and floating, its menu hold
  vm.createContext(c);vm.runInContext(app.slice(app.indexOf('const detTabs ='),app.indexOf('// the ⋮ menu: any tap'))+'\nglobalThis.detHead=detHead;',c);
  const page=c.detHead({list:['chapters',951],banner:"it's.jpg",poster:'p.jpg',title:'<Demon>',alt:'Other',kinds:['Manhua','Ongoing'],views:'249,053',chips:['Action'],desc:'Story',rating:'<i class="r"></i>',play:{href:'#/read/1',label:'Read'},actions:'<button id="fav"></button>',more:'<button id="grf"></button>',refresh:true});
  assert.doesNotMatch(page,/<Demon>/);
- assert.match(page,/url\('it%27s\.jpg'\)/); // a quote in an address can't end the url()
- assert.equal(page.match(/href="#\/read\/1"/g).length,2);assert.match(page,/class="btn red det-fab" data-pane="eps"/); // the list tab keeps its play button
+ assert.match(page,/data-banner="it's\.jpg"/);assert.doesNotMatch(page,/background-image/); // the source cover stays hidden until one wide image is chosen
+ assert.equal(page.match(/href="#\/read\/1"/g).length,2);assert.match(page,/class="btn play det-fab" data-pane="eps"/); // the list tab keeps its play button
  assert.match(page,/class="det-tabs"/);assert.match(page,/class="det-kinds"><span>Manhua<\/span><span>Ongoing<\/span>/);assert.match(page,/class="det-stat"/);
- assert.match(page,/class="det-more"><button id="grf"><\/button><button class="icon-btn det-rf" id="rf"/);
+ assert.match(page,/class="det-more"><button id="grf"><\/button><\/div>/);assert.doesNotMatch(page,/id="rf"|det-rf/);
  // a film: no tabs, no poster, no play, no refresh
  const bare=c.detHead({title:'Film'});
  assert.doesNotMatch(bare,/det-tabs|det-fab|class="poster"|id="rf"|det-stat|det-kinds/);assert.match(bare,/class="det bare"/);
+});
+
+test('episode background completion updates the live show without disposing or rebuilding the page',async()=>{
+ const s=playbackRoute();s.c.location.hash='#/title/anime/show';let updates=0,newViews=0;
+ s.c.live={hash:s.c.location.hash,root:{isConnected:true},refresh:async()=>{updates++;return true;}};
+ s.c.scraper.newView=()=>newViews++;
+ vm.runInContext('titleLive=live;',s.c);
+ await s.c.route(true);
+ assert.equal(updates,1);assert.equal(newViews,0);assert.equal(s.players.length,0);assert.match(s.c.view.innerHTML,/Previous page/);
 });

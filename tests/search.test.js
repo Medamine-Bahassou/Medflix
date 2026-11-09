@@ -59,7 +59,7 @@ test('a typo suggestion retries the corrected title against the source', async (
 test('slow older searches cannot overwrite the newest results', async () => {
   const page = fs.readFileSync('app.js', 'utf8').split('let searchRun =')[1].split('// manga and film matches, as rows')[0];
   const pending = {}, result = { innerHTML: '' }, view = { innerHTML: '' }, location = { hash: '#/search/new?in=anime' };
-  const ctx = { view, location, t: k => k, esc: s => s, ICON: { filter: '' }, skel: () => '', skelRows: () => '',
+  const ctx = { api: {}, view, location, t: k => k, esc: s => s, ICON: { filter: '' }, skel: () => '', skelRows: () => '',
     grid: items => items.map(c => c.title).join(''), $: sel => sel === '#search' ? { q: {} } : result,
     fuzzySearch: q => new Promise(resolve => { pending[q] = resolve; }) };
   vm.createContext(ctx);

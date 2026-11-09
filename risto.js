@@ -48,17 +48,17 @@ if (window.api?.web) (() => {
 
   const mostViewed = () => remember('ra:views', async () => cards(parse(await api.fetch(AJ + 'Filtering.php', { type: 'views' })), '.MovieItem'));
   const list = (url, force) => load('raList', url, force);
-  async function details(path, force) {
+  async function details(path, force, keep = false) {
     const [, kind, key] = path.match(/^\/(anime|movie)\/(.+)$/) || [];
     if (!key) throw new Error('bad path');
     const show = p => ({ alt: '', trailer: '', tags: [p.year].filter(Boolean), title: p.title, desc: p.desc, genres: p.genres, info: p.info, poster: p.poster, banner: p.banner });
-    if (kind === 'movie') return { ...show(await load('raPage', postUrl(key), force)), path, related: [], episodes: [{ path: `/watch/movie/${key}`, ep: 'Movie', url: postUrl(key) }] };
+    if (kind === 'movie') return { ...show(await load('raPage', postUrl(key), force, keep)), path, related: [], episodes: [{ path: `/watch/movie/${key}`, ep: 'Movie', url: postUrl(key) }] };
     if (key[0] === '~') { // an episode's post: its season's own page (the app moves there), else the post's own list
-      const p = await load('raPage', postUrl(key.slice(1)), force), season = p.seasonUrl && slugOf(p.seasonUrl);
-      if (season) return details('/anime/' + season, force);
+      const p = await load('raPage', postUrl(key.slice(1)), force, keep), season = p.seasonUrl && slugOf(p.seasonUrl);
+      if (season) return details('/anime/' + season, force, keep);
     }
     const [slug, id] = key[0] === '~' ? [key] : key.split('~');
-    const p = await load('raPage', slug[0] === '~' ? postUrl(slug.slice(1)) : seriesUrl(slug), force);
+    const p = await load('raPage', slug[0] === '~' ? postUrl(slug.slice(1)) : seriesUrl(slug), force, keep);
     const season = id && p.seasons.find(s => s.id === id);
     // another season: its list comes from the page's own call (kept a day: older seasons hardly change)
     const eps = season && !season.active ? await remember(`ra:season:${id}`, async () => episodes(parse(await api.fetch(AJ + 'Single/Episodes.php', { season: id, post_id: p.postId })), 'a[href]')) : p.episodes;

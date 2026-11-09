@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ar" dir="rtl">
+<html lang="en" dir="ltr">
 <head>
   <meta charset="utf-8">
   <!-- images.witanime.site rejects hotlinks: the Android app's https://localhost referer gets a 403 -->
@@ -14,7 +14,7 @@
 <body>
   <nav id="nav">
     <button type="button" class="nav-menu" id="dockMore" data-icon="menu" data-ta="more"></button>
-    <a href="#/" class="logo" data-icon="logo"></a>
+    <a href="#/" class="logo" data-icon="logo"><span class="logo-word" aria-hidden="true">edflix</span></a>
     <div class="links" id="links"></div>
     <form id="search" class="search" data-icon="search">
       <input name="q" type="search" enterkeyhint="search" data-tp="searchPh" placeholder=" " autocomplete="off">
@@ -24,7 +24,10 @@
     </form>
     <button type="button" class="search-btn" id="searchBtn" data-ta="searchPh" data-icon="search"></button>
     <a href="#/settings" class="nav-gear" data-ta="settings" data-icon="settings"></a>
-    <div class="lang" id="lang"><button data-l="ar">ع</button><button data-l="en">EN</button></div>
+    <div class="lang nav-lang" id="lang" role="group" data-ta="interfaceLang" aria-label="لغة الواجهة">
+      <button type="button" data-l="ar" lang="ar" aria-pressed="false">عربي</button>
+      <button type="button" data-l="en" lang="en" aria-pressed="false">EN</button>
+    </div>
   </nav>
   <main id="view"></main>
   <div id="drawer-bg"></div>

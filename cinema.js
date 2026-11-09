@@ -119,7 +119,8 @@ Object.assign(parsers, {
       desc: txt(doc.querySelector('.post__story p')) || txt(doc.querySelector('.post__content, .extra-content p, .singleStory')),
       cat: vals('القسم', 'تصنيف'), genres: vals('النوع', 'نوع'),
       tags: [...vals('السنه', 'سنة'), ...vals('الجوده', 'جودة'), ...vals('البلد', 'بلد'), ...vals('اللغه', 'لغة'), ...vals('مده العرض', 'مدة')].filter(Boolean),
-      trailer: doc.querySelector('.show__trailer[data-iframe]')?.getAttribute('data-iframe') || doc.querySelector('#trailerPopup iframe[src*="youtube"]')?.getAttribute('src') || '',
+      trailer: doc.querySelector('.show__trailer[data-iframe]')?.getAttribute('data-iframe') || doc.querySelector('#trailerPopup iframe[src*="youtube"]')?.getAttribute('src')
+        || [...doc.querySelectorAll('[data-trailer], iframe[src], iframe[data-src], a[href]')].map(el => el.getAttribute('data-trailer') || el.getAttribute('data-src') || el.getAttribute('src') || el.getAttribute('href')).find(u => /(?:youtube(?:-nocookie)?\.com\/(?:embed|watch|shorts|live)\b|youtu\.be\/)/i.test(u || '')) || '',
       related: edCards(doc.querySelector('.related__blocks, .related_section, .related-posts')),
       seasons: seasonsCards.length ? seasonsCards : seasonsBtns,
       episodes: edEpisodes(doc),
@@ -338,6 +339,11 @@ async function cinemaHero(items) {
     info: edHref(slugs[i]), play: `${edHref(slugs[i])}/watch` }).filter(Boolean);
 }
 
+// the source has no ranking endpoint: use the best rated unique films or series from the lists already loaded.
+const edTopRated = (lists, series = false) => [...new Map(lists.flatMap(d => d?.items || [])
+  .filter(c => /^\/cinema\/(?:serie|season|episode)\//.test(c.path) === series && +c.rating > 0)
+  .map(c => [edShowKey(c) || c.path, c])).values()].sort((a, b) => +b.rating - +a.rating).slice(0, 10);
+
 async function cinemaHome(force) {
   const hash=location.hash;
   const lists = await firstSections(ECATS.map(c => () => edList(c[0],1,force)));
@@ -346,6 +352,8 @@ async function cinemaHome(force) {
   heroPage(slides, `
       ${chips(ECATS.slice(1).map(c => [eCatName(c), '#/cinema/browse/' + c[0]]))}
       ${row(t('continueWatching'), continued(['cinema']))}
+      ${row(t('homeTopMovies'), dubbed(edTopRated(lists)), undefined, true)}
+      ${row(t('homeTopSeries'), dubbed(edTopRated(lists, true)), undefined, true)}
       ${ECATS.map((c, i) => row(eCatName(c), dubbed(lists[i]?.items), '#/cinema/browse/' + c[0])).join('')}`, () => cinemaHome(true));
 }
 
@@ -354,7 +362,7 @@ async function cinemaBrowse(id, force) {
   listView(eCatName(eCat(id)), await at(1, force), n => at(n, true), () => cinemaBrowse(id, true));
 }
 
-const edMovieOf = slug => load('edMovie', edUrl(slug)); // a title page, from the cache: its cast and IMDb id (cast-info.js)
+const edMovieOf = (slug, force = false) => load('edMovie', edUrl(slug), force, true); // a title page, from the cache: its cast and IMDb id (cast-info.js)
 async function cinemaTitle(slug, force) {
   const m = await load('edMovie', edUrl(slug), force);
   const path = '/cinema/' + slug;
@@ -376,7 +384,7 @@ async function cinemaTitle(slug, force) {
     ...m.tags.filter(x => /^(blu-?ray|web-?dl|web-?rip|hd-?rip|hdtv|hd-?cam|cam|dvd\w*|hd|4k|\d{3,4}p)$/i.test(x))];
   const desc = /^مشاهدة\s+(و\s*)?تحميل/.test(m.desc) ? '' : m.desc; // pages saved before the plot was read: the site's line, not shown
   view.innerHTML = `<div class="det-page">${detHead({ list: eps.length && [t('episodes'), eps.length], banner: img(m.banner), poster: m.poster && img(m.poster), title: m.title, meta, chips: m.genres, desc,
-      rating: Ratings.slot({title:m.title, type:"cinema", path, year:m.year, imdb:m.imdb}), refresh: true, play: play || null,
+      rating: Ratings.slot({title:m.title, type:"cinema", path, year:m.year, imdb:m.imdb}), play: play || null,
       actions: `${api.web && !eps.length ? `<button class="btn ghost" id="web-cinema-dl">${ICON.download} ${t('downloadShort')}</button>` : ''}
             <button class="btn ghost" id="fav">${inList(path) ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList')}</button>`,
       more: `${m.trailer ? `<button class="btn ghost" id="trl">${ICON.play} ${t('trailer')}</button>` : ''}
@@ -399,7 +407,6 @@ async function cinemaTitle(slug, force) {
   }
   $('#web-cinema-dl')?.addEventListener('click',()=>WebDownloads.downloadVideo([{id:path,kind:'cinema',slug,show:path,title:m.title,ep:'',poster:m.poster}]));
   pageRefresh = () => cinemaTitle(slug, true);
-  $('#rf').onclick = () => pageRefresh().then(() => toast(t('updated')));
   if (m.trailer) $('#trl').onclick = () => showTrailer(m.trailer);
 }
 

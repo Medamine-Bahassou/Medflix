@@ -42,7 +42,7 @@ The UI only talks to `window.api`. It never calls the network or storage directl
 | `MainActivity.java` | WebView setup; blocks popups, navigation away, and players' alert dialogs |
 | `selftest.js` | Live scraper check against the real sites: `npx electron selftest.js` |
 
-`www/` is generated (`npm run build:web`). Never edit it. On Android, `ui/` is the app: `NativeActivity` (shell, drawer, dock, shared
+`www/` is generated (`npm run build:web`: the page's scripts joined into one `bundle.js`, in index.html's order). Never edit it. On Android, `ui/` is the app: `NativeActivity` (shell, drawer, dock, shared
 builders), `Net.kt` (requests, Cloudflare through a hidden WebView, the page cache `Pages`), `Store.kt` (user data), `Player.kt`,
 `Screens.kt` / `MangaScreens.kt` / `CinemaScreens.kt`, `Novels.kt` + `NovelSites.kt` + `NovelScreens.kt` + `NovelReader.kt` + `ReadAloud.kt` (the novels section, Android only so far), `Settings.kt`, `Updater.kt`. `mobile.js`, `MainActivity` and the Capacitor plugin
 Java no longer ship, except `DownloadService` (the download notification), which `Downloads.kt` drives; casting is still to be ported from `Cast`. Live check: `./gradlew testDebugUnitTest`.
@@ -55,7 +55,8 @@ Java no longer ship, except `DownloadService` (the download notification), which
 - **Adding a host**: update the allowlist in `main.js`, `SITES` in `api/proxy.js`, the `fetch` allowlist in `mobile.js` (and its constants at the top),
   `ImageCache.HOSTS` if it serves images, and the CSP in `index.html` if needed.
 - **Page cache** (`scraper.js` `load()`): stale-while-revalidate. Scraped pages are kept 90 days and shown from the cache
-  instantly. The site is asked again at most once a minute per page, and if the result changed the view redraws (`route(true)`).
+  instantly. The site is asked again at most once every five minutes per page, and if the result changed the view redraws (`route(true)`).
+  Website images are cached by `image-cache-sw.js` across reloads (up to 128 images, renewed weekly); clearing cached pages clears images too. Concurrent lookups and proxy reads share their requests.
   Offline, the saved copy is served. `newView()` drops loads from a page the user already left.
 - **User state**: the `store` in `app.js` (`list, history, seen, prefs, downloads, manga, mangaSeen, hidden, streams`).
   Each key is saved whole with `persist(key)`, which calls `api.set`.

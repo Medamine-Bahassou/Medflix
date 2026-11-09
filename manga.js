@@ -262,9 +262,9 @@ async function mangaHome(force) {
   heroPage(slides, `
       ${chips([[t('browseAll'), '#/manga/browse/1'], ...MTYPES.map(o => [mLabel(MTYPES, o[0]), '#/manga/browse/1?type=' + o[0]])])}
       ${row(t('continueReading'), continued(['manga']))}
+      ${row(t('mPopular'), popular.items, '#/manga/browse/1?order_by=-views_count', true)}
       ${row(t('mHot'), hot.items, '#/manga/browse/1?is_hot=true')}
       ${row(t('mLatest'), mMerge([latest.items, oLatest.items, ...extra.map(x => x.items)]))}
-      ${row(t('mPopular'), popular.items, '#/manga/browse/1?order_by=-views_count')}
       ${row(t('mNew'), fresh.items, '#/manga/browse/1')}`, () => mangaHome(true));
 }
 
@@ -330,28 +330,32 @@ async function mangaSeries(id, force) {
   const path = '/manga/series/' + id, r = store.manga[id];
   const rCh = r && (chs.find(c => c.id === r.chapterId) || chs.find(c => c.n === chNum(r.n)));
   const start = rCh ? { id: rCh.id, label: t('resumeCh', chNum(r.n)) } : chs.length ? { id: chs[chs.length - 1].id, label: t('read') } : null;
-  view.innerHTML = `<div class="det-page">${detHead({ list: [t('chapters'), chs.length], banner: img(s.cover), poster: s.poster && img(s.poster), title: s.title, alt: s.alt,
+  view.innerHTML = `<div class="det-page">${detHead({ list: [t('chapters'), chs.length], banner: img(s.cover || s.poster), blur: true, poster: s.poster && img(s.poster), title: s.title, alt: s.alt,
       kinds: [s.type && mTypeName(s.type), s.status && mLabel(MSTATUS, s.status)].filter(Boolean), views: s.views.toLocaleString(lang), chips: s.genres, desc: s.story,
-      rating: Ratings.slot({title:s.title, alt:s.alt, type:"manga"}), refresh: true, play: start && { href: `#/manga/read/${start.id}`, label: start.label },
+      rating: Ratings.slot({title:s.title, alt:s.alt, type:"manga"}), play: start && { href: `#/manga/read/${start.id}`, label: start.label },
       actions: `<button class="btn ghost" id="fav">${inList(path) ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList')}</button>`,
       more: `<button class="btn ghost" id="grf">${ICON.star} ${t('titleRatings')}</button>` })}
     <div class="section" data-pane="eps"><h2>${t('chapters')} <small>${chs.length}</small>
       <div class="ep-tools"><input id="epf" placeholder="${t('jumpCh')}" type="number"><button class="btn ghost small" id="rev" aria-label="${t('reverse')}" title="${t('reverse')}">${ICON.sort}</button>
         ${selBtn('btn ghost small')}</div></h2>
       ${selBar()}
-      <div class="eps" id="eps"></div></div>
+      <div class="eps" id="eps"></div>
+      <div class="ep-pagination"><span id="ep-count" aria-live="polite"></span><button type="button" class="btn ghost" id="ep-more" aria-controls="eps">${t('moreChapters')}${ICON.caretDown}</button></div></div>
     <section class="section" id="title-cast" hidden></section></div>`;
   wireDetTabs();
-  let rev = false;
-  const shown = (f = $('#epf').value) => (rev ? [...chs].reverse() : chs).filter(c => !f || parseFloat(c.n) === +f); // the number itself: 1 is chapter 1, not 10-19
+  let rev = false, limit = 24; // a long series stays short until asked: "show more" adds 24
+  const matching = (f = $('#epf').value) => (rev ? [...chs].reverse() : chs).filter(c => !f || parseFloat(c.n) === +f); // the number itself: 1 is chapter 1, not 10-19
+  const shown = () => matching().slice(0, limit);
   const drawChs = () => {
-    const copies = savedChs(ids);
+    const copies = savedChs(ids), total = matching().length;
+    $('#ep-more').style.visibility = total > limit ? '' : 'hidden'; $('#ep-count').textContent = t('chaptersShown', Math.min(limit, total), total);
     $('#eps').innerHTML = shown().map(c => { const own = copies.get(String(c.n)); return `<a class="ep ${store.mangaSeen[c.id] || store.mangaSeen[own] ? 'seen' : ''}
       ${r?.chapterId === c.id || (own && String(r?.chapterId) === own) ? 'last' : ''} ${own ? 'dld' : ''} ${picks?.has(String(c.id)) ? 'sel' : ''}"
       data-pick="${c.id}" href="#/manga/read/${own || c.id}">${t('chShort')} ${esc(c.n)}</a>`; }).join('');
   };
   drawChs();
-  $('#epf').oninput = () => drawChs();
+  $('#epf').oninput = () => { limit = 24; drawChs(); };
+  $('#ep-more').onclick = () => { limit += 24; drawChs(); };
   $('#rev').onclick = () => { rev = !rev; drawChs(); };
   $('#fav').onclick = e => { const on = toggleList({ path, title: s.title, poster: s.poster, type: 'manga' }); e.currentTarget.innerHTML = on ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList'); };
   CastInfo.mount($('#title-cast'), [s.title, ...(s.alt || '').split(/[,،]/)], 'manga');
@@ -394,7 +398,6 @@ async function mangaSeries(id, force) {
   const selectFrom = selectable($('#eps'), () => shown().map(c => c.id), acts, run);
   pagePress = ['.ep', a => pickSheet(`${t('chapter')} ${pick([a.dataset.pick])[0]?.n}`, acts([a.dataset.pick], true), '', v => run(v, [a.dataset.pick]))];
   pageRefresh = () => mangaSeries(id, true);
-  $('#rf').onclick = () => pageRefresh().then(() => toast(t('updated')));
 }
 
 async function mangaReader(cid) {
@@ -554,7 +557,7 @@ function autoScroll() {
   // a long press opens the speed row; the click that ends it doesn't also play
   btn.onpointerdown = () => { held = false; holdT = setTimeout(() => { held = true; open = !open; draw(); navigator.vibrate?.(15); }, 450); };
   btn.onpointerup = btn.onpointerleave = btn.onpointercancel = () => clearTimeout(holdT);
-  btn.oncontextmenu = e => e.preventDefault(); // Android's long-press menu
+  btn.oncontextmenu = e => { e.preventDefault(); if (!held) { open = !open; draw(); } }; // right-click on desktop; on Android the long press already toggled (held), so it isn't toggled twice
   btn.onclick = () => {
     if (held) return held = false;
     if (run) return stop();
@@ -576,9 +579,11 @@ function autoScroll() {
 // inside its own slide, which pans both ways. A single tap still shows/hides the bars, once it's clear it wasn't a double tap.
 function readerZoom(box, horiz) {
   const reader = $('.reader'), zbox = $('.rd-zoom');
-  let z = 1;
+  const desk = matchMedia('(hover: hover) and (pointer: fine)').matches; // a mouse: pages open smaller (65%) and can shrink to 30%
+  let z = desk ? .65 : 1;
+  reader.style.setProperty('--z', z);
   const set = (nz, fx, fy) => { // keep the content under (fx, fy) — viewport coords — in place
-    nz = Math.min(4, Math.max(api.web ? .5 : 1, nz));
+    nz = Math.min(4, Math.max(desk ? .3 : api.web ? .5 : 1, nz));
     if (nz === z) return;
     const k = nz / z;
     if (horiz) {

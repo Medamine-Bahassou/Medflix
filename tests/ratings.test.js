@@ -194,8 +194,8 @@ test('slider picture: a film by its name and year, the animated one of a name, a
   const film = { title: 'The Odyssey', year: '2026', info: '#/cinema/movie/x' };
   const odyssey = { 'the odyssey': [title('The Odyssey', 1997, 'movie', 'Drama', [still('https://i/old._V1_.jpg')]), title('The Odyssey', 2026, 'movie', 'Drama', [still('https://i/tall._V1_.jpg', 4160, 6240), still('https://i/small._V1_.jpg', 600, 400), still('https://i/new._V1_.jpg', 6240, 4160)])] };
   assert.equal((await art(film, odyssey)).url, 'https://i/new._V1_QL75_UX1920_.jpg');
-  // no frame: its large poster, sized, rather than the card's
-  assert.equal((await art(film, { 'the odyssey': [title('The Odyssey', 2026, 'movie', 'Drama', [], 'https://i/p._V1_.jpg')] })).url, 'https://i/p._V1_QL75_UY1500_.jpg');
+  // no wide frame: keep the background empty rather than stretching its poster
+  assert.equal((await art(film, { 'the odyssey': [title('The Odyssey', 2026, 'movie', 'Drama', [], 'https://i/p._V1_.jpg')] })).url, '');
   assert.equal((await art({ ...film, year: '' }, odyssey)).url, ''); // two of that name, no year: neither
   const anime = { title: 'One Piece', info: '#/title/anime/one-piece' };
   assert.equal((await art(anime, { 'one piece': [title('One Piece', 2023, 'tvSeries', 'Adventure', [still('https://i/live._V1_.jpg')]), title('One Piece', 1999, 'tvSeries', 'Animation', [still('https://i/ani._V1_.jpg')])] })).url, 'https://i/ani._V1_QL75_UX1920_.jpg');

@@ -101,9 +101,10 @@ test('main home includes novel progress with mixed history and resumes the saved
  const c=setup(async()=>{}),app=fs.readFileSync('app.js','utf8');
  Object.assign(c.store,{history:{film:{slug:'film',show:'/cinema/film',title:'Film',at:30}},manga:{comic:{id:'comic',chapterId:'ch',n:2,at:10}},list:{'/novels/series/book':{poster:'cover.webp'}}});
  c.store.novels.book={id:'book',slug:'chapter 3',title:'Book',n:3,progress:.4,at:20};
- Object.assign(c,{edHref:s=>'#/cinema/'+s,chNum:n=>n,animeHero:()=>[],animeRows:()=>'',mMerge:()=>[],dubbed:x=>x});
+ Object.assign(c,{edHref:s=>'#/cinema/'+s,chNum:n=>n,animeHero:()=>[],animeRows:()=>'',mMerge:()=>[],dubbed:x=>x,eCat:id=>id,eCatName:c=>c});
  vm.runInContext(app.slice(app.indexOf('function continued('),app.indexOf('// a page under a cover slider')),c);
  vm.runInContext(app.slice(app.indexOf('function resumeOf('),app.indexOf('function askOrGo(')),c);
+ vm.runInContext(app.slice(app.indexOf('const isTop ='),app.indexOf('// Home:')),c);
  vm.runInContext(app.slice(app.indexOf('async function home('),app.indexOf('// Anime: witanime')),c);
  c.firstSections=async()=>[];const rows=[];c.row=(label,items)=>{rows.push({label,items});return '';};
  await c.home();const items=rows.find(r=>r.label==='continueWatching').items;

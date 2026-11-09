@@ -47,3 +47,81 @@ test('latest list still shows when the main site is down',async()=>{
   const s=setup({main:{},more:{1:[['Show A',6,'/anime/~a']]}});
   assert.deepEqual(titles(await s.newEpisodes(1)),['Show A 6']);
 });
+
+const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return {promise,resolve,reject};};
+const tick=()=>new Promise(r=>setImmediate(r));
+function detailSetup() {
+  const s=setup({main:{},more:{}}), c=s.ctx;
+  const first={title:'One Piece',alt:'One Piece',poster:'poster.jpg',desc:'Story',genres:[],info:[],episodes:[{n:'3',url:'https://shahiid-anime.net/episodes/three/'}],more:true,seriesUrl:''};
+  const older=deferred();let changes=0,fetches=0;
+  Object.assign(c,{setTimeout,parse:x=>x,splitSeason:()=>null,api:{fetch:async url=>{
+    if(url.includes('graphql'))return JSON.stringify({data:{Page:{media:[]}}});
+    fetches++;return older.promise;
+  }},remember:(_,f)=>f()});
+  c.parsers.shPage=x=>x;
+  c.load=async(_,url)=>url.includes('?epp=')?older.promise:first;
+  s.changed=()=>changes++;
+  c.location.hash='#/title/anime/s:one-piece';
+  return {s,c,first,older,get changes(){return changes;},get fetches(){return fetches;}};
+}
+test('anime details render before older episode pages and refresh once the full list arrives',async()=>{
+  const x=detailSetup();
+  const initial=await x.s.details('/anime/s:one-piece');
+  assert.equal(initial.title,'One Piece');assert.equal(initial.episodes.length,1);assert.equal(initial.episodesPending,true);
+  await tick();assert.equal(x.changes,0);assert.ok(x.fetches>0);
+  x.older.resolve({episodes:[{n:'1',url:'https://shahiid-anime.net/episodes/one/'}],more:false});await tick();
+  assert.equal(x.changes,1);
+  const full=await x.s.details('/anime/s:one-piece');
+  assert.equal(full.episodesPending,false);assert.deepEqual(Array.from(full.episodes,e=>e.ep),['1','3']);await tick();assert.equal(x.changes,1,'cached enrichment must not loop redraws');
+});
+test('a late episode list does not redraw a different page',async()=>{
+  const x=detailSetup();await x.s.details('/anime/s:one-piece');
+  x.c.location.hash='#/manga';x.older.resolve({episodes:[],more:false});await tick();
+  assert.equal(x.changes,0);
+});
+test('failed episode pagination leaves the title usable',async()=>{
+  const x=detailSetup();await x.s.details('/anime/s:one-piece');
+  x.older.reject(Error('site down'));await tick();
+  const d=await x.s.details('/anime/s:one-piece');assert.equal(d.title,'One Piece');assert.equal(d.episodes.length,1);assert.equal(d.episodesPending,false);assert.equal(x.changes,1);
+});
+test('secondary-source title is returned while cross-source matching is stalled',async()=>{
+  const x=detailSetup(),search=deferred();
+  // the wrapper captures the original detail reader when it is installed.
+  const base={title:'One Piece',episodes:[{ep:'1112'}],path:'/anime/~one-piece-1112'};
+  x.c.scraper={details:async()=>base,changed:()=>{}};x.c.Risto={};
+  x.c.load=()=>search.promise;
+  vm.runInContext(fs.readFileSync('shahiid.js','utf8'),x.c);
+  const d=await x.c.scraper.details(base.path);
+  assert.equal(d,base);
+  search.resolve({items:[]});await tick();
+});
+test('playback still resolves older episodes from the complete list',async()=>{
+  const x=detailSetup(),urls=[];
+  const fetch=x.c.api.fetch;
+  x.c.api.fetch=async url=>{urls.push(url);return url.includes('/episodes/one/')?'':fetch(url);};
+  x.c.parse=value=>typeof value==='string'?{querySelectorAll:()=>[]}:value;
+  const sources=x.c.Risto.sources('/watch/s:one-piece/1');
+  await tick();assert.ok(!urls.some(u=>u.includes('/episodes/one/')),'wait for the requested episode to be found');
+  x.older.resolve({episodes:[{n:'1',url:'https://shahiid-anime.net/episodes/one/'}],more:false});
+  await sources;assert.ok(urls.some(u=>u.includes('/episodes/one/')));
+});
+
+test('trailer lookup uses native names and normalized accents without accepting unrelated shows',async()=>{
+  const s=setup({main:{},more:{}}),c=s.ctx;c.remember=(_,f)=>f();
+  c.api={fetch:async()=>JSON.stringify({data:{Page:{media:[{title:{romaji:'Shingeki no Kyōjin',native:'進撃の巨人'},synonyms:[],trailer:{site:'youtube',id:'Abc_123-xYz'}}]}}})};
+  assert.match(await s.trailer('Shingeki no Kyojin'),/Abc_123-xYz/);
+  assert.match(await s.trailer('進撃の巨人'),/Abc_123-xYz/);
+  assert.equal(await s.trailer('Unknown Show'),'');
+});
+test('a match without a trailer does not hide the alternate name trailer',async()=>{
+  const s=setup({main:{},more:{}}),c=s.ctx;c.remember=(_,f)=>f();
+  c.api={fetch:async(_,form)=>{const title=form.query.includes('Alias')?'Alias':'Actual';return JSON.stringify({data:{Page:{media:[{title:{romaji:title},synonyms:[],trailer:title==='Alias'?null:{site:'youtube',id:'Abc_123-xYz'}}]}}});}};
+  assert.match(await s.trailer('Actual','Alias'),/Abc_123-xYz/);
+});
+test('a shortened carousel name falls back to page metadata without loading episode pagination',async()=>{
+  const s=setup({main:{},more:{}}),c=s.ctx,calls=[];c.remember=(_,f)=>f();
+  c.load=async(kind,url)=>{calls.push(url);return {title:'Actual',alt:'Alternate',trailer:''};};
+  c.api={fetch:async(_,form)=>JSON.stringify({data:{Page:{media:form.query.includes('Alternate')?[{title:{english:'Alternate'},synonyms:[],trailer:{site:'youtube',id:'Abc_123-xYz'}}]:[]}}})};
+  assert.match(await s.trailer('Short',undefined,'/anime/s:actual'),/Abc_123-xYz/);
+  assert.equal(calls.length,1);assert.ok(calls[0].endsWith('/seasons/actual/'));
+});

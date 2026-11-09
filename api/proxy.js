@@ -31,7 +31,7 @@ module.exports = async (req, res) => {
   let u;
   try { u = new URL(url); } catch { return res.status(400).json({ error: 'bad url' }); }
   if (!allowed(u)) return res.status(403).json({ error: 'blocked: ' + u.origin });
-  const send = out => (out ? exitFetch : fetch)(u, { method, body, redirect, signal: AbortSignal.timeout(55e3), ...(out && { dispatcher: exit }),
+  const send = out => (out ? exitFetch : fetch)(u, { method, body, redirect, signal: AbortSignal.timeout(u.hostname === 'novltime.com' ? 10e3 : 55e3), ...(out && { dispatcher: exit }),
     // node's fetch adds sec-fetch-mode: cors, and witanime's sources call 404s on that without the rest a browser sends with it
     headers: { 'User-Agent': UA, 'Accept-Language': 'ar,en;q=0.8', 'Sec-Fetch-Site': 'same-origin', 'Sec-Fetch-Dest': 'empty', ...headers } });
   try {
@@ -50,8 +50,10 @@ module.exports = async (req, res) => {
       data = data.replace(/<(script|style|svg|noscript)\b[^>]*>[\s\S]*?<\/\1>/gi, '').replace(/ data-srcset="[^"]*"/g, '')
         .replace(/\s{2,}/g, ' ') + (id ? `<script>${id}</script>` : ''); // its indentation alone is ~4.5MB of animeschedule's; text is read whitespace-collapsed anyway
     }
-    // shared: no visitor's cookies in it, and only good answers kept (5 min, then served stale for a day while it refreshes)
-    if (shared) res.setHeader('Cache-Control', r.status < 400 ? 'public, s-maxage=300, stale-while-revalidate=86400' : 'no-store');
+    // shared: no visitor's cookies in it, and only real answers kept (5 min, then served stale for a week while it refreshes: a show
+    // page nobody opened for days still comes at once). A page that isn't there is an answer too: asked again by every visitor, it
+    // cost each of them the site's seconds. A refusal or a failing site isn't
+    if (shared) res.setHeader('Cache-Control', r.status < 400 || [404, 410].includes(r.status) ? 'public, s-maxage=300, stale-while-revalidate=604800' : 'no-store');
     res.json({ status: r.status, url: r.url, headers: Object.fromEntries(KEEP.map(k => [k, r.headers.get(k)]).filter(([, v]) => v)), cookies: shared ? [] : r.headers.getSetCookie(), data });
   } catch (e) { res.status(502).json({ error: String(e.message || e) }); }
 };
