@@ -64,6 +64,7 @@ if (!window.api) (() => {
   };
 
   const frame = () => document.querySelector('.player > iframe.mplayer');
+  const box = f => ({ x: parseFloat(f.style.left), y: parseFloat(f.style.top), width: parseFloat(f.style.width), height: parseFloat(f.style.height) }); // where app.js put it
   // Google's Cast sender, loaded the first time it may be wanted. false: this browser can't cast (Firefox, Safari, Brave by default)
   let castSdk, castingAt = '';
   const castReady = () => castSdk ||= new Promise(ok => {
@@ -84,6 +85,8 @@ if (!window.api) (() => {
     .plyr--loading::after{content:"";position:absolute;z-index:1;top:50%;left:50%;width:44px;height:44px;margin:-22px;border:3px solid #fff3;border-top-color:#e50914;border-radius:50%;animation:s .7s linear infinite;pointer-events:none}@keyframes s{to{transform:rotate(360deg)}}
     .plyr--loading .plyr__control--overlaid{display:none}
     .skip-intro{position:absolute;z-index:4;right:16px;bottom:72px;padding:10px 18px;border:0;border-radius:6px;background:#fff;color:#000;font:700 14px system-ui,sans-serif;cursor:pointer}.skip-intro[hidden]{display:none}</style>`;
+  const streamPages = new Map(), deadStreams = new Set(); // a stream's host page, to ask it again; streams that page now plays instead (dressVideo)
+  const HLS = '<script src="vendor/hls-1.5.20.light.min.js"></script>', isHls = url => /\.m3u8(\?|$)/.test(url); // hls.js (vendor/, Apache-2.0): for Firefox and older Chrome, which don't play HLS themselves
   const frameVideo = () => { const f = frame(); try { return f?.hasAttribute('srcdoc') ? f.contentDocument?.querySelector('video') : null; } catch { return null; } }; // a host's player is another site's page
   // over the video, as on Android: the page's header isn't there in the player's fullscreen. a new server's frame gets it too
   let intro = null;
@@ -101,6 +104,33 @@ if (!window.api) (() => {
   async function dressVideo(f) {
     const v = f.contentDocument?.querySelector('video'), key = 'video:' + location.hash;
     if (!v) return;
+    if (isHls(f.dataset.src) && !v.src) { // a stream: Safari and Android (and new Chrome) play it themselves, elsewhere hls.js feeds the video
+      const H = f.contentWindow.Hls, own = v.canPlayType('application/vnd.apple.mpegurl') || !H?.isSupported(), page = streamPages.get(f.dataset.src);
+      let h, tries = 0, last = 0;
+      v.addEventListener('timeupdate', () => { if (v.currentTime) last = v.currentTime; }); // a failed load may have reset it
+      const load = src => {
+        if (own) return v.src = src;
+        h?.destroy(); // no worker: the page's CSP has no blob: scripts
+        h = new H(f.contentWindow.JSON.parse('{"enableWorker":false}'));
+        h.on(H.Events.ERROR, (_, d) => d.fatal && again());
+        h.loadSource(src); h.attachMedia(v);
+      };
+      // its token plays from one IP only, and some networks hand each new connection another one (a few minutes apart, or mid-film):
+      // a new one, from where it was. still refused: the host's own page plays it instead, ads and all
+      const again = async () => {
+        const at = v.currentTime || last, s = tries++ < 2 && page && (await window.api.unwrap(page).catch(() => null))?.url;
+        if (!s || !isHls(s)) {
+          if (!page) return v.dataset.dead = 1;
+          deadStreams.add(f.dataset.src);
+          return window.api.player(f.dataset.src, box(f), '', true);
+        }
+        load(s);
+        if (at) v.addEventListener('loadedmetadata', () => { v.currentTime = at; }, { once: true });
+      };
+      if (own) v.addEventListener('error', again);
+      v.dataset.stream = 1;
+      load(f.dataset.src);
+    }
     if (f.contentWindow.Plyr) new f.contentWindow.Plyr(v, f.contentWindow.JSON.parse(JSON.stringify({ // through the frame's JSON: Plyr ignores an object from another window. absolute: the frame's own address is about:srcdoc. blankVideo: it would ask Plyr's CDN
       iconUrl: new URL(PLYR + '.svg', location.href).href, blankVideo: '', autoplay: true, seekTime: 10, keyboard: { focused: true, global: true }, tooltips: { controls: true, seek: true }, i18n: t('plyr'),
       controls: ['play-large', 'rewind', 'play', 'fast-forward', 'progress', 'current-time', 'duration', 'mute', 'volume', 'settings', 'pip', 'fullscreen'], settings: ['speed'], speed: { selected: 1, options: [.5, .75, 1, 1.25, 1.5, 2] } })));
@@ -124,7 +154,7 @@ if (!window.api) (() => {
   // the ad blocker: a page can't filter another site's frame, but a sandbox without allow-popups/allow-top-navigation stops its
   // popups, pop-unders and redirects. so every host plays in one, except those that refuse to play sandboxed (above; earnvids and
   // streamhg in mobile.js). ponytail: name match on the hostname, a host on a new domain that refuses one needs adding here
-  const UNSANDBOXABLE = /dood|d0+d|ds2play|share4max|megamax|leech|earnvid|streamhg/i;
+  const UNSANDBOXABLE = /dood|d0+d|ds2play|share4max|megamax|leech|earnvid|streamhg|vidara|voe|byse/i; // vidara, voe, byse: "sandbox not allowed"
   // and those the user turned it off for (the player's ⋮): a host that says "sandbox not allowed" can't be told apart from outside
   let adsAllowed = new Set();
   kv('readonly', s => s.get('adsAllowed')).then(l => adsAllowed = new Set(l || [])).catch(() => {});
@@ -170,7 +200,15 @@ if (!window.api) (() => {
       return { url: MediaHosts.host(page) ? await MediaHosts.resolve(page, hostRequest) : page, referrer: '', native: true };
     },
     // animerco's /player/ pages refuse to be framed by other sites; most just wrap the host's own embed, so use that
+    // vidara's: its open API names the stream, which plays in our own player: no host page, so no ads (its token: api/proxy.js)
     async unwrap(url) {
+      const vid = url.match(/^https:\/\/vidara\.to\/e\/(\w+)/)?.[1];
+      if (vid) {
+        const r = await http('https://vidara.to/api/stream', { method: 'POST', body: JSON.stringify({ filecode: vid, device: 'web' }), headers: { 'Content-Type': 'application/json' } }).catch(() => null);
+        const s = r?.status < 400 && (() => { try { return JSON.parse(r.data).streaming_url; } catch {} })();
+        if (s) { streamPages.set(s, url); return { url: s, referrer: '', native: true }; }
+        return url; // its own page, then (out of the sandbox: it refuses one)
+      }
       if (!url.startsWith(AR + '/player/')) return url;
       const inner = (await http(url)).data.match(/<iframe[^>]+src=["']([^"']+)["']/i)?.[1];
       if (!inner) throw new Error('not embeddable');
@@ -208,6 +246,7 @@ if (!window.api) (() => {
         host.append(f);
       }
       Object.assign(f.style, { left: b.x + 'px', top: b.y + 'px', width: b.width + 'px', height: b.height + 'px' });
+      if (native && deadStreams.has(url)) { url = streamPages.get(url); native = false; } // a resize mustn't bring the refused stream back
       const key = `${native}:${url}`;
       if (f.dataset.playerKey !== key) {
         f.removeAttribute('srcdoc');
@@ -216,7 +255,7 @@ if (!window.api) (() => {
         if (!native && !open) f.sandbox = 'allow-scripts allow-same-origin allow-forms allow-presentation'; else f.removeAttribute('sandbox');
         f.dataset.guard = open ? '1' : '';
         f.onload = native ? () => dressVideo(f).catch(console.error) : null;
-        if (native) f.srcdoc = MediaHosts.videoHtml(url, playerHead); else f.src = url;
+        if (native) f.srcdoc = isHls(url) ? MediaHosts.videoHtml('', playerHead + HLS).replace(' src=""', '') : MediaHosts.videoHtml(url, playerHead); else f.src = url; // a stream: no src till hls.js has it (dressVideo), or the video fails at once
         f.dataset.playerKey = key;
         f.dataset.src = url;
       }
@@ -231,10 +270,10 @@ if (!window.api) (() => {
       kv('readwrite', s => s.put([...adsAllowed], 'adsAllowed')).catch(() => {});
       const url = f.dataset.src;
       f.dataset.playerKey = ''; f.removeAttribute('src'); // a sandbox change takes effect on the next load: load it again
-      window.api.player(url, f.getBoundingClientRect(), '', false);
+      window.api.player(url, box(f), '', false);
     },
     // our own video only (app.js watchServer: one that can't play goes on to the next server; skip intro). a host's says nothing here
-    playerHealth: async () => { const v = frameVideo(); return !v ? 'works' : v.error ? 'dead' : v.readyState >= 2 ? 'works' : 'waiting'; },
+    playerHealth: async () => { const v = frameVideo(); return !v ? 'works' : v.dataset.dead || v.error && !v.dataset.stream ? 'dead' : v.readyState >= 2 ? 'works' : 'waiting'; },
     playerTime: () => frameVideo()?.currentTime,
     playerSeek: at => { const v = frameVideo(); if (v) v.currentTime = at; },
     playerIntro(span, label) { intro = span && { from: span[0], to: span[1], label }; const v = frameVideo(); if (v) dressIntro(frame(), v); }, // null: a new episode, none known yet

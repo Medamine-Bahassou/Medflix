@@ -452,7 +452,7 @@ async function cinemaPlay(slug) {
     if (!stream) return;
     const r = stage.getBoundingClientRect();
     // the hosts only play when embedded by egydead (MegaMax's "allow_domain"): present its page as the referrer (the backups' own site's, or none)
-    api.player(stream, { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) }, cur?.ref ?? m.origin + '/');
+    api.player(stream.url || stream, { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) }, cur?.ref ?? m.origin + '/', !!stream.native);
   };
   playerObs = new ResizeObserver(place);
   playerObs.observe(stage);
@@ -504,7 +504,8 @@ async function cinemaPlay(slug) {
     const s = cur = w.servers[i]; draw();
     tried.add(s.url);
     stream = null; api.player(null); stage.innerHTML = '<div class="spin"></div>'; showPlayBar(false);
-    const url = s.label === 'myseed' ? await myseedNow(m, slug, s.quality).catch(e => (console.error(e), s.url)) : s.url;
+    let url = s.label === 'myseed' ? await myseedNow(m, slug, s.quality).catch(e => (console.error(e), s.url)) : s.url;
+    if (api.web) url = await api.unwrap(url).catch(() => url); // the website: a host's stream it can play itself, ad-free ({ url, native }: web.js)
     if (cur !== s || !here()) return; // another server picked, or the page left, meanwhile
     stream = url; place(); showPlayBar(true);
     watchServer(() => cur === s && here(), patient, () => {

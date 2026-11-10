@@ -2059,7 +2059,8 @@ async function play(epPath) {
     stream = null; api.player(null); // drop the old video so the spinner shows while the new one loads
     stage.innerHTML = '<div class="spin"></div>';
     let st;
-    try { st = cur.st || (cur.url ? { url: await (api.unwrap?.(cur.url) ?? cur.url), referrer: '' } : await api.stream(cur.token)); } catch (e) { console.error(e); return my === seq && tryFrom(i, n + 1, my); }
+    // a server's page, as is or unwrapped; on the website maybe its stream, for our own player ({ url, native })
+    try { st = cur.st || (cur.url ? await Promise.resolve(api.unwrap?.(cur.url) ?? cur.url).then(u => u.url ? u : { url: u, referrer: '' }) : await api.stream(cur.token)); } catch (e) { console.error(e); return my === seq && tryFrom(i, n + 1, my); }
     if (cur.token) { Object.assign(store.streams[epPath] ||= { list: {} }, { at: Date.now() }).list[key(cur)] = st; persist('streams'); }
     if (!here() || my !== seq) return;
     stream = st; busy = false; draw();

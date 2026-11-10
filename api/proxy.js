@@ -31,9 +31,12 @@ module.exports = async (req, res) => {
   let u;
   try { u = new URL(url); } catch { return res.status(400).json({ error: 'bad url' }); }
   if (!allowed(u)) return res.status(403).json({ error: 'blocked: ' + u.origin });
+  // vidara's stream token only plays from the IP that asked for it: asked for the visitor's (it trusts X-Forwarded-For), and never shared
+  const own = u.hostname === 'vidara.to' && u.pathname === '/api/stream';
+  const ip = own && (req.headers['x-real-ip'] || String(req.headers['x-forwarded-for'] || '').split(',')[0].trim());
   const send = out => (out ? exitFetch : fetch)(u, { method, body, redirect, signal: AbortSignal.timeout(u.hostname === 'novltime.com' ? 10e3 : 55e3), ...(out && { dispatcher: exit }),
     // node's fetch adds sec-fetch-mode: cors, and witanime's sources call 404s on that without the rest a browser sends with it
-    headers: { 'User-Agent': UA, 'Accept-Language': 'ar,en;q=0.8', 'Sec-Fetch-Site': 'same-origin', 'Sec-Fetch-Dest': 'empty', ...headers } });
+    headers: { 'User-Agent': UA, 'Accept-Language': 'ar,en;q=0.8', 'Sec-Fetch-Site': 'same-origin', 'Sec-Fetch-Dest': 'empty', ...headers, ...(ip && { 'X-Forwarded-For': ip }) } });
   try {
     let r = await send(exit && viaExit.has(u.hostname));
     if (exit && r.headers.get('cf-mitigated') && !viaExit.has(u.hostname)) { viaExit.add(u.hostname); r.body?.cancel(); r = await send(true); }
@@ -53,7 +56,7 @@ module.exports = async (req, res) => {
     // shared: no visitor's cookies in it, and only real answers kept (5 min, then served stale for a week while it refreshes: a show
     // page nobody opened for days still comes at once). A page that isn't there is an answer too: asked again by every visitor, it
     // cost each of them the site's seconds. A refusal or a failing site isn't
-    if (shared) res.setHeader('Cache-Control', r.status < 400 || [404, 410].includes(r.status) ? 'public, s-maxage=300, stale-while-revalidate=604800' : 'no-store');
+    if (shared) res.setHeader('Cache-Control', !own && r.status < 400 || [404, 410].includes(r.status) ? 'public, s-maxage=300, stale-while-revalidate=604800' : 'no-store');
     res.json({ status: r.status, url: r.url, headers: Object.fromEntries(KEEP.map(k => [k, r.headers.get(k)]).filter(([, v]) => v)), cookies: shared ? [] : r.headers.getSetCookie(), data });
   } catch (e) { res.status(502).json({ error: String(e.message || e) }); }
 };
