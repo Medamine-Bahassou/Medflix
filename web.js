@@ -121,7 +121,12 @@ if (!window.api) (() => {
   // click until its popup opens, so in a sandbox the video never starts; dood looks for a sandbox too (see mobile.js). Those can't be
   // stopped from here: the last choice, never the default
   const SERVER_RANK = { videa: 0, ok: 1, vk: 1, vkvideo: 1, mp4upload: 1, share4max: 3, megamax: 3, leech: 3, dood: 3, doodstream: 3 };
-  const SANDBOXED = /(^|\.)(videa\.hu|mp4upload\.com)$/;
+  // the ad blocker: a page can't filter another site's frame, but a sandbox without allow-popups/allow-top-navigation stops its
+  // popups, pop-unders and redirects. so every host plays in one, except those that refuse to play sandboxed (above; earnvids and
+  // streamhg in mobile.js). ponytail: name match on the hostname, a host on a new domain that refuses one needs adding here
+  const UNSANDBOXABLE = /dood|d0+d|ds2play|share4max|megamax|leech|earnvid|streamhg/i;
+  // those can still send the tab to an ad: the browser asks before leaving instead
+  addEventListener('beforeunload', e => { if (frame()?.dataset.guard) e.preventDefault(); });
 
   window.api = {
     web: true, // risto.js: anime from RistoAnime
@@ -202,7 +207,9 @@ if (!window.api) (() => {
       if (f.dataset.playerKey !== key) {
         f.removeAttribute('srcdoc');
         // takes effect on the next load, so before it. No allow-popups: that's the point
-        if (!native && SANDBOXED.test(new URL(url).hostname)) f.sandbox = 'allow-scripts allow-same-origin allow-forms allow-presentation'; else f.removeAttribute('sandbox');
+        const open = !native && UNSANDBOXABLE.test(new URL(url).hostname);
+        if (!native && !open) f.sandbox = 'allow-scripts allow-same-origin allow-forms allow-presentation'; else f.removeAttribute('sandbox');
+        f.dataset.guard = open ? '1' : '';
         f.onload = native ? () => dressVideo(f).catch(console.error) : null;
         if (native) f.srcdoc = MediaHosts.videoHtml(url, playerHead); else f.src = url;
         f.dataset.playerKey = key;
