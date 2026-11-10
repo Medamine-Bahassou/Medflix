@@ -125,6 +125,11 @@ if (!window.api) (() => {
   // popups, pop-unders and redirects. so every host plays in one, except those that refuse to play sandboxed (above; earnvids and
   // streamhg in mobile.js). ponytail: name match on the hostname, a host on a new domain that refuses one needs adding here
   const UNSANDBOXABLE = /dood|d0+d|ds2play|share4max|megamax|leech|earnvid|streamhg/i;
+  // and those the user turned it off for (the player's ⋮): a host that says "sandbox not allowed" can't be told apart from outside
+  let adsAllowed = new Set();
+  kv('readonly', s => s.get('adsAllowed')).then(l => adsAllowed = new Set(l || [])).catch(() => {});
+  const frameHost = () => { const f = frame(); return f && !f.hasAttribute('srcdoc') && f.dataset.src ? new URL(f.dataset.src).hostname : null; };
+  const unblocked = host => UNSANDBOXABLE.test(host) || adsAllowed.has(host);
   // those can still send the tab to an ad: the browser asks before leaving instead
   addEventListener('beforeunload', e => { if (frame()?.dataset.guard) e.preventDefault(); });
 
@@ -207,7 +212,7 @@ if (!window.api) (() => {
       if (f.dataset.playerKey !== key) {
         f.removeAttribute('srcdoc');
         // takes effect on the next load, so before it. No allow-popups: that's the point
-        const open = !native && UNSANDBOXABLE.test(new URL(url).hostname);
+        const open = !native && unblocked(new URL(url).hostname);
         if (!native && !open) f.sandbox = 'allow-scripts allow-same-origin allow-forms allow-presentation'; else f.removeAttribute('sandbox');
         f.dataset.guard = open ? '1' : '';
         f.onload = native ? () => dressVideo(f).catch(console.error) : null;
@@ -217,6 +222,17 @@ if (!window.api) (() => {
       }
     },
     playerFull: () => frame()?.requestFullscreen().catch(() => {}),
+    // the ad blocker for the host playing now: null with our own video (nothing to block), or a host that never plays sandboxed
+    adBlocked: () => { const h = frameHost(); return h && !UNSANDBOXABLE.test(h) ? !adsAllowed.has(h) : null; },
+    adBlockToggle() {
+      const h = frameHost(), f = frame();
+      if (!h) return;
+      adsAllowed.has(h) ? adsAllowed.delete(h) : adsAllowed.add(h);
+      kv('readwrite', s => s.put([...adsAllowed], 'adsAllowed')).catch(() => {});
+      const url = f.dataset.src;
+      f.dataset.playerKey = ''; f.removeAttribute('src'); // a sandbox change takes effect on the next load: load it again
+      window.api.player(url, f.getBoundingClientRect(), '', false);
+    },
     // our own video only (app.js watchServer: one that can't play goes on to the next server; skip intro). a host's says nothing here
     playerHealth: async () => { const v = frameVideo(); return !v ? 'works' : v.error ? 'dead' : v.readyState >= 2 ? 'works' : 'waiting'; },
     playerTime: () => frameVideo()?.currentTime,

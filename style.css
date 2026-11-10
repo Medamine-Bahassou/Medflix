@@ -289,6 +289,7 @@ input:focus-visible, select:focus-visible { outline: none; }
 .eg-votes i { display: block; height: 100%; border-radius: 6px; }
 .eg-votes small { flex: none; width: 52px; margin: 0; color: var(--muted); text-align: end; }
 #hfl[hidden] { display: none; }
+#padb[hidden] { display: none; }
 #hfl.on { background: var(--red); border-color: var(--red); }
 .eps.list .ep.seen img { opacity: .45; }
 .eps.list .ep.seen::after { order: 1; margin-inline-start: auto; } /* the check after the name, not before the still */
