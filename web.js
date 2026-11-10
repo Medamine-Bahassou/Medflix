@@ -64,7 +64,6 @@ if (!window.api) (() => {
   };
 
   const frame = () => document.querySelector('.player > iframe.mplayer');
-  const box = f => ({ x: parseFloat(f.style.left), y: parseFloat(f.style.top), width: parseFloat(f.style.width), height: parseFloat(f.style.height) }); // where app.js put it
   // Google's Cast sender, loaded the first time it may be wanted. false: this browser can't cast (Firefox, Safari, Brave by default)
   let castSdk, castingAt = '';
   const castReady = () => castSdk ||= new Promise(ok => {
@@ -85,7 +84,7 @@ if (!window.api) (() => {
     .plyr--loading::after{content:"";position:absolute;z-index:1;top:50%;left:50%;width:44px;height:44px;margin:-22px;border:3px solid #fff3;border-top-color:#e50914;border-radius:50%;animation:s .7s linear infinite;pointer-events:none}@keyframes s{to{transform:rotate(360deg)}}
     .plyr--loading .plyr__control--overlaid{display:none}
     .skip-intro{position:absolute;z-index:4;right:16px;bottom:72px;padding:10px 18px;border:0;border-radius:6px;background:#fff;color:#000;font:700 14px system-ui,sans-serif;cursor:pointer}.skip-intro[hidden]{display:none}</style>`;
-  const streamPages = new Map(), deadStreams = new Set(); // a stream's host page, to ask it again; streams that page now plays instead (dressVideo)
+  const streamPages = new Map(); // a stream's host page, to ask it again (dressVideo)
   const HLS = '<script src="vendor/hls-1.5.20.light.min.js"></script>', isHls = url => /\.m3u8(\?|$)/.test(url); // hls.js (vendor/, Apache-2.0): for Firefox and older Chrome, which don't play HLS themselves
   const frameVideo = () => { const f = frame(); try { return f?.hasAttribute('srcdoc') ? f.contentDocument?.querySelector('video') : null; } catch { return null; } }; // a host's player is another site's page
   // over the video, as on Android: the page's header isn't there in the player's fullscreen. a new server's frame gets it too
@@ -116,14 +115,10 @@ if (!window.api) (() => {
         h.loadSource(src); h.attachMedia(v);
       };
       // its token plays from one IP only, and some networks hand each new connection another one (a few minutes apart, or mid-film):
-      // a new one, from where it was. still refused: the host's own page plays it instead, ads and all
+      // a new one, from where it was. still refused: dead (playerHealth), and the next server plays (its own page opens popups)
       const again = async () => {
         const at = v.currentTime || last, s = tries++ < 2 && page && (await window.api.unwrap(page).catch(() => null))?.url;
-        if (!s || !isHls(s)) {
-          if (!page) return v.dataset.dead = 1;
-          deadStreams.add(f.dataset.src);
-          return window.api.player(f.dataset.src, box(f), '', true);
-        }
+        if (!s || !isHls(s)) return v.dataset.dead = 1;
         load(s);
         if (at) v.addEventListener('loadedmetadata', () => { v.currentTime = at; }, { once: true });
       };
@@ -151,17 +146,11 @@ if (!window.api) (() => {
   // click until its popup opens, so in a sandbox the video never starts; dood looks for a sandbox too (see mobile.js). Those can't be
   // stopped from here: the last choice, never the default
   const SERVER_RANK = { videa: 0, ok: 1, vk: 1, vkvideo: 1, mp4upload: 1, share4max: 3, megamax: 3, leech: 3, dood: 3, doodstream: 3 };
-  // the ad blocker: a page can't filter another site's frame, but a sandbox without allow-popups/allow-top-navigation stops its
-  // popups, pop-unders and redirects. so every host plays in one, except those that refuse to play sandboxed (above; earnvids and
-  // streamhg in mobile.js). ponytail: name match on the hostname, a host on a new domain that refuses one needs adding here
-  const UNSANDBOXABLE = /dood|d0+d|ds2play|share4max|megamax|leech|earnvid|streamhg|vidara|voe|byse/i; // vidara, voe, byse: "sandbox not allowed"
-  // and those the user turned it off for (the player's ⋮): a host that says "sandbox not allowed" can't be told apart from outside
-  let adsAllowed = new Set();
-  kv('readonly', s => s.get('adsAllowed')).then(l => adsAllowed = new Set(l || [])).catch(() => {});
-  const frameHost = () => { const f = frame(); return f && !f.hasAttribute('srcdoc') && f.dataset.src ? new URL(f.dataset.src).hostname : null; };
-  const unblocked = host => UNSANDBOXABLE.test(host) || adsAllowed.has(host);
-  // those can still send the tab to an ad: the browser asks before leaving instead
-  addEventListener('beforeunload', e => { if (frame()?.dataset.guard) e.preventDefault(); });
+  // no popups: a page can't filter another site's frame, but a sandbox without allow-popups/allow-top-navigation denies its
+  // popups, pop-unders and redirects. every host plays in one; those that refuse to play sandboxed (above; earnvids and streamhg
+  // in mobile.js; vidara's, voe's and byse's "sandbox not allowed") aren't played here at all: the next server plays instead.
+  // ponytail: name match on the hostname, a host on a new domain that refuses one needs adding here
+  const UNSANDBOXABLE = /dood|d0+d|ds2play|share4max|megamax|leech|earnvid|streamhg|vidara|voe|byse/i;
 
   window.api = {
     web: true, // risto.js: anime from RistoAnime
@@ -207,7 +196,7 @@ if (!window.api) (() => {
         const r = await http('https://vidara.to/api/stream', { method: 'POST', body: JSON.stringify({ filecode: vid, device: 'web' }), headers: { 'Content-Type': 'application/json' } }).catch(() => null);
         const s = r?.status < 400 && (() => { try { return JSON.parse(r.data).streaming_url; } catch {} })();
         if (s) { streamPages.set(s, url); return { url: s, referrer: '', native: true }; }
-        return url; // its own page, then (out of the sandbox: it refuses one)
+        throw new Error('no vidara stream'); // its own page refuses a sandbox: the next server
       }
       if (!url.startsWith(AR + '/player/')) return url;
       const inner = (await http(url)).data.match(/<iframe[^>]+src=["']([^"']+)["']/i)?.[1];
@@ -246,34 +235,22 @@ if (!window.api) (() => {
         host.append(f);
       }
       Object.assign(f.style, { left: b.x + 'px', top: b.y + 'px', width: b.width + 'px', height: b.height + 'px' });
-      if (native && deadStreams.has(url)) { url = streamPages.get(url); native = false; } // a resize mustn't bring the refused stream back
       const key = `${native}:${url}`;
       if (f.dataset.playerKey !== key) {
         f.removeAttribute('srcdoc');
         // takes effect on the next load, so before it. No allow-popups: that's the point
-        const open = !native && unblocked(new URL(url).hostname);
-        if (!native && !open) f.sandbox = 'allow-scripts allow-same-origin allow-forms allow-presentation'; else f.removeAttribute('sandbox');
-        f.dataset.guard = open ? '1' : '';
+        if (!native) f.sandbox = 'allow-scripts allow-same-origin allow-forms allow-presentation'; else f.removeAttribute('sandbox');
+        f.dataset.refused = !native && UNSANDBOXABLE.test(new URL(url).hostname) ? 1 : ''; // not loaded: playerHealth says dead
         f.onload = native ? () => dressVideo(f).catch(console.error) : null;
-        if (native) f.srcdoc = isHls(url) ? MediaHosts.videoHtml('', playerHead + HLS).replace(' src=""', '') : MediaHosts.videoHtml(url, playerHead); else f.src = url; // a stream: no src till hls.js has it (dressVideo), or the video fails at once
+        if (native) f.srcdoc = isHls(url) ? MediaHosts.videoHtml('', playerHead + HLS).replace(' src=""', '') : MediaHosts.videoHtml(url, playerHead); else f.src = f.dataset.refused ? 'about:blank' : url; // a stream: no src till hls.js has it (dressVideo), or the video fails at once
         f.dataset.playerKey = key;
         f.dataset.src = url;
       }
     },
     playerFull: () => frame()?.requestFullscreen().catch(() => {}),
-    // the ad blocker for the host playing now: null with our own video (nothing to block), or a host that never plays sandboxed
-    adBlocked: () => { const h = frameHost(); return h && !UNSANDBOXABLE.test(h) ? !adsAllowed.has(h) : null; },
-    adBlockToggle() {
-      const h = frameHost(), f = frame();
-      if (!h) return;
-      adsAllowed.has(h) ? adsAllowed.delete(h) : adsAllowed.add(h);
-      kv('readwrite', s => s.put([...adsAllowed], 'adsAllowed')).catch(() => {});
-      const url = f.dataset.src;
-      f.dataset.playerKey = ''; f.removeAttribute('src'); // a sandbox change takes effect on the next load: load it again
-      window.api.player(url, box(f), '', false);
-    },
-    // our own video only (app.js watchServer: one that can't play goes on to the next server; skip intro). a host's says nothing here
-    playerHealth: async () => { const v = frameVideo(); return !v ? 'works' : v.dataset.dead || v.error && !v.dataset.stream ? 'dead' : v.readyState >= 2 ? 'works' : 'waiting'; },
+    // our own video only (app.js watchServer: one that can't play goes on to the next server; skip intro), or a host refused a
+    // sandbox (player). a host's says nothing here
+    playerHealth: async () => { if (frame()?.dataset.refused) return 'dead'; const v = frameVideo(); return !v ? 'works' : v.dataset.dead || v.error && !v.dataset.stream ? 'dead' : v.readyState >= 2 ? 'works' : 'waiting'; },
     playerTime: () => frameVideo()?.currentTime,
     playerSeek: at => { const v = frameVideo(); if (v) v.currentTime = at; },
     playerIntro(span, label) { intro = span && { from: span[0], to: span[1], label }; const v = frameVideo(); if (v) dressIntro(frame(), v); }, // null: a new episode, none known yet
