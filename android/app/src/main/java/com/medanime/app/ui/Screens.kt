@@ -59,23 +59,25 @@ private class HomeData(val anime: HomePage?, val hot: List<Card>?, val latest: L
 
 @Composable
 fun HomeScreen(nav: Nav) {
-    val (l, refresh) = loadedOnce("home", quiet = true) { f ->
+    val (l, refresh) = loadedOnce("home", Store.INTERESTS.filter(Store::wants), quiet = true) { f ->
         coroutineScope {
-            val a = async { runCatching { Witanime.home(f).first() }.getOrNull() }
-            val hot = async { runCatching { Manga.hot(f) }.getOrNull() }
-            val latest = async { runCatching { Manga.latestFlow(f).first() }.getOrNull() }
-            val films = async { runCatching { Cinema.list("all", 1, f).items }.getOrNull() }
-            val novels = async { runCatching { Novels.list(mapOf("sort" to "trending"), f).items }.getOrNull() }
-            val novelUpdates = async { runCatching { Novels.updates(f) }.getOrNull() }
+            // a section the user doesn't follow isn't asked (null, like one that didn't answer)
+            fun <T> ask(k: String, go: suspend () -> T) = async { if (Store.wants(k)) runCatching { go() }.getOrNull() else null }
+            val a = ask("anime") { Witanime.home(f).first() }
+            val hot = ask("manga") { Manga.hot(f) }
+            val latest = ask("manga") { Manga.latestFlow(f).first() }
+            val films = ask("cinema") { Cinema.list("all", 1, f).items }
+            val novels = ask("novels") { Novels.list(mapOf("sort" to "trending"), f).items }
+            val novelUpdates = ask("novels") { Novels.updates(f) }
             val m = async { mangaSlides(mangaTop(hot.await()?.take(3) ?: emptyList())) }
-            if (a.await() == null && hot.await() == null && films.await() == null) throw java.io.IOException(t("unreachable"))
+            if (a.await() == null && hot.await() == null && films.await() == null && novels.await() == null) throw java.io.IOException(t("unreachable"))
             // the slider takes turns: anime, manga, film, anime…
             val an = a.await()?.let(::animeSlides)?.take(3) ?: emptyList(); val mg = m.await(); val fl = filmSlides(films.await()?.take(3) ?: emptyList())
             HomeData(a.await(), hot.await(), latest.await(), films.await(), novels.await(), novelUpdates.await(), (0 until 3).flatMap { listOfNotNull(an.getOrNull(it), mg.getOrNull(it), fl.getOrNull(it)) })
         }
     }
     SectionPage(l, refresh, nav, { it.slides }) { d ->
-        item { CardRowView(t("continueWatching"), continued(setOf("anime", "cinema", "manga", "novel")), nav) }
+        item { CardRowView(t("continueWatching"), continued(setOf("anime", "cinema", "manga", "novel").filter { Store.wants(if (it == "novel") "novels" else it) }.toSet()), nav) }
         item { CardRowView(t("myList"), listed(), nav, Screen.MyList) }
         items(d.anime?.rows ?: emptyList(), { it.title }) { CardRowView(t(it.title), it.items, nav, Screen.Section(it.title)) }
         item { CardRowView(t("homeHotManga"), d.hot, nav, Screen.MangaBrowse(mapOf("is_hot" to "true"))) }
@@ -289,7 +291,7 @@ fun SearchScreen(q0: String, nav: Nav, kind0: String = "") {
         }
         Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (RATERS.any { kind.isEmpty() || kind in it.kinds }) RateChip(rate, kind) { rateOpen = true } // no score rates novels
-            listOf("", "anime", "cinema", "manga", "novels").forEach { k -> FilterChip(kind == k, { kind = k }, { Text(t(k.ifEmpty { "all" })) }) }
+            (listOf("") + Store.INTERESTS.filter(Store::wants)).forEach { k -> FilterChip(kind == k, { kind = k }, { Text(t(k.ifEmpty { "all" })) }) }
         }
         RateActive(rate, kind, setRate)
         if (typed.isEmpty() || (shelfOn && !everywhere)) return@Column RateShelf(rate, kind, typed, nav, setRate, { everywhere = true }) { matches = it }
@@ -303,8 +305,10 @@ fun SearchScreen(q0: String, nav: Nav, kind0: String = "") {
                 "novels" to { Novels.search(typed) }) // the site's search knows its Arabic titles only: no other spellings to try
             flow {
                 val got = mutableListOf<Card>()
-                var left = asks.count { kind.isEmpty() || kind == it.first }; var any = false // a section left out isn't asked
-                asks.map { (k, go) -> flow { if (kind.isEmpty() || kind == k) emit(runCatching { go() }.getOrNull()) } }.merge().collect { r ->
+                fun asked(k: String) = Store.wants(k) && (kind.isEmpty() || kind == k) // a section left out, or not followed, isn't asked
+                var left = asks.count { asked(it.first) }; var any = false
+                if (left == 0) emit(emptyList<Card>() to true) // nothing to ask: "nothing found", not a spinner forever
+                asks.map { (k, go) -> flow { if (asked(k)) emit(runCatching { go() }.getOrNull()) } }.merge().collect { r ->
                     left--
                     if (r != null) { any = true; got += r }
                     if (!any && left == 0) throw java.io.IOException(t("unreachable")) // no site answered

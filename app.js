@@ -39,7 +39,7 @@ const STR = {
     'أشهر أنميات الموسم': 'أشهر أنميات الموسم',
     genreRow: g => `أنمي ${g}`, becauseWatched: n => `لأنك شاهدت «\u2068${n}\u2069»`, // the website's feed (risto.js)
 homeHotManga: 'المانجا الرائجة', homeLatestManga: 'أحدث فصول المانجا', homeHotNovels: 'الروايات الرائجة', homeLatestNovels: 'أحدث فصول الروايات', epFinal: 'والأخيرة',
-    prevEp: 'الحلقة السابقة', nextEp: 'الحلقة التالية', skipIntro: 'تخطي المقدمة', playback: 'تشغيل الفيديو', heroTrailerSet: 'تشغيل المقطع الدعائي تلقائياً في الواجهة', skipIntroSet: 'زر تخطي المقدمة', skipIntroHint: 'يظهر زر لتخطي مقدمة الحلقة أثناء عرضها.', chooseServer: 'اختر سيرفرًا', searchingServers: 'جارٍ البحث عن سيرفرات…', searching: 'جارٍ البحث…',
+    prevEp: 'الحلقة السابقة', nextEp: 'الحلقة التالية', skipIntro: 'تخطي المقدمة', playback: 'تشغيل الفيديو', heroTrailerSet: 'تشغيل المقطع الدعائي تلقائياً في الواجهة', skipIntroSet: 'زر تخطي المقدمة', interests: 'اهتماماتي', interestsHint: 'اختر ما تتابعه: الأقسام غير المحددة تختفي من القائمة والرئيسية والبحث.', interestsMin: 'اترك قسمًا واحدًا على الأقل', skipIntroHint: 'يظهر زر لتخطي مقدمة الحلقة أثناء عرضها.', chooseServer: 'اختر سيرفرًا', searchingServers: 'جارٍ البحث عن سيرفرات…', searching: 'جارٍ البحث…',
     server: 'سيرفر', noneWorked: 'لم يعمل أي سيرفر', noneWorkedHint: 'جرّب سيرفرًا آخر من القائمة أو افتح الحلقة في المتصفح.',
     rateLimited: 'الموقع يطلب الانتظار قليلًا', rateLimitedHint: 'طلبات كثيرة في وقت قصير. انتظر دقيقة أو دقيقتين ثم أعد المحاولة.', noServers: 'لا توجد سيرفرات لهذه الحلقة', noServersHint: 'لم يتم العثور عليها في أي مصدر.', noServersEdHint: 'لم يتم العثور عليها في المصدر.', verify: 'التحقق من الوصول', verifyFailed: 'لم يكتمل التحقق', today: 'اليوم',
     downloads: 'التنزيلات', download: 'تحميل الحلقة', dlPreparing: 'جارٍ تجهيز التحميل…', dlStarted: 'بدأ التحميل', dlFinished: n => `اكتمل تحميل «\u2068${n}\u2069»`,
@@ -77,7 +77,7 @@ homeHotManga: 'المانجا الرائجة', homeLatestManga: 'أحدث فصو
     resume: e => `Resume Ep ${e}`, inList: 'In My List', sound: 'Sound', homeNovels: 'Trending novels', homeTopNovels: 'Most read novels', homeTopMovies: 'Top rated movies', homeTopSeries: 'Top rated series', trailer: 'Trailer', episodes: 'Episodes', loadingEpisodes: 'Loading remaining episodes…', moreEpisodes: 'Show more episodes', holdOn: 'Hold on a little, this is taking longer than usual…', episodesShown: (n, total) => `Showing ${n} of ${total} episodes`, jump: 'Jump to ep…', moreLike: 'More Like This',
     back: 'Back (Esc)', loadingServers: 'Loading servers…', openBrowser: 'Open in browser', adBlockOn: 'Ad blocker: on', adBlockOff: 'Ad blocker: off', adBlockHint: 'If a server refuses to play with the ad blocker, turn it off for it here', adBlockStopped: 'Ad blocker off for this server', adBlockStarted: 'Ad blocker on for this server', openBrowserTip: "If the in-app player won't load", cast: 'Cast to TV', casting: 'Playing on the TV', plyr: { restart: 'Restart', rewind: 'Back {seektime}s', play: 'Play', pause: 'Pause', fastForward: 'Forward {seektime}s', seek: 'Seek', seekLabel: '{currentTime} of {duration}', played: 'Played', buffered: 'Buffered', currentTime: 'Current time', duration: 'Duration', volume: 'Volume', mute: 'Mute', unmute: 'Unmute', pip: 'Picture in picture', enterFullscreen: 'Fullscreen', exitFullscreen: 'Exit fullscreen', settings: 'Settings', menuBack: 'Back', speed: 'Speed', normal: 'Normal' }, castLooking: 'Sending the video to the TV…', castNoFile: 'No file of this episode can play on a TV', castNoTv: 'No TV found on this network', castBrowser: 'Casting works in Chrome or Edge', castPlayFirst: 'Start the video here first, then cast it', castHost: 'This server can’t be cast from the browser: pick another one', castWifi: 'Connect to the same Wi-Fi as the TV', castFailed: "Couldn't play it on the TV, try another server",
 homeHotManga: 'Trending manga', homeLatestManga: 'Latest manga chapters', homeHotNovels: 'Trending novels', homeLatestNovels: 'Latest novel chapters', epFinal: '(final)',
-    prevEp: 'Previous', nextEp: 'Next', skipIntro: 'Skip intro', playback: 'Playback', heroTrailerSet: 'Auto-play trailers in the home carousel', skipIntroSet: 'Skip intro button', skipIntroHint: "Shows a button to skip an episode's opening while it plays.", chooseServer: 'Choose server', searchingServers: 'Searching servers…', searching: 'Searching…',
+    prevEp: 'Previous', nextEp: 'Next', skipIntro: 'Skip intro', playback: 'Playback', heroTrailerSet: 'Auto-play trailers in the home carousel', skipIntroSet: 'Skip intro button', interests: 'My interests', interestsHint: 'Pick what you follow: unchecked sections leave the menu, home and search.', interestsMin: 'Keep at least one section', skipIntroHint: "Shows a button to skip an episode's opening while it plays.", chooseServer: 'Choose server', searchingServers: 'Searching servers…', searching: 'Searching…',
     server: 'Server', noneWorked: 'No server worked', noneWorkedHint: 'Try another one above, or open in browser.',
     rateLimited: 'The site asks to slow down', rateLimitedHint: 'Too many requests in a short time. Wait a minute or two, then retry.', noServers: 'No servers for this episode', noServersHint: 'Not found on any source.', noServersEdHint: 'Not found on the source.', verify: 'Verify access', verifyFailed: 'Check not passed', today: 'Today',
     downloads: 'Downloads', download: 'Download episode', dlPreparing: 'Preparing download…', dlStarted: 'Download started', dlFinished: n => `Downloaded “\u2068${n}\u2069”`,
@@ -135,18 +135,22 @@ const NAV = [
   { id: 'myList', href: '#/list' },
   ...(api.web ? [] : [{ id: 'downloads', href: '#/downloads' }]),
 ];
+// the sections the user follows (settings, all by default): the others leave the nav, home and search. prefs.off: those turned off
+const INTERESTS = ['anime', 'cinema', 'manga', ...(api.web ? ['novels'] : [])];
+const wants = id => !store.prefs.off?.includes(id === 'schedule' ? 'anime' : id); // the schedule is anime's
+const navShown = () => NAV.filter(n => wants(n.id));
 const DOCK_MAX = 5, DOCK_DEFAULT = ['home', 'anime', 'manga', 'cinema']; // novels is also available through the drawer on phones
 const dockLabel = id => t(id === 'schedule' ? 'scheduleShort' : id === 'cinema' ? 'cinemaShort' : id); // a fifth of the screen
 const navSvg = id => ICON[id === 'anime' ? 'series' : id === 'novels' ? 'novel' : id]; // nav icons share the section ids
 const navItem = id => NAV.find(n => n.id === id);
 // series and movies were one section each before Anime held both
-const dockIds = () => [...new Set((store.prefs.dock?.length ? store.prefs.dock : DOCK_DEFAULT).map(id => id === 'series' || id === 'movies' ? 'anime' : id))].filter(navItem);
+const dockIds = () => [...new Set((store.prefs.dock?.length ? store.prefs.dock : DOCK_DEFAULT).map(id => id === 'series' || id === 'movies' ? 'anime' : id))].filter(id => navItem(id) && wants(id));
 function renderNav() {
   const dock = dockIds();
-  $('#links').innerHTML = NAV.map(n => `<a href="${n.href}" class="${dock.includes(n.id) ? 'dock' : ''}" style="--o:${dock.indexOf(n.id)}">${navSvg(n.id)}`
+  $('#links').innerHTML = navShown().map(n => `<a href="${n.href}" class="${dock.includes(n.id) ? 'dock' : ''}" style="--o:${dock.indexOf(n.id)}">${navSvg(n.id)}`
       + (n.id === 'schedule' || n.id === 'cinema' ? `<span class="long">${t(n.id)}</span><span class="short">${dockLabel(n.id)}</span>` : `<span>${t(n.id)}</span>`) + '</a>').join('');
   $('#drawer').innerHTML = `<div class="dr-head"><a href="#/" class="logo">${ICON.logo}<span class="logo-word" aria-hidden="true">edFlix</span></a><button class="icon-btn" id="drClose" data-ta="close" aria-label="${t('close')}">${ICON.x}</button></div>
-    <nav class="dr-links">${NAV.map(n => `<a href="${n.href}">${navSvg(n.id)}<span>${t(n.id)}</span></a>`).join('')}</nav>
+    <nav class="dr-links">${navShown().map(n => `<a href="${n.href}">${navSvg(n.id)}<span>${t(n.id)}</span></a>`).join('')}</nav>
     <div class="dr-sep"></div>
     <nav class="dr-links"><a href="#/settings">${ICON.settings}<span>${t('settings')}</span></a><button type="button" id="drFeedback">${ICON.info}<span>${t('feedback')}</span></button></nav>
     <div class="dr-language"><span class="dr-language-label">${ICON.textAa}${t('language')}</span>
@@ -340,6 +344,8 @@ function settingsView(root = view) {
     api.storage && { id: 'stor', icon: ICON.folder, title: t('storage'), hint: t('storageHint'), body: '<div class="set-stor" id="stor"></div>' },
     { id: 'play', icon: ICON.play, title: t('playback'), hint: t('skipIntroHint'),
       body: `<div class="set-list"><label class="set-row"><i class="set-tile">${ICON.skipForward}</i><span>${t('skipIntroSet')}</span><input type="checkbox" id="intro-on" ${store.prefs.skipIntro === false ? '' : 'checked'}></label><label class="set-row"><i class="set-tile">${ICON.play}</i><span>${t('heroTrailerSet')}</span><input type="checkbox" id="trailer-on" ${store.prefs.heroTrailer === false ? '' : 'checked'}></label></div>` },
+    { id: 'int', icon: ICON.check, title: t('interests'), hint: t('interestsHint'), body: `<div class="set-list">${INTERESTS.map(id =>
+      `<label class="set-row"><i class="set-tile">${navSvg(id)}</i><span>${t(id)}</span><input type="checkbox" data-int="${id}" ${wants(id) ? 'checked' : ''}></label>`).join('')}</div>` },
     { id: 'hidden', icon: ICON.eyeSlash, title: t('hiddenTitle'), hint: t('hiddenHint'),
       // the modal shows them in its tab (their ✕ brings one back); the page links to #/hidden
       body: modal ? `<div class="set-hidden">${hiddenGrid('h3')}</div>`
@@ -362,7 +368,7 @@ function settingsView(root = view) {
       <h3>${t('inDock')} <small>${dock.length}/${DOCK_MAX}</small></h3>
       <div class="set-list">${dock.map((id, i) => line(navItem(id), i)).join('')}</div>
       <h3>${t('available')}</h3>
-      <div class="set-list">${NAV.filter(n => !dock.includes(n.id)).map(n => line(n, -1)).join('')}</div>
+      <div class="set-list">${navShown().filter(n => !dock.includes(n.id)).map(n => line(n, -1)).join('')}</div>
     </section>
     <div class="set-side">
     ${secs.map(s => `<section class="set-card ${s.id === setTab ? 'on' : ''}" data-sec="${s.id}"><h2>${s.title}</h2><div class="set-box">${s.hint ? `<p class="hint">${s.hint}</p>` : ''}${s.body}</div></section>`).join('')}
@@ -370,6 +376,13 @@ function settingsView(root = view) {
   if (api.storage) drawStorage();
   $('#intro-on').onchange = e => { store.prefs.skipIntro = e.target.checked; persist('prefs'); };
   $('#trailer-on').onchange = e => { store.prefs.heroTrailer = e.target.checked; persist('prefs'); };
+  root.querySelectorAll('[data-int]').forEach(b => b.onchange = () => {
+    const off = INTERESTS.filter(id => !root.querySelector(`[data-int="${id}"]`).checked);
+    if (off.length === INTERESTS.length) { b.checked = true; return toast(t('interestsMin'), true); }
+    store.prefs.off = off; persist('prefs');
+    renderNav(); settingsView(root);
+    if (modal) route(); // the page behind the modal, without the sections turned off
+  });
   if (api.web) webData();
   root.querySelector('.settings').onclick = e => {
     if (e.target.closest('.set-x')) return closeSettings();
@@ -994,7 +1007,9 @@ const interleave = lists => { lists = lists.map(l => [...l.filter(isTop), ...l.f
 // Home: a bit of every section. A site that doesn't answer just leaves its rows out.
 async function home(force) {
   const hash = location.hash;
-  const [d, hot, latest, films, oLatest, foreign, asian, novels, popular, readNovels] = await firstSections([
+  const kinds = ['anime', 'manga', 'manga', 'cinema', 'manga', 'cinema', 'cinema', 'novels', 'manga', 'novels']; // each loader's section
+  // a section the user doesn't follow isn't asked (rejected: firstSections waits for a real answer), nor drawn from an earlier visit
+  const [d, hot, latest, films, oLatest, foreign, asian, novels, popular, readNovels] = (await firstSections([
     () => scraper.home(force),
     () => load('mangaList', mUrl('series/', { is_hot:true, page_size:30 }), force),
     () => load('mangaLatest', mUrl('chapters/', { page_size:60, order_by:'-created_at' }), force),
@@ -1005,7 +1020,7 @@ async function home(force) {
     () => api.web ? nvLoad('/novels', { language: 'ar', limit: 24, sort: 'trending' }, force) : null, // the novels section is the website's
     () => load('mangaList', mUrl('series/', { order_by: '-views_count', page_size: 30 }), force),
     () => api.web ? nvLoad('/novels', { language: 'ar', limit: 24, sort: 'views' }, force) : null,
-  ]);
+  ].map((f, i) => wants(kinds[i]) ? f : () => Promise.reject(new Error('off'))))).map((v, i) => wants(kinds[i]) ? v : null);
   // films have no most-viewed list: the best scored of the ones loaded
   const scored = [...new Map([...films?.items || [], ...foreign?.items || [], ...asian?.items || []].map(c => [c.path, c])).values()].filter(c => +c.rating).sort((x, y) => y.rating - x.rating).slice(0, 10);
   if (location.hash !== hash) return;
@@ -1016,7 +1031,7 @@ async function home(force) {
   const a = d ? animeHero(d).slice(0, 3) : [];
   const hero = [...Array(3)].flatMap((_, i) => [a[i], m?.[i], f?.[i]]).filter(Boolean);
   heroPage(hero, `
-      ${row(t('continueWatching'), continued(['anime', 'cinema', 'manga', 'novel']))}
+      ${row(t('continueWatching'), continued(['anime', 'cinema', 'manga', 'novel'].filter(k => wants(k === 'novel' ? 'novels' : k))))}
       ${row(t('myList'), Object.values(store.list).sort((a, b) => b.at - a.at), '#/list')}
       ${interleave([
         d ? animeRowList(d) : [],
@@ -1238,7 +1253,7 @@ async function search(q) {
   const IN = /\?in=(anime|manga|cinema|novels)$/, s = q.match(IN)?.[1] || '';
   q = q.replace(IN, '');
   $('#search').q.value = q;
-  const tabs = `<div class="fchips">${['', 'anime', 'cinema', 'manga', ...(api.web ? ['novels'] : [])].map(k =>
+  const tabs = `<div class="fchips">${['', ...INTERESTS.filter(wants)].map(k =>
     `<a class="fchip ${k === s ? 'on' : ''}" href="#/search/${encodeURIComponent(q)}${k && '?in=' + k}">${t(k || 'all')}</a>`).join('')}</div>`;
   const head = `<h1>${esc(t('results', q))} <a class="btn ghost small h1-btn" href="#/filter/1?search=${encodeURIComponent(q)}">${ICON.filter} ${t('filter')}</a></h1>${tabs}`;
   const animeP = () => fuzzySearch(q, 'anime', v => scraper.search(v).then(r => r.items)).catch(() => []);
@@ -1251,7 +1266,7 @@ async function search(q) {
     return;
   }
   view.innerHTML = `<div class="page">${head}<div class="grid" id="sres">${skel(12)}</div></div>`;
-  let left = api.web ? 4 : 3, shown = 0;
+  let left = INTERESTS.filter(wants).length, shown = 0;
   const add = items => { // skeletons stay after the cards while a section is still asked
     const g = current() && $('#sres');
     if (!g) return;
@@ -1260,12 +1275,12 @@ async function search(q) {
     shown += items.length;
     if (!left && !shown) g.outerHTML = grid([]); // "nothing here" only once every section came back empty
   };
-  const anime = animeP();
-  anime.then(add);
+  const anime = wants('anime') ? animeP() : Promise.resolve([]);
+  if (wants('anime')) anime.then(add);
   // films: the same title as an anime film is listed once, under anime (moreResults); asked alongside it, not after
-  moreResults(null, { search: q }, anime, true).catch(() => []).then(add);
-  moreResults({ search: q }, null, [], true).catch(() => []).then(add);
-  if (api.web) novelsP(12).then(add);
+  if (wants('cinema')) moreResults(null, { search: q }, anime, true).catch(() => []).then(add);
+  if (wants('manga')) moreResults({ search: q }, null, [], true).catch(() => []).then(add);
+  if (api.web && wants('novels')) novelsP(12).then(add);
 }
 // manga and film matches, as rows (the search page, and the filter page). mq: a manga browse query (MangaSwat's terms; and:
 // more genre ids each card must have), fq: films (see filmQuery in filter.js; { search } alone for the search page); either

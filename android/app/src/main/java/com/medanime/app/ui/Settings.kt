@@ -123,6 +123,14 @@ fun SettingsScreen(part: String, nav: Nav) {
                         (Net.activity as? NativeActivity)?.pip(playerUp)
                     }
                 }
+                Group(t("interests"), t("interestsHint")) {
+                    Store.INTERESTS.forEach { id ->
+                        Toggle(NAV.getValue(id).second(), navLabel(id), null, Store.wants(id)) { on ->
+                            val off = Store.INTERESTS.filter { if (it == id) !on else !Store.wants(it) }
+                            if (off.size == Store.INTERESTS.size) toast(t("interestsMin")) else Store.setOff(off)
+                        }
+                    }
+                }
                 Group(t("downloads")) {
                     Toggle(Ic.download, t("dlWifi"), t("dlWifiHint"), Store["prefs"].optBoolean("dlWifi"), com.medanime.app.Downloads::wifiOnly)
                     Toggle(Ic.trash, t("dlAutoDel"), t("dlAutoDelHint"), Store["prefs"].optBoolean("dlAutoDel")) { Store["prefs"].put("dlAutoDel", it); Store.persist("prefs") }
@@ -158,7 +166,7 @@ fun SettingsScreen(part: String, nav: Nav) {
                         }
                     }
                 }
-                val rest = NAV.keys.filter { it !in dock }
+                val rest = NAV.keys.filter { it !in dock && Store.wants(it) }
                 if (rest.isNotEmpty()) Group(t("available")) {
                     rest.forEach { id ->
                         Item(NAV.getValue(id).second(), navLabel(id), tint = Muted, onClick = { if (dock.size >= Store.DOCK_MAX) toast(t("dockFull")) else Store.setDock(dock + id) }) {

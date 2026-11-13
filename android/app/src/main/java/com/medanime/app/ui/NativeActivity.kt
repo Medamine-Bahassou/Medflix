@@ -426,7 +426,7 @@ private fun Drawer(top: Screen, tab: (Screen) -> Unit, close: () -> Unit, modifi
         }
         // the rows scroll and the language stays pinned below them: on shorter phones they no longer fit with it
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-            NAV.forEach { (id, v) -> item(navLabel(id), section(top) == id, v.second()) { tab(v.first) } }
+            NAV.filter { Store.wants(it.key) }.forEach { (id, v) -> item(navLabel(id), section(top) == id, v.second()) { tab(v.first) } }
             HorizontalDivider(Modifier.padding(horizontal = 28.dp, vertical = 8.dp), color = Color(0x22FFFFFF))
             item(navLabel("settings"), section(top) == "settings", Ic.settings) { tab(Screen.Settings()) }
             item(t("feedback"), false, Ic.info, feedback)

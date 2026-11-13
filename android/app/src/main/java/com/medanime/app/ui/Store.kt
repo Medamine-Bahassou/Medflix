@@ -70,8 +70,16 @@ object Store {
     fun dock(): List<String> {
         val a = get("prefs").optJSONArray("dock")
         val l = (0 until (a?.length() ?: 0)).map { a!!.getString(it) }.ifEmpty { listOf("home", "anime", "manga", "novels", "cinema") }
-        return l.map { if (it == "series" || it == "movies") "anime" else it }.distinct().filter { it in NAV }  // series and movies were one section each before Anime held both
+        return l.map { if (it == "series" || it == "movies") "anime" else it }.distinct().filter { it in NAV && wants(it) }.ifEmpty { listOf("home") }  // series and movies were one section each before Anime held both
     }
+    /** the sections the user follows (settings, all by default; app.js wants): the others leave the nav, home and search. prefs.off: those turned off */
+    val INTERESTS = listOf("anime", "cinema", "manga", "novels")
+    fun wants(id: String): Boolean {
+        val off = get("prefs").optJSONArray("off") ?: return true
+        val k = if (id == "schedule") "anime" else id // the schedule is anime's
+        return (0 until off.length()).none { off.getString(it) == k }
+    }
+    fun setOff(l: List<String>) { get("prefs").put("off", org.json.JSONArray(l)); persist("prefs") }
     fun setDock(l: List<String>) { get("prefs").put("dock", org.json.JSONArray(l)); persist("prefs") }
 
     operator fun get(key: String): JSONObject = data.getOrPut(key) {
