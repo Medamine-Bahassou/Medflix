@@ -97,6 +97,9 @@ const dubbed = items => items?.map(c => c.dub ? { ...c, badge: t('dubbed') } : c
 
 Object.assign(parsers, {
   edList: (doc, url) => ({ items: edCards(doc), // every block: some categories open with a (often empty) pinned one
+    // every season listed, which items keep one of per show: a season's page doesn't link the others (cinemaTitle)
+    seasons: [...doc.querySelectorAll('a[href*="/selary/"][title]')].map(a => ({ path: '/cinema/' + edSlug(a.getAttribute('href')), title: edTitle(a.getAttribute('title')).title }))
+      .filter((c, i, all) => c.path.startsWith('/cinema/serie/') && all.findIndex(o => o.path === c.path) === i),
     pages: Math.max(1, ...[...doc.querySelectorAll('a[href*="/page/"]')].map(a => +a.getAttribute('href').match(/\/page\/(\d+)/)?.[1] || 0)) }),
   edMovie(doc, url) {
     const selfSlug = url ? edSlug(url) : '';
@@ -139,13 +142,15 @@ Object.assign(parsers, {
 // MegaMax and ArabSeed's redirectors (/vid/?id=, /vids.php?t=) wrap video hosts: unwrap to the direct embed URLs
 // and order known fast hosts first.
 const GOOD_HOSTS = ['myseed', 'vidmoly', 'vidara', 'earnvids', 'voe', 'dsvplay'];
-const DEAD_HOSTS = /(^|\.)(openload|oload|verystream|gounlimited|clipwatching|watchvideo|mystream|uptostream|streamango|rapidvideo|vidlox|vidoza)\./; // old films still list these long-gone hosts first
+// old films still list these long-gone hosts first. upstream.to's certificate is gone; m.arabseed.me's embed-x.html sends to some film page
+const DEAD_HOSTS = /(^|\.)(openload|oload|verystream|gounlimited|clipwatching|watchvideo|mystream|uptostream|streamango|rapidvideo|vidlox|vidoza|upstream)\.|^m\.arabseed\./;
 const LAST_HOST = 'uqload'; // plays, but with ads: listed last and never picked by default
 const hostRank = h => h === LAST_HOST ? 100 : (r => r < 0 ? 99 : r)(GOOD_HOSTS.indexOf(h));
 const hostName = u => { try { return new URL(u).hostname.replace(/^www\./, '').split('.')[0]; } catch { return ''; } };
 const b64Url = s => { try { return atob(s.replace(/-/g, '+').replace(/_/g, '/')); } catch { return ''; } };
 const myseedUrl = (tok, origin) => `https://d.myseed.tv/player-gateway.php?src=myseed&front=${new URL(origin).hostname}&t=${tok}`;
 async function unwrapServer(s, origin) {
+  if (s.url.startsWith('//')) s = { ...s, url: 'https:' + s.url }; // its ok.ru links have no scheme
   if (s.url.startsWith('/vids.php')) {
     // the website can't play myseed's: its gateway plays only framed from myseed's own site (Android's WebView poses as it,
     // Player.kt), else it shows a "visit the official site" banner, and its video file refuses any other referrer. Not offered
@@ -283,12 +288,32 @@ async function egyWatch(m) {
   return { servers: w.servers.map(s => ({ ...s, ref: u.origin + '/', backup: true })), downloads: w.downloads }; // its hosts want its page as the referrer
 }
 
+// free players by IMDb id, for any film or episode IMDb knows: the last backups (subtitles in English at best, and their own ads).
+// an episode's id is its series': the episode page has no IMDb link, so its English name is looked up ("The Sopranos الموسم السادس الحلقة 21")
+const FREE = [ // [label, film, episode]
+  ['vidsrc', 'https://vidsrc.cc/v2/embed/movie/$id', 'https://vidsrc.cc/v2/embed/tv/$id/$s/$e'],
+  ['vidfast', 'https://vidfast.pro/movie/$id', 'https://vidfast.pro/tv/$id/$s/$e'],
+  ['2embed', 'https://www.2embed.cc/embed/$id', 'https://www.2embed.cc/embedtv/$id&s=$s&e=$e'],
+  ['vidsrcme', 'https://vidsrc.me/embed/movie?imdb=$id', 'https://vidsrc.me/embed/tv?imdb=$id&season=$s&episode=$e'],
+];
+async function freeWatch(m, slug) {
+  const ep = slug.includes('/') && m.title.replace(/[أإآ]/g, 'ا').match(/^(.+?)(?:\s+الموسم\s+(\S+))?\s+الحلقة\s+(\d+)/);
+  const s = ep && (ep[2] ? +ep[2] || AR_NTH.indexOf(ep[2]) + 1 : 1), name = mcKey(ep ? ep[1] : m.title);
+  let tt = !ep && m.imdbId;
+  if (!tt && (!slug.includes('/') || s)) { // past "العاشر" (AR_NTH's last), the season isn't known
+    const hits = (JSON.parse(await api.fetch(`https://v3.sg.media-imdb.com/suggestion/x/${encodeURIComponent(name)}.json`)).d || [])
+      .filter(h => /^tt\d+$/.test(h.id) && mcKey(h.l) === name && (ep ? /^tv(Series|MiniSeries)$/ : /^(movie|tvMovie)$/).test(h.qid) && (ep || !m.year || String(h.y) === m.year));
+    tt = hits.length === 1 && hits[0].id; // two of that name: none, rather than the wrong one
+  }
+  return { servers: tt ? FREE.map(([label, film, tv]) => ({ label, quality: '', url: ep ? tv.replace('$id', tt).replace('$s', s).replace('$e', ep[3]) : film.replace('$id', tt), ref: '', backup: true })) : [], downloads: [] };
+}
+
 // all four sites' links (remembered by edWatchSoon): a host already listed is not offered again by a later site
 // early: handed the site's own links first, which the player shows while the other sites are still being asked
 async function edWatch(m, slug, early) {
   const mine = seedWatch(m, slug);
   early?.(mine);
-  const [a, ...b] = await Promise.allSettled([mine, ...(slug.includes('/') ? [] : [egyWatch(m), mcWatch(m), wcWatch(m)])]);
+  const [a, ...b] = await Promise.allSettled([mine, ...(slug.includes('/') ? [] : [egyWatch(m), mcWatch(m), wcWatch(m)]), freeWatch(m, slug)]);
   b.forEach(r => r.reason && console.error(r.reason));
   const own = a.value || { servers: [], downloads: [] }, more = b.map(r => r.value).filter(Boolean);
   if (a.reason && !more.some(x => x.servers.length)) throw a.reason;
@@ -316,7 +341,12 @@ const edWatchSoon = (m, slug) => {
 
 const edList = (id, page = 1, force) => load('edList', ED + eCat(id)[1] + (page > 1 ? `page/${page}/` : ''), force)
   .then(d => id === 'all' ? { ...d, items: d.items.filter(c => /^\/cinema\/فيلم-/.test(c.path)) } : d); // latest additions: the films only (not episodes, shows, wrestling)
-const edSearch = q => load('edList', `${ED}/find/?word=${encodeURIComponent(q)}`).then(d => dubbed(d.items));
+// its search lists the newest episodes, so an older show (or its older seasons) is missed: its series search ("type=series") first
+const edFind = (q, series) => `${ED}/find/?word=${encodeURIComponent(q)}${series ? '&type=series' : ''}`;
+const edSearch = q => Promise.all([load('edList', edFind(q, true)).catch(() => ({ items: [] })), load('edList', edFind(q))])
+  .then(([s, e]) => dubbed([...s.items, ...e.items].filter((c, i, all) => all.findIndex(o => o.path === c.path || (edShowKey(c) && edShowKey(o) === edShowKey(c))) === i)));
+// "The Sopranos الموسم السادس" -> 6 (0: past AR_NTH's "العاشر")
+const seasonNo = title => { const w = title.replace(/[أإآ]/g, 'ا').match(/الموسم\s+(\S+)/)?.[1] || ''; return +w || AR_NTH.indexOf(w) + 1; };
 
 async function cinemaRoute(rest, force) {
   if (/^(serie|season|episode)$/.test(rest[0])) rest = [rest[0] + '/' + rest[1], ...rest.slice(2)];
@@ -364,8 +394,14 @@ async function cinemaBrowse(id, force) {
 
 const edMovieOf = (slug, force = false) => load('edMovie', edUrl(slug), force, true); // a title page, from the cache: its cast and IMDb id (cast-info.js)
 async function cinemaTitle(slug, force) {
-  const m = await load('edMovie', edUrl(slug), force);
+  let m = await load('edMovie', edUrl(slug), force);
   const path = '/cinema/' + slug;
+  // a season's page often links no other season: they're found by the show's name
+  if (slug.startsWith('serie/') && !m.seasons.length && seasonNo(m.title)) {
+    const show = m.title.replace(/\s*الموسم\s.*$/, ''), all = (await load('edList', edFind(show, true)).catch(() => null))?.seasons || [];
+    const mine = all.filter(c => c.title.replace(/\s*الموسم\s.*$/, '') === show && seasonNo(c.title)).sort((a, b) => seasonNo(a.title) - seasonNo(b.title));
+    if (mine.some(c => c.path === path)) m = { ...m, seasons: mine };
+  }
   if (m.cat.some(isAnimeCat)) return animeInstead(m.title); // an anime film after all (an old link, say): witanime's copy instead
   // a series page with seasons: open the season last watched, else the first
   if (m.seasons.length && (!m.episodes.length || !m.seasons.some(s => s.path === path))) {
