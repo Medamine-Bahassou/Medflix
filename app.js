@@ -755,7 +755,7 @@ $('#search').q.addEventListener('input', e => { // on the search page: asks agai
   clearTimeout(searchTyped);
   const q = e.target.value.trim();
   if (!q || !location.hash.startsWith('#/search/')) return;
-  searchTyped = setTimeout(() => location.replace('#/search/' + encodeURIComponent(q) + (location.hash.match(/\?in=\w+$/)?.[0] || '')), 400);
+  searchTyped = setTimeout(() => location.replace('#/search/' + encodeURIComponent(q) + (location.hash.match(/\?in=\w+$/)?.[0] || '')), 250);
 });
 $('#search').onsubmit = e => {
   e.preventDefault();
@@ -1214,10 +1214,11 @@ async function fuzzySearch(q, kind, ask) {
   q = searchQuery(q);
   if (!q) return [];
   const found = new Map(), add = l => (l || []).forEach(c => found.has(c.path) || found.set(c.path, c));
+  const sugP = suggest(kind, q); // asked alongside what was typed: when that finds little, the names are already here
   add(await ask(q).catch(() => []));
   let names = [q];
   if ([...found.values()].filter(x => closeness(q, x.title) >= .6).length < 3) {
-    const sug = await suggest(kind, q);
+    const sug = await sugP;
     names = [q, ...sug];
     const variants = spellings(q);
     const more = [...new Set([...variants.slice(0, 2), ...sug, ...variants.slice(2)])].filter(v => v !== q).slice(0, 7);
@@ -1230,8 +1231,8 @@ async function fuzzySearch(q, kind, ask) {
 }
 
 let searchRun = 0;
-// #/search/<q>?in=<section>: all: one row per section, each filling in as its site answers (like the Android app);
-// ?in=: only that section is asked, its matches in one grid. novels are the website's only
+// #/search/<q>?in=<section>: all: one grid, each section's cards added as its sites answer (first come, first shown);
+// ?in=: only that section is asked. novels are the website's only
 async function search(q) {
   const run = ++searchRun, hash = location.hash, current = () => run === searchRun && hash === location.hash;
   const IN = /\?in=(anime|manga|cinema|novels)$/, s = q.match(IN)?.[1] || '';
@@ -1245,40 +1246,43 @@ async function search(q) {
   if (s) { // one section: a grid
     view.innerHTML = `<div class="page">${head}<div class="grid" id="sres">${skel(12)}</div></div>`;
     if (s === 'anime') { const items = await animeP(); if (current()) view.innerHTML = `<div class="page">${head}${grid(items)}</div>`; return; }
-    const html = s === 'novels' ? grid(await novelsP(30)) : await moreResults(s === 'manga' && { search: q }, s === 'cinema' && { search: q }, [], true);
+    const html = grid(s === 'novels' ? await novelsP(30) : await moreResults(s === 'manga' && { search: q }, s === 'cinema' && { search: q }, [], true));
     if (current() && $('#sres')) $('#sres').outerHTML = html;
     return;
   }
-  const ids = ['anime', 'cinema', 'manga', ...(api.web ? ['novels'] : [])];
-  view.innerHTML = `<div class="page">${head}<div id="sempty"></div></div>` + ids.map(k => `<div class="rows sched-rows" id="s-${k}">${skelRows(1)}</div>`).join('');
-  const more = (k, items) => items.length ? row(k, items, `#/search/${encodeURIComponent(q)}?in=${k}`) : '';
-  const got = {};
-  const done = (k, html) => { got[k] = html; if (!current()) return; $('#s-' + k).innerHTML = html;
-    // "nothing here" only once every section has come back empty
-    if (ids.every(i => i in got) && !ids.some(i => got[i])) $('#sempty').innerHTML = grid([]); };
+  view.innerHTML = `<div class="page">${head}<div class="grid" id="sres">${skel(12)}</div></div>`;
+  let left = api.web ? 4 : 3, shown = 0;
+  const add = items => { // skeletons stay after the cards while a section is still asked
+    const g = current() && $('#sres');
+    if (!g) return;
+    g.querySelectorAll('.skel').forEach(e => e.remove());
+    g.insertAdjacentHTML('beforeend', items.map((c, i) => card(c, shown + i)).join('') + (--left ? skel(4) : ''));
+    shown += items.length;
+    if (!left && !shown) g.outerHTML = grid([]); // "nothing here" only once every section came back empty
+  };
   const anime = animeP();
-  anime.then(items => done('anime', more('anime', items)));
-  // films: the same title as an anime film is listed once, under anime (moreResults)
-  anime.then(items => moreResults(null, { search: q }, items).catch(() => '')).then(html => done('cinema', html));
-  moreResults({ search: q }, null).catch(() => '').then(html => done('manga', html));
-  if (api.web) novelsP(12).then(items => done('novels', more('novels', items)));
+  anime.then(add);
+  // films: the same title as an anime film is listed once, under anime (moreResults); asked alongside it, not after
+  moreResults(null, { search: q }, anime, true).catch(() => []).then(add);
+  moreResults({ search: q }, null, [], true).catch(() => []).then(add);
+  if (api.web) novelsP(12).then(add);
 }
 // manga and film matches, as rows (the search page, and the filter page). mq: a manga browse query (MangaSwat's terms; and:
 // more genre ids each card must have), fq: films (see filmQuery in filter.js; { search } alone for the search page); either
 // null to leave that section out. egydead's anime films are already dropped by category; this also drops one it filed
-// elsewhere when witanime listed the same film (same title, same year). asGrid: one grid of both (a search in one section)
+// elsewhere when witanime listed the same film (same title, same year). asGrid: the cards of both, unsectioned (the search)
 async function moreResults(mq, fq, anime = [], asGrid) {
   mq ||= null; fq ||= null; // callers pass `false` for a section left out; `false?.filter` would throw
   const { and = [], ...api } = mq || {}, oq = mq && !and.length && olyQuery(new URLSearchParams(api));
   const ask = (kind, fn, s) => s ? fuzzySearch(s, kind, fn) : fn(); // a search: what was meant too (see fuzzySearch)
-  const [m, tm, f] = await Promise.all([
+  const [m, tm, f, an] = await Promise.all([
     mq && ask('manga', s => load('mangaList', mUrl('series/', { ...api, ...(s && { search: s }), page_size: and.length ? 60 : 20 })).then(r => r.items), api.search).catch(() => null),
     oq && ask('manga', s => olyList({ ...oq, ...(s && { keyword: s }) }).then(r => r.items), oq.keyword).catch(() => null),
-    !fq ? [] : fq.search ? ask('film', edSearch, fq.search).catch(() => []) : edList('all', 1).then(l => dubbed(l.items), () => [])]);
+    !fq ? [] : fq.search ? ask('film', edSearch, fq.search).catch(() => []) : edList('all', 1).then(l => dubbed(l.items), () => []), anime]); // anime: its cards, or their promise
   const manga = mMerge([m?.filter(c => and.every(g => c.g?.includes(g))), tm]);
   let films = f.filter(c => (!fq.year || c.year === fq.year) && (!fq.type || (fq.type === 'TV') === /^\/cinema\/(serie|season|episode)\//.test(c.path))
     && (!fq.version || fq.version === 'both' || (fq.version === 'dub') === !!c.dub)
-    && !anime.some(w => w.type === 'movie' && similar(w.title, c.title) >= .75 && (!w.year || !c.year || w.year === c.year)));
+    && !an.some(w => w.type === 'movie' && similar(w.title, c.title) >= .75 && (!w.year || !c.year || w.year === c.year)));
   if (fq?.genres?.length || fq?.country) { // from each title's page (cached): the first 24 candidates
     films = films.slice(0, 24);
     const pages = await Promise.all(films.map(c => load('edMovie', edUrl(c.path.slice('/cinema/'.length))).catch(() => null)));
@@ -1287,7 +1291,7 @@ async function moreResults(mq, fq, anime = [], asGrid) {
     const same = (a, b) => (a = ar(a), b = ar(b), a.includes(b) || b.includes(a) || a.length >= 4 && b.length >= 4 && a.slice(0, 4) === b.slice(0, 4));
     films = films.filter((c, i) => pages[i] && fq.genres.every(g => pages[i].genres.some(x => same(x, g))) && (!fq.country || pages[i].tags.some(x => same(x, fq.country))));
   }
-  if (asGrid) return grid([...manga, ...films]);
+  if (asGrid) return [...manga, ...films];
   return (manga.length ? row(t('manga'), manga, '#/manga/browse/1' + (Object.keys(api).length ? '?' + new URLSearchParams(api) : '')) : '')
     + row(t('cinema'), films, fq && !fq.search ? '#/cinema/browse/all' : '');
 }

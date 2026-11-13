@@ -123,12 +123,13 @@ object Cinema {
     // its search lists the newest episodes, so an older show (or its older seasons) is missed: its series search ("type=series") first
     private fun findUrl(q: String, series: Boolean = false) = "$ED/find/?word=${URLEncoder.encode(q, "UTF-8")}" + if (series) "&type=series" else ""
     // a card per season, each show's in order (the site lists them any way); then the episodes of shows not listed yet
-    suspend fun search(q: String): List<Card> {
+    suspend fun search(q: String): List<Card> = coroutineScope {
+        val all = async { Pages.load(findUrl(q)) } // both searches at once (cinema.js edSearch)
         val series: List<Card> = runCatching { cards(parse(Pages.load(findUrl(q, true)), ED), perSeason = true) }.getOrDefault(emptyList())
         fun show(c: Card) = showKey(c) ?: c.path
         val first = HashMap<String, Int>().also { m -> series.forEachIndexed { i, c -> m.putIfAbsent(show(c), i) } }
         val have = series.map(::show).toSet()
-        return series.sortedWith(compareBy<Card> { first[show(it)] }.thenBy { seasonNo(it.title) }) + cards(parse(Pages.load(findUrl(q)), ED)).filter { show(it) !in have }
+        series.sortedWith(compareBy<Card> { first[show(it)] }.thenBy { seasonNo(it.title) }) + cards(parse(all.await(), ED)).filter { show(it) !in have }
     }
     // "The Sopranos الموسم السادس" -> 6 (0: past AR_NTH's "العاشر")
     private fun seasonNo(title: String) = Regex("الموسم\\s+(\\S+)").find(title.replace(Regex("[أإآ]"), "ا"))?.groupValues?.get(1)?.let { it.toIntOrNull() ?: (Witanime.AR_NTH.indexOf(it) + 1) } ?: 0

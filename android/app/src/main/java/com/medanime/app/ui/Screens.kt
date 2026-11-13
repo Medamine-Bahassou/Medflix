@@ -43,6 +43,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.merge
 
 private fun animeSlides(d: HomePage) = d.hero.map { Slide(it.banner, it.title, it.desc, Screen.Title(it.path), it.watch.takeIf { w -> w.isNotEmpty() }?.let { w -> Screen.Play(w) }) }
 fun mangaSlides(top: List<MSeries>) = top.filter { it.poster.isNotEmpty() || it.cover.isNotEmpty() }.map { s ->
@@ -244,10 +246,11 @@ internal suspend fun fuzzySearch(query: String, kind: String, suggestions: suspe
     if (q.isEmpty()) return@coroutineScope emptyList()
     val found = LinkedHashMap<String, Card>()
     fun add(l: List<Card>) = l.forEach { found.putIfAbsent(it.path, it) }
+    val sugs = async { suggestions(kind, q) } // asked alongside what was typed: when that finds little, the names are already here
     add(ask(q)) // what was typed failing is the search failing (unreachable)
     var names = listOf(q)
-    if (found.values.count { closeness(q, it.title) >= .6 } < 3) {
-        val sug = suggestions(kind, q)
+    if (found.values.count { closeness(q, it.title) >= .6 } >= 3) sugs.cancel() else {
+        val sug = sugs.await()
         names = listOf(q) + sug
         val variants = spellings(q)
         (variants.take(2) + sug + variants.drop(2)).distinct().filter { it != q }.take(7)
@@ -264,7 +267,7 @@ internal suspend fun fuzzySearch(query: String, kind: String, suggestions: suspe
 fun SearchScreen(q0: String, nav: Nav, kind0: String = "") {
     var q by rememberSaveable { mutableStateOf(q0) }
     var kind by rememberSaveable { mutableStateOf(kind0) } // "": every section; else only that one is asked, and shown as a grid
-    val typed by produceState(q0.trim(), q) { delay(400); value = q.trim() } // ask once typing stops
+    val typed by produceState(q0.trim(), q) { delay(250); value = q.trim() } // ask once typing stops
     val focus = remember { FocusRequester() }
     var rate by remember { mutableStateOf(RateFilter.load()) }
     LaunchedEffect(Unit) { if (q.isEmpty() && rate.asks.isEmpty()) focus.requestFocus() } // a filter set: what it finds is on the screen, not under a keyboard
@@ -290,30 +293,35 @@ fun SearchScreen(q0: String, nav: Nav, kind0: String = "") {
         }
         RateActive(rate, kind, setRate)
         if (typed.isEmpty() || (shelfOn && !everywhere)) return@Column RateShelf(rate, kind, typed, nav, setRate, { everywhere = true }) { matches = it }
-        val (l, retry) = loadedOnce(typed, kind) { _ ->
-            coroutineScope {
-                // a section left out isn't asked (null, like one that didn't answer)
-                fun ask(k: String, go: suspend () -> List<Card>) = async { if (kind.isEmpty() || kind == k) runCatching { go() }.getOrNull() else null }
-                val a = ask("anime") { fuzzySearch(typed, "anime") { Witanime.search(it).first().items } }
-                val c = ask("cinema") { fuzzySearch(typed, "film") { Cinema.search(it) } }
+        // one grid, each section's cards added as soon as its sites answer (first come, first shown): (cards so far, all answered)
+        val (l, retry) = loaded(typed, kind) { _ ->
+            val asks = listOf<Pair<String, suspend () -> List<Card>>>(
+                "anime" to { fuzzySearch(typed, "anime") { Witanime.search(it).first().items } },
+                "cinema" to { fuzzySearch(typed, "film") { Cinema.search(it) } },
                 // each spelling merges only its own sites' answers ("demonicemperor" finds just Olympus's copy): each series once across them all
-                val m = ask("manga") { Manga.merge(listOf(fuzzySearch(typed, "manga") { Manga.browse(mapOf("search" to it), 1, HashSet()).items })) }
-                val n = ask("novels") { Novels.search(typed) } // the site's search knows its Arabic titles only: no other spellings to try
-                if (a.await() == null && c.await() == null && m.await() == null && n.await() == null) throw java.io.IOException(t("unreachable"))
-                listOf(a.await().orEmpty(), c.await().orEmpty(), m.await().orEmpty(), n.await().orEmpty())
+                "manga" to { Manga.merge(listOf(fuzzySearch(typed, "manga") { Manga.browse(mapOf("search" to it), 1, HashSet()).items })) },
+                "novels" to { Novels.search(typed) }) // the site's search knows its Arabic titles only: no other spellings to try
+            flow {
+                val got = mutableListOf<Card>()
+                var left = asks.count { kind.isEmpty() || kind == it.first }; var any = false // a section left out isn't asked
+                asks.map { (k, go) -> flow { if (kind.isEmpty() || kind == k) emit(runCatching { go() }.getOrNull()) } }.merge().collect { r ->
+                    left--
+                    if (r != null) { any = true; got += r }
+                    if (!any && left == 0) throw java.io.IOException(t("unreachable")) // no site answered
+                    if (any && (r != null || left == 0)) emit(got.toList() to (left == 0))
+                }
             }
         }
-        Body(l, retry) { (a, c, m, n) ->
-            if (a.isEmpty() && c.isEmpty() && m.isEmpty() && n.isEmpty()) return@Body Empty(t("nothing"), t("tryElse"))
-            val found = remember(a, c, m, n) { a + c + m + n }
+        Body(l, retry) { (found, done) ->
+            if (found.isEmpty()) return@Body if (done) Empty(t("nothing"), t("tryElse")) else Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator(color = Red) }
             val looked = scoresOf(found, rate)
-            val (a1, c1, m1, n1) = listOf(a, c, m, n).map { rate.apply(it, looked.scores) }
-            val shown = a1 + c1 + m1 + n1
+            val shown = rate.apply(found, looked.scores)
             SideEffect { matches = shown.size }
             Column {
+                if (!done) LinearProgressIndicator(Modifier.fillMaxWidth(), color = Red, trackColor = CardC) // the other sections are still asked
                 RateStatus(looked, found.size - shown.size)
                 if (shown.isEmpty()) { if (looked.left == 0) Empty(t("rfNone"), t("rfNoneHint")) { Button({ setRate(RateFilter()) }, colors = ButtonDefaults.buttonColors(Red)) { Text(t("reset")) } } }
-                else RatedCards(listOf("anime" to a1, "cinema" to c1, "manga" to m1, "novels" to n1), typed, nav, rememberLazyGridState().takeIf { kind.isNotEmpty() }) // one section: the others are empty
+                else CardsGrid(shown, nav, remember(typed, kind) { androidx.compose.foundation.lazy.grid.LazyGridState() }) // a new search starts at the top
             }
         }
     }
