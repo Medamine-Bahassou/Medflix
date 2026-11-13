@@ -331,7 +331,7 @@ function fetchPage(kind, url, background = false) {
     p = api.fetch(url, kind === 'slayerPages' ? { action: 'chapter_navigate_page' } : kind === 'slayerChapters' ? { action: 'manga_get_chapters', manga: new URL(url).searchParams.get('manga') } : undefined, false, background).then(text => {
       const isJson = /^(manga|kitsu|novelJSON)/.test(kind);
       const data = parsers[kind](isJson ? JSON.parse(text) : ['newEpisodes', 'slayerPages'].includes(kind) ? text : parse(text), url);
-      cache[url] = { at: Date.now(), data, ...(kind === 'slayerSeries' && { parser: 2 }), ...(kind === 'edList' && { parser: 1 }) };
+      cache[url] = { at: Date.now(), data, ...(kind === 'slayerSeries' && { parser: 2 }), ...(kind === 'edList' && { parser: /type=series/.test(url) ? 2 : 1 }) };
       save();
       return data;
     }).finally(() => inflight.delete(requestKey));
@@ -352,7 +352,7 @@ async function load(kind, url, force = false, keep = false) {
   if (!keep) viewed.set(url, kind);
   if (kind === 'slayerSeries' && cache[url] && cache[url].parser !== 2 &&
       (!cache[url].data?.title || !cache[url].data?.postId || Slayer.blockedTitle(cache[url].data.title))) delete cache[url];
-  if (kind === 'edList' && cache[url] && (cache[url].parser !== 1 || /type=series/.test(url) && !cache[url].data.seasons)) delete cache[url]; // old cards included software downloads; old series searches, no seasons
+  if (kind === 'edList' && cache[url] && cache[url].parser !== (/type=series/.test(url) ? 2 : 1)) delete cache[url]; // old cards included software downloads; old series searches, a card per show
   const hit = cache[url];
   if (!hit || force) {
     try { return fresh(await fetchPage(kind, url, keep && /^(oly|slayer|filler)/.test(kind))); }

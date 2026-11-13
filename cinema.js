@@ -60,7 +60,7 @@ const edMedia = (slug, cat, name) => {
     || /^(?:serie|season)\/|^episode\/(?!برنامج-)|^(?:فيلم|مسلسل)-/.test(slug)
     || /^(?:(?:مشاهدة|تحميل|و)\s+)*(?:فيلم|مسلسل|الحلقة)\s/.test(name.trim());
 };
-const edCards = root => {
+const edCards = (root, perSeason) => { // perSeason: a season isn't merged into its show (the search's)
   const els = [...(root?.querySelectorAll('a.movie__block[href], .series__box > a[href], .innov-series-card > a[href], li.movieItem > a[href]') || [])];
   const animeStems = new Set();
   const raw = els.map(a => {
@@ -85,7 +85,7 @@ const edCards = root => {
     desc: txt(a.querySelector('.post__info p, .story')),
     rating: txt(a.querySelector('.post__ratings')).match(/^\d+(\.\d+)?$/)?.[0] || '',
     dub: /مدبلج/.test(name + cat),
-  })).filter((c, i, all) => all.findIndex(o => o.path === c.path || (edShowKey(c) && edShowKey(o) === edShowKey(c))) === i); // a pinned film is listed twice; a show's newest episode/season stands for it
+  })).filter((c, i, all) => all.findIndex(o => o.path === c.path || (!perSeason && edShowKey(c) && edShowKey(o) === edShowKey(c))) === i); // a pinned film is listed twice; a show's newest episode/season stands for it
 };
 const edUrl = slug => `${ED}/${edPath(slug)}/`;
 // a season page's episodes, oldest first (sorted by episode number)
@@ -96,10 +96,9 @@ const edEpisodes = doc => [...doc.querySelectorAll('.episodes__list a[href], .Ep
 const dubbed = items => items?.map(c => c.dub ? { ...c, badge: t('dubbed') } : c); // labelled when drawn: the cached cards stay language-neutral
 
 Object.assign(parsers, {
-  edList: (doc, url) => ({ items: edCards(doc), // every block: some categories open with a (often empty) pinned one
-    // every season listed, which items keep one of per show: a season's page doesn't link the others (cinemaTitle)
-    seasons: [...doc.querySelectorAll('a[href*="/selary/"][title]')].map(a => ({ path: '/cinema/' + edSlug(a.getAttribute('href')), title: edTitle(a.getAttribute('title')).title }))
-      .filter((c, i, all) => c.path.startsWith('/cinema/serie/') && all.findIndex(o => o.path === c.path) === i),
+  // every block: some categories open with a (often empty) pinned one. the series search keeps every season: the search shows each,
+  // and a season's page doesn't link the others (cinemaTitle)
+  edList: (doc, url) => ({ items: edCards(doc, /type=series/.test(url)),
     pages: Math.max(1, ...[...doc.querySelectorAll('a[href*="/page/"]')].map(a => +a.getAttribute('href').match(/\/page\/(\d+)/)?.[1] || 0)) }),
   edMovie(doc, url) {
     const selfSlug = url ? edSlug(url) : '';
@@ -343,10 +342,14 @@ const edList = (id, page = 1, force) => load('edList', ED + eCat(id)[1] + (page 
   .then(d => id === 'all' ? { ...d, items: d.items.filter(c => /^\/cinema\/فيلم-/.test(c.path)) } : d); // latest additions: the films only (not episodes, shows, wrestling)
 // its search lists the newest episodes, so an older show (or its older seasons) is missed: its series search ("type=series") first
 const edFind = (q, series) => `${ED}/find/?word=${encodeURIComponent(q)}${series ? '&type=series' : ''}`;
-const edSearch = q => Promise.all([load('edList', edFind(q, true)).catch(() => ({ items: [] })), load('edList', edFind(q))])
-  .then(([s, e]) => dubbed([...s.items, ...e.items].filter((c, i, all) => all.findIndex(o => o.path === c.path || (edShowKey(c) && edShowKey(o) === edShowKey(c))) === i)));
 // "The Sopranos الموسم السادس" -> 6 (0: past AR_NTH's "العاشر")
 const seasonNo = title => { const w = title.replace(/[أإآ]/g, 'ا').match(/الموسم\s+(\S+)/)?.[1] || ''; return +w || AR_NTH.indexOf(w) + 1; };
+// a card per season, each show's in order (the site lists them any way); then the episodes of shows not listed yet
+const edSearch = q => Promise.all([load('edList', edFind(q, true)).catch(() => ({ items: [] })), load('edList', edFind(q))]).then(([s, e]) => {
+  const show = c => edShowKey(c) || c.path, first = new Map(s.items.map((c, i) => [show(c), i]).reverse());
+  const seasons = [...s.items].sort((a, b) => first.get(show(a)) - first.get(show(b)) || seasonNo(a.title) - seasonNo(b.title)), have = new Set(seasons.map(show));
+  return dubbed([...seasons, ...e.items.filter(c => !have.has(show(c)))]);
+});
 
 async function cinemaRoute(rest, force) {
   if (/^(serie|season|episode)$/.test(rest[0])) rest = [rest[0] + '/' + rest[1], ...rest.slice(2)];
@@ -398,8 +401,8 @@ async function cinemaTitle(slug, force) {
   const path = '/cinema/' + slug;
   // a season's page often links no other season: they're found by the show's name
   if (slug.startsWith('serie/') && !m.seasons.length && seasonNo(m.title)) {
-    const show = m.title.replace(/\s*الموسم\s.*$/, ''), all = (await load('edList', edFind(show, true)).catch(() => null))?.seasons || [];
-    const mine = all.filter(c => c.title.replace(/\s*الموسم\s.*$/, '') === show && seasonNo(c.title)).sort((a, b) => seasonNo(a.title) - seasonNo(b.title));
+    const show = m.title.replace(/\s*الموسم\s.*$/, ''), all = (await load('edList', edFind(show, true)).catch(() => null))?.items || [];
+    const mine = all.filter(c => c.path.startsWith('/cinema/serie/') && c.title.replace(/\s*الموسم\s.*$/, '') === show && seasonNo(c.title)).sort((a, b) => seasonNo(a.title) - seasonNo(b.title));
     if (mine.some(c => c.path === path)) m = { ...m, seasons: mine };
   }
   if (m.cat.some(isAnimeCat)) return animeInstead(m.title); // an anime film after all (an old link, say): witanime's copy instead

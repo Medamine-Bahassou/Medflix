@@ -84,7 +84,7 @@ object Cinema {
             Regex("^(?:(?:مشاهدة|تحميل|و)\\s+)*(?:فيلم|مسلسل|الحلقة)\\s").containsMatchIn(name.trim())
     }
 
-    fun cards(root: Element?): List<Card> {
+    fun cards(root: Element?, perSeason: Boolean = false): List<Card> { // perSeason: a season isn't merged into its show (the search's)
         root ?: return emptyList()
         val stems = HashSet<String>()
         class Raw(val slug: String, val cat: String, val name: String, val t: Pair<String, String>, val a: Element)
@@ -109,7 +109,7 @@ object Cinema {
                 open = if (ep) Screen.CinemaTitle(r.slug, show = true) else null, desc = txt(r.a.selectFirst(".post__info p, .story")), dub = dub)
         }
         // a pinned film is listed twice; a show's newest episode/season stands for it
-        return out.filterIndexed { i, c -> out.indexOfFirst { o -> o.path == c.path || (showKey(c) != null && showKey(o) == showKey(c)) } == i }
+        return out.filterIndexed { i, c -> out.indexOfFirst { o -> o.path == c.path || (!perSeason && showKey(c) != null && showKey(o) == showKey(c)) } == i }
     }
 
     private fun parse(html: String, url: String): Document = Jsoup.parse(html, url)
@@ -122,10 +122,13 @@ object Cinema {
     }
     // its search lists the newest episodes, so an older show (or its older seasons) is missed: its series search ("type=series") first
     private fun findUrl(q: String, series: Boolean = false) = "$ED/find/?word=${URLEncoder.encode(q, "UTF-8")}" + if (series) "&type=series" else ""
+    // a card per season, each show's in order (the site lists them any way); then the episodes of shows not listed yet
     suspend fun search(q: String): List<Card> {
-        val series: List<Card> = runCatching { cards(parse(Pages.load(findUrl(q, true)), ED)) }.getOrDefault(emptyList())
-        val all = series + cards(parse(Pages.load(findUrl(q)), ED))
-        return all.filterIndexed { i, c -> all.indexOfFirst { o -> o.path == c.path || (showKey(c) != null && showKey(o) == showKey(c)) } == i }
+        val series: List<Card> = runCatching { cards(parse(Pages.load(findUrl(q, true)), ED), perSeason = true) }.getOrDefault(emptyList())
+        fun show(c: Card) = showKey(c) ?: c.path
+        val first = HashMap<String, Int>().also { m -> series.forEachIndexed { i, c -> m.putIfAbsent(show(c), i) } }
+        val have = series.map(::show).toSet()
+        return series.sortedWith(compareBy<Card> { first[show(it)] }.thenBy { seasonNo(it.title) }) + cards(parse(Pages.load(findUrl(q)), ED)).filter { show(it) !in have }
     }
     // "The Sopranos الموسم السادس" -> 6 (0: past AR_NTH's "العاشر")
     private fun seasonNo(title: String) = Regex("الموسم\\s+(\\S+)").find(title.replace(Regex("[أإآ]"), "ا"))?.groupValues?.get(1)?.let { it.toIntOrNull() ?: (Witanime.AR_NTH.indexOf(it) + 1) } ?: 0
