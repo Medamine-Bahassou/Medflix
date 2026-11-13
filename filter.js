@@ -120,7 +120,7 @@ const CHEVRON = ICON.caretDown.replace('class="ph', 'class="chev ph');
 const CHECK = ICON.check.replace('class="ph', 'class="ck ph');
 const FIELDS = ['sort', 'type', 'status', 'year', 'season', 'version', 'country', 'source'];
 
-// bottom sheet (a centered dialog on desktop) used by the filter chips
+// bottom sheet (a side drawer on desktop) used by the filter chips
 const closeSheet = () => {
   const w = document.querySelector('.sheet-wrap.open');
   if (!w) return false;

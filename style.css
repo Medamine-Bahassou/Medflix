@@ -598,7 +598,7 @@ html, body { overscroll-behavior-y: none; } /* no WebView stretch / glow (or bro
 .fchip.clear { padding: 0 16px; color: var(--muted); }
 .fchip.list-kind { padding: 0 16px; font: inherit; font-size: 14px; color: #fff; cursor: pointer; }
 .fchip.clear svg { width: 14px; height: 14px; }
-/* sheet: slides up from the bottom on phones, a centered dialog on desktop */
+/* sheet: slides up from the bottom on phones, a drawer from the side on desktop */
 .sheet-wrap { position: fixed; inset: 0; z-index: 70; background: #000b; opacity: 0; transition: opacity .25s; }
 .sheet-wrap.open { opacity: 1; }
 .sheet { position: absolute; inset: auto 0 0; display: flex; flex-direction: column; max-height: 78vh; padding: 8px 16px calc(env(safe-area-inset-bottom, 0px) + 16px); background: #181818; border-radius: 22px 22px 0 0; transform: translateY(100%); transition: transform .3s var(--ease); }
@@ -628,10 +628,13 @@ html, body { overscroll-behavior-y: none; } /* no WebView stretch / glow (or bro
 .sheet .sheet-foot { display: flex; gap: 10px; padding-top: 14px; border-top: 1px solid #ffffff12; }
 .sheet-foot .btn { flex: 1; justify-content: center; }
 @media (min-width: 761px) {
-  .sheet { inset: 50% auto auto 50%; width: 480px; max-height: 70vh; padding-bottom: 16px; border-radius: 18px; transform: translate(-50%, -46%) scale(.97); opacity: 0; transition: transform .25s var(--ease), opacity .2s; }
+  /* a drawer the page's height, sliding in from the end edge (the right; the left in arabic). .25s: closeSheet removes it then */
+  .sheet { inset: 0 0 0 auto; width: 480px; max-height: none; padding: 20px; border-radius: 18px 0 0 18px; transform: translateX(100%); transition: transform .25s var(--ease); }
+  [dir=rtl] .sheet { inset: 0 auto 0 0; border-radius: 0 18px 18px 0; transform: translateX(-100%); }
   .sheet::before { display: none; }
-  .sheet-wrap.open .sheet { transform: translate(-50%, -50%); opacity: 1; }
-  .sheet.eg-sheet { width: min(760px, 92vw); max-height: 86vh; } /* wider: the seasons sit side by side */
+  .sheet-wrap.open .sheet { transform: none; }
+  .sheet .sheet-foot { margin-block-start: auto; } /* its buttons at the bottom of the drawer */
+  .sheet.eg-sheet { width: min(760px, 92vw); } /* wider: the seasons sit side by side */
 }
 @media (max-width: 760px) {
   body.searching .search .search-flt { width: 44px; height: 44px; border-radius: 12px; background: #ffffff12; border: 1px solid #ffffff1a; }
