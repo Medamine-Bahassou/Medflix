@@ -254,8 +254,9 @@ internal suspend fun fuzzySearch(query: String, kind: String, suggestions: suspe
             .map { v -> async { try { ask(v) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { emptyList() } } }
             .forEach { add(it.await()) }
     }
-    found.values.map { c -> c to maxOf(closeness(q, c.title), names.drop(1).maxOfOrNull { .97 * closeness(it, c.title) } ?: 0.0) }.filter { it.second >= .62 && searchNumbersMatch(q, it.first.title) }
-        .sortedWith(compareByDescending<Pair<Card, Double>> { it.second }.thenBy { it.first.title.length }).map { it.first } // as close: the shorter title (the show, before its spin-offs)
+    fun name(c: Card) = c.title.replace(Regex("\\s+الموسم\\s.*$"), "") // a show's seasons score alike, and stay in the order they came (Cinema.search)
+    found.values.map { c -> c to maxOf(closeness(q, name(c)), names.drop(1).maxOfOrNull { .97 * closeness(it, name(c)) } ?: 0.0) }.filter { it.second >= .62 && searchNumbersMatch(q, it.first.title) }
+        .sortedWith(compareByDescending<Pair<Card, Double>> { it.second }.thenBy { name(it.first).length }).map { it.first } // as close: the shorter title (the show, before its spin-offs)
 }
 
 /** search: witanime's titles, the movie sites' and manga, a row each, each with its spelling guesses (app.js search) */

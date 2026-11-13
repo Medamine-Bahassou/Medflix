@@ -1223,9 +1223,10 @@ async function fuzzySearch(q, kind, ask) {
     const more = [...new Set([...variants.slice(0, 2), ...sug, ...variants.slice(2)])].filter(v => v !== q).slice(0, 7);
     (await Promise.all(more.map(v => ask(v).catch(() => [])))).forEach(add);
   }
-  const score = c => Math.max(closeness(q, c.title), ...names.slice(1).map(n => .97 * closeness(n, c.title)));
+  const name = c => c.title.replace(/\s+الموسم\s.*$/, ''); // a show's seasons score alike, and stay in the order they came (cinema.js edSearch)
+  const score = c => Math.max(closeness(q, name(c)), ...names.slice(1).map(n => .97 * closeness(n, name(c))));
   return [...found.values()].map(c => ({ c, s: score(c) })).filter(x => x.s >= .62 && searchNumbersMatch(q, x.c.title))
-    .sort((a, b) => b.s - a.s || a.c.title.length - b.c.title.length).map(x => x.c); // as close: the shorter title (the show, before its spin-offs)
+    .sort((a, b) => b.s - a.s || name(a.c).length - name(b.c).length).map(x => x.c); // as close: the shorter title (the show, before its spin-offs)
 }
 
 let searchRun = 0;
