@@ -86,6 +86,30 @@ if (!window.api) (() => {
     .plyr--loading .plyr__control--overlaid{display:none}
     .skip-intro{position:absolute;z-index:4;right:16px;bottom:72px;padding:10px 18px;border:0;border-radius:6px;background:#fff;color:#000;font:700 14px system-ui,sans-serif;cursor:pointer}.skip-intro[hidden]{display:none}</style>`;
   const streamPages = new Map(), deadStreams = new Set(); // a stream's host page, to ask it again; streams that page now plays instead (dressVideo)
+  const bytes = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0)); // base64(url), padded or not
+  // a host page's HLS stream, for the hosts that give it away. their links expire within hours, and are for the network that asked
+  // (the proxy's: vidara takes the visitor's IP from it; voe's and byse's may refuse it there, then dressVideo falls back to the page)
+  const hostStream = async url => {
+    const u = new URL(url), code = u.pathname.match(/^\/e\/(\w+)/)?.[1];
+    if (!code) return;
+    if (u.hostname === 'vidara.to') // its open API
+      return JSON.parse((await http('https://vidara.to/api/stream', { method: 'POST', body: JSON.stringify({ filecode: code, device: 'web' }), headers: { 'Content-Type': 'application/json' } })).data).streaming_url;
+    if (u.hostname === 'voe.sx') { // the page's one JSON string: rot13, junk markers, base64, every char shifted by 3, reversed, base64 again
+      let t = JSON.parse((await http(url)).data.match(/<script type="application\/json">([\s\S]*?)<\/script>/)[1])[0];
+      t = t.replace(/[a-zA-Z]/g, c => String.fromCharCode((c <= 'Z' ? 90 : 122) >= (c = c.charCodeAt(0) + 13) ? c : c - 26));
+      for (const junk of ['@$', '^^', '~@', '%?', '*~', '!!', '#&']) t = t.split(junk).join('');
+      t = [...atob(t)].map(c => String.fromCharCode(c.charCodeAt(0) - 3)).reverse().join('');
+      return JSON.parse(new TextDecoder().decode(bytes(t))).source;
+    }
+    if (/byse/.test(u.hostname)) { // its API's AES-GCM answer: the key is its two 16-byte parts among 30 decoys, in an order the tag tells
+      const p = JSON.parse((await http(`${u.origin}/api/videos/${code}`)).data).playback, parts = p.key_parts.map(bytes).filter(k => k.length === 16);
+      for (const order of [parts, [...parts].reverse()]) try {
+        const key = await crypto.subtle.importKey('raw', new Uint8Array([...order[0], ...order[1]]), 'AES-GCM', false, ['decrypt']);
+        const out = JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: bytes(p.iv) }, key, bytes(p.payload))));
+        return out.sources.sort((a, b) => b.height - a.height)[0].url;
+      } catch {}
+    }
+  };
   const HLS = '<script src="vendor/hls-1.5.20.light.min.js"></script>', isHls = url => /\.m3u8(\?|$)/.test(url); // hls.js (vendor/, Apache-2.0): for Firefox and older Chrome, which don't play HLS themselves
   const frameVideo = () => { const f = frame(); try { return f?.hasAttribute('srcdoc') ? f.contentDocument?.querySelector('video') : null; } catch { return null; } }; // a host's player is another site's page
   // over the video, as on Android: the page's header isn't there in the player's fullscreen. a new server's frame gets it too
@@ -116,7 +140,7 @@ if (!window.api) (() => {
         h.loadSource(src); h.attachMedia(v);
       };
       // its token plays from one IP only, and some networks hand each new connection another one (a few minutes apart, or mid-film):
-      // a new one, from where it was. still refused: the host's own page plays it instead, ads and all
+      // a new one, from where it was. still refused (voe's and byse's, maybe: the proxy's network): the host's own page plays it instead, ads and all
       const again = async () => {
         const at = v.currentTime || last, s = tries++ < 2 && page && (await window.api.unwrap(page).catch(() => null))?.url;
         if (!s || !isHls(s)) {
@@ -200,15 +224,10 @@ if (!window.api) (() => {
       return { url: MediaHosts.host(page) ? await MediaHosts.resolve(page, hostRequest) : page, referrer: '', native: true };
     },
     // animerco's /player/ pages refuse to be framed by other sites; most just wrap the host's own embed, so use that
-    // vidara's: its open API names the stream, which plays in our own player: no host page, so no ads (its token: api/proxy.js)
+    // vidara's, voe's and byse's: the stream itself, played in our own player (no host page, so no ads). none: its own page plays it
     async unwrap(url) {
-      const vid = url.match(/^https:\/\/vidara\.to\/e\/(\w+)/)?.[1];
-      if (vid) {
-        const r = await http('https://vidara.to/api/stream', { method: 'POST', body: JSON.stringify({ filecode: vid, device: 'web' }), headers: { 'Content-Type': 'application/json' } }).catch(() => null);
-        const s = r?.status < 400 && (() => { try { return JSON.parse(r.data).streaming_url; } catch {} })();
-        if (s) { streamPages.set(s, url); return { url: s, referrer: '', native: true }; }
-        return url; // its own page, then (out of the sandbox: it refuses one)
-      }
+      const s = await hostStream(url).catch(e => console.error(e));
+      if (s) { streamPages.set(s, url); return { url: s, referrer: '', native: true }; }
       if (!url.startsWith(AR + '/player/')) return url;
       const inner = (await http(url)).data.match(/<iframe[^>]+src=["']([^"']+)["']/i)?.[1];
       if (!inner) throw new Error('not embeddable');

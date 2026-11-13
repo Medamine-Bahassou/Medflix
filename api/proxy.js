@@ -12,7 +12,9 @@ const SITES = ['novltime.com', 'witanime.site', 'eva.animerco.org', 'ristoanime.
   'caching.graphql.imdb.com', 'api.aniskip.com', 'myanimelist.net', 'www.rottentomatoes.com', 'backend.metacritic.com', 'www.animefillerlist.com',
   'vidara.to']; // vidara: a film's embed asked whether it's still queued for encoding (cinema.js seedWatch)
 const allowed = u => u.protocol === 'https:' && (SITES.includes(u.hostname) || /(^|\.)(egydead|myseed|arabseed)\.[a-z]+$/.test(u.hostname)
-  || MediaHosts.host(u.href) || (/(^|\.)(megamax\.me|share4max\.com)$/.test(u.hostname) && /^\/iframe\/[A-Za-z0-9]+$/.test(u.pathname)));
+  || MediaHosts.host(u.href) || (/(^|\.)(megamax\.me|share4max\.com)$/.test(u.hostname) && /^\/iframe\/[A-Za-z0-9]+$/.test(u.pathname))
+  || STREAMS.test(u.hostname) && /^\/(e|api\/videos)\/\w+$/.test(u.pathname)); // a host's video read for the website's own player (web.js hostStream)
+const STREAMS = /^(voe\.sx|[a-z]*byse[a-z]*\.com)$/; // byse's domains change: bysezejataos.com and the like
 // desktop Chrome, as on desktop and Android: the sites serve the markup the scraper expects
 const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36';
 const KEEP = ['location', 'retry-after', 'cf-mitigated', 'content-type'];
@@ -34,6 +36,7 @@ module.exports = async (req, res) => {
   // vidara's stream token only plays from the IP that asked for it: asked for the visitor's (it trusts X-Forwarded-For), and never shared
   const own = u.hostname === 'vidara.to' && u.pathname === '/api/stream';
   const ip = own && (req.headers['x-real-ip'] || String(req.headers['x-forwarded-for'] || '').split(',')[0].trim());
+  const live = own || STREAMS.test(u.hostname); // their stream links expire within hours: never kept for other visitors
   const send = out => (out ? exitFetch : fetch)(u, { method, body, redirect, signal: AbortSignal.timeout(u.hostname === 'novltime.com' ? 10e3 : 55e3), ...(out && { dispatcher: exit }),
     // node's fetch adds sec-fetch-mode: cors, and witanime's sources call 404s on that without the rest a browser sends with it
     headers: { 'User-Agent': UA, 'Accept-Language': 'ar,en;q=0.8', 'Sec-Fetch-Site': 'same-origin', 'Sec-Fetch-Dest': 'empty', ...headers, ...(ip && { 'X-Forwarded-For': ip }) } });
@@ -45,6 +48,9 @@ module.exports = async (req, res) => {
       const reader = r.body.getReader(), dec = new TextDecoder(), re = new RegExp(stopAt);
       for (;;) { const { done, value } = await reader.read(); if (done) break; data += dec.decode(value, { stream: true }); if (re.test(data)) { reader.cancel(); break; } }
     } else data = await r.text();
+    // voe's embed sends the browser on by script to one of its ever-changing domains: followed here, for the same video only
+    const hop = u.hostname === 'voe.sx' && data.match(/window\.location\.href = '(https:\/\/[^/']+\/e\/(\w+))'/);
+    if (hop && '/e/' + hop[2] === u.pathname) data = await (await fetch(hop[1], { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(30e3) })).text();
     // RistoAnime's pages (~350KB), Shahiid's (~150KB) and animeschedule's (~7MB) are mostly inline scripts, styles, <noscript> image copies and
     // indentation nothing reads: dropped before they're sent on and parsed. RistoAnime's season list's call needs the page's post id,
     // which only a script has: that one line is kept
@@ -56,7 +62,7 @@ module.exports = async (req, res) => {
     // shared: no visitor's cookies in it, and only real answers kept (5 min, then served stale for a week while it refreshes: a show
     // page nobody opened for days still comes at once). A page that isn't there is an answer too: asked again by every visitor, it
     // cost each of them the site's seconds. A refusal or a failing site isn't
-    if (shared) res.setHeader('Cache-Control', !own && r.status < 400 || [404, 410].includes(r.status) ? 'public, s-maxage=300, stale-while-revalidate=604800' : 'no-store');
+    if (shared) res.setHeader('Cache-Control', !live && r.status < 400 || [404, 410].includes(r.status) ? 'public, s-maxage=300, stale-while-revalidate=604800' : 'no-store');
     res.json({ status: r.status, url: r.url, headers: Object.fromEntries(KEEP.map(k => [k, r.headers.get(k)]).filter(([, v]) => v)), cookies: shared ? [] : r.headers.getSetCookie(), data });
   } catch (e) { res.status(502).json({ error: String(e.message || e) }); }
 };
