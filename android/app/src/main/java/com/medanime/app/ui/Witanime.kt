@@ -310,7 +310,7 @@ object Witanime {
     // never listed: its own search finds only whole series, some under other names, so WordPress's API is searched for the
     // episode's own post ("انمي Black Clover الموسم 2 الحلقة 4 مترجمة اون لاين"); its servers sit on the episode's /watch page
     private const val RA = "https://ristoanime.me"
-    private val AR_NTH = listOf("الاول", "الثاني", "الثالث", "الرابع", "الخامس", "السادس", "السابع", "الثامن", "التاسع", "العاشر")
+    val AR_NTH = listOf("الاول", "الثاني", "الثالث", "الرابع", "الخامس", "السادس", "السابع", "الثامن", "التاسع", "العاشر")
     private val ORD = listOf("first", "second", "third", "fourth", "fifth", "sixth")
     // witanime's "3rd Season Cour 2" is their "3rd Season Part 2"
     fun courName(s: String) = s.replace(Regex("\\s*cour 1$", RegexOption.IGNORE_CASE), "").replace(Regex("cour (\\d+)$", RegexOption.IGNORE_CASE), "part $1")

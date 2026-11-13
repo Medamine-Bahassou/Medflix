@@ -120,7 +120,24 @@ object Cinema {
         val items = cards(doc).let { l -> if (id == "all") l.filter { it.path.startsWith("/cinema/فيلم-") } else l } // latest additions: the films only
         return Listing(items, maxOf(1, doc.select("a[href*=/page/]").maxOfOrNull { Regex("/page/(\\d+)").find(it.attr("href"))?.groupValues?.get(1)?.toInt() ?: 0 } ?: 1))
     }
-    suspend fun search(q: String) = cards(parse(Pages.load("$ED/find/?word=${URLEncoder.encode(q, "UTF-8")}"), ED))
+    // its search lists the newest episodes, so an older show (or its older seasons) is missed: its series search ("type=series") first
+    private fun findUrl(q: String, series: Boolean = false) = "$ED/find/?word=${URLEncoder.encode(q, "UTF-8")}" + if (series) "&type=series" else ""
+    suspend fun search(q: String): List<Card> {
+        val series: List<Card> = runCatching { cards(parse(Pages.load(findUrl(q, true)), ED)) }.getOrDefault(emptyList())
+        val all = series + cards(parse(Pages.load(findUrl(q)), ED))
+        return all.filterIndexed { i, c -> all.indexOfFirst { o -> o.path == c.path || (showKey(c) != null && showKey(o) == showKey(c)) } == i }
+    }
+    // "The Sopranos الموسم السادس" -> 6 (0: past AR_NTH's "العاشر")
+    private fun seasonNo(title: String) = Regex("الموسم\\s+(\\S+)").find(title.replace(Regex("[أإآ]"), "ا"))?.groupValues?.get(1)?.let { it.toIntOrNull() ?: (Witanime.AR_NTH.indexOf(it) + 1) } ?: 0
+    private fun showOf(title: String) = title.replace(Regex("\\s*الموسم\\s.*$"), "")
+    // a season's page often links no other season: they're found by the show's name, in the series search (which cards keeps one of per show)
+    private suspend fun siblings(m: Movie, self: String): List<Card> {
+        val doc = parse(runCatching { Pages.load(findUrl(showOf(m.title), true)) }.getOrNull() ?: return emptyList(), ED)
+        val all = doc.select("a[href*=/selary/][title]").map { a -> slugOf(a.attr("href")) to edTitle(a.attr("title")).first }
+            .filter { (slug, t) -> slug.startsWith("serie/") && showOf(t) == showOf(m.title) && seasonNo(t) > 0 }.distinctBy { it.first }.sortedBy { seasonNo(it.second) }
+            .map { (slug, t) -> Card("/cinema/$slug", "cinema", t, m.poster, "", "", "", null, "/cinema/$slug") }
+        return if (all.any { it.path == "/cinema/$self" }) all else emptyList()
+    }
     // read one at a time: several of these together took the phone's cores from scrolling the grid they fill
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private val finding = kotlinx.coroutines.Dispatchers.Default.limitedParallelism(1)
@@ -145,7 +162,7 @@ object Cinema {
         if (h1.isEmpty()) throw IOException("not a title page") // an error page, or another site's
         val (title, year) = edTitle(h1)
         val crumb = doc.selectFirst(".bread__crumbs a[href^=http], .breadcrumbs-single a[href^=http]")?.attr("href") ?: ED
-        return Movie(title, year, "مدبلج" in h1, URI(crumb).let { "${it.scheme}://${it.host}" }, poster,
+        val m = Movie(title, year, "مدبلج" in h1, URI(crumb).let { "${it.scheme}://${it.host}" }, poster,
             img(doc.selectFirst(".lcp-cover-img, .aseed-lcp-img, .single__cover img")).ifEmpty { null }
                 ?: Regex("url\\([\"']?([^\"')]+)").find(doc.selectFirst(".singleCover")?.attr("style") ?: "")?.groupValues?.get(1) ?: poster,
             txt(doc.selectFirst(".post__story p, .post__content, .extra-content p, .singleStory")),
@@ -165,12 +182,13 @@ object Cinema {
             doc.select(".work__team .persons__list a[href*=/actor/]").map { a ->
                 Credit(txt(a.selectFirst(".role")).replace(Regex("^ممثلة?$"), ""), img(a.selectFirst("img")).let { if ("default-user-image" in it) "" else it.replace(Regex("-\\d+x\\d+\\.webp$"), ".jpg") }, txt(a.selectFirst(".name")))
             })
+        return if (self.startsWith("serie/") && m.seasons.isEmpty() && seasonNo(m.title) > 0) m.copy(seasons = siblings(m, self)) else m
     }
 
     // ---------- servers: the watch page (title + watch/), its wrappers unwrapped to the hosts' embeds ----------
     private val GOOD = listOf("myseed", "vidmoly", "vidara", "earnvids", "voe", "dsvplay")
-    // old films still list these long-gone hosts first
-    private val DEAD = Regex("(^|\\.)(openload|oload|verystream|gounlimited|clipwatching|watchvideo|mystream|uptostream|streamango|rapidvideo|vidlox|vidoza)\\.")
+    // old films still list these long-gone hosts first. upstream.to's certificate is gone; m.arabseed.me's embed-x.html sends to some film page
+    private val DEAD = Regex("(^|\\.)(openload|oload|verystream|gounlimited|clipwatching|watchvideo|mystream|uptostream|streamango|rapidvideo|vidlox|vidoza|upstream)\\.|^m\\.arabseed\\.")
     private const val LAST = "uqload" // plays, but with ads: listed last and never picked by default
     private fun rank(h: String) = if (h == LAST) 100 else GOOD.indexOf(h).let { if (it < 0) 99 else it }
     fun host(u: String) = runCatching { URI(u).host.removePrefix("www.").substringBefore('.') }.getOrDefault("")
@@ -195,7 +213,8 @@ object Cinema {
                 .map { Link(it.optString("driver"), q.optString("label").replace(Regex("\\s*\\(.*\\)"), ""), it.optString("link").let { l -> if (l.startsWith("//")) "https:$l" else l }) }
         }.filter { it.url.startsWith("https://") }
     }
-    private suspend fun unwrap(s: Link, origin: String): List<Link> {
+    private suspend fun unwrap(l: Link, origin: String): List<Link> {
+        val s = if (l.url.startsWith("//")) l.copy(url = "https:" + l.url) else l // its ok.ru links have no scheme
         if (s.url.startsWith("/vids.php")) return Regex("[?&]t=([^&]+)").find(s.url)?.let { listOf(s.copy(label = "myseed", url = myseedUrl(it.groupValues[1], origin))) } ?: emptyList()
         if ("/vid/?id=" in s.url) {
             val u = b64(Regex("[?&]id=([^&]+)").find(s.url)?.groupValues?.get(1) ?: "")
@@ -212,7 +231,7 @@ object Cinema {
      */
     suspend fun watch(m: Movie, slug: String): Watch = kotlinx.coroutines.supervisorScope { // a backup site failing mustn't take the others' links with it
         val mine = async { runCatching { seed(m.origin, pathOf(slug)) } }
-        val more = if (slug.contains('/')) emptyList() else listOf(async { egy(m) }, async { mc(m) }, async { wc(m) })
+        val more = (if (slug.contains('/')) emptyList() else listOf(async { egy(m) }, async { mc(m) }, async { wc(m) })).plus(async { free(m, slug) })
             .map { d -> runCatching { d.await() }.onFailure { android.util.Log.w("medflix", "backup", it) }.getOrNull() }.filterNotNull()
         val own = mine.await().getOrElse { if (more.none { it.servers.isNotEmpty() }) throw it else Watch(emptyList(), emptyList()) }
         fun fresh(have: List<Link>, add: List<Link>) = HashSet(have.map { it.label }).let { seen -> add.filter { seen.add(it.label) } }
@@ -234,6 +253,30 @@ object Cinema {
             (a == b || (year.isNotEmpty() && m.year.isNotEmpty() && few.all { it in all }))
     }
     private fun backups(servers: List<String>) = servers.filter { it.startsWith("https://") }.map { Link(host(it), "", it, true) }.sortedBy { rank(it.label) }
+
+    // free players by IMDb id, for any film or episode IMDb knows: the last backups (subtitles in English at best, and their own ads).
+    // an episode's id is its series': the episode page has no IMDb link, so its English name is looked up ("The Sopranos الموسم السادس الحلقة 21")
+    private val FREE = listOf( // [label, film, episode]
+        listOf("vidsrc", "https://vidsrc.cc/v2/embed/movie/\$id", "https://vidsrc.cc/v2/embed/tv/\$id/\$s/\$e"),
+        listOf("vidfast", "https://vidfast.pro/movie/\$id", "https://vidfast.pro/tv/\$id/\$s/\$e"),
+        listOf("2embed", "https://www.2embed.cc/embed/\$id", "https://www.2embed.cc/embedtv/\$id&s=\$s&e=\$e"),
+        listOf("vidsrcme", "https://vidsrc.me/embed/movie?imdb=\$id", "https://vidsrc.me/embed/tv?imdb=\$id&season=\$s&episode=\$e"))
+    private suspend fun free(m: Movie, slug: String): Watch {
+        val ep = if (slug.contains('/')) Regex("^(.+?)(?:\\s+الموسم\\s+(\\S+))?\\s+الحلقة\\s+(\\d+)").find(m.title.replace(Regex("[أإآ]"), "ا"))?.groupValues else null
+        val s = ep?.let { if (it[2].isEmpty()) 1 else it[2].toIntOrNull() ?: (Witanime.AR_NTH.indexOf(it[2]) + 1) } ?: 0
+        val name = key(ep?.get(1) ?: m.title)
+        var tt = if (ep == null) m.imdbId else ""
+        if (tt.isEmpty() && (!slug.contains('/') || s > 0)) { // past "العاشر" (AR_NTH's last), the season isn't known
+            val d = JSONObject(get("https://v3.sg.media-imdb.com/suggestion/x/${URLEncoder.encode(name, "UTF-8").replace("+", "%20")}.json")).optJSONArray("d")
+            val hits = (0 until (d?.length() ?: 0)).map { d!!.getJSONObject(it) }.filter { h ->
+                h.optString("id").matches(Regex("tt\\d+")) && key(h.optString("l")) == name && h.optString("qid").matches(Regex(if (ep != null) "tv(Series|MiniSeries)" else "movie|tvMovie"))
+                    && (ep != null || m.year.isEmpty() || h.optString("y") == m.year)
+            }
+            tt = hits.singleOrNull()?.optString("id") ?: "" // two of that name: none, rather than the wrong one
+        }
+        if (tt.isEmpty()) return Watch(emptyList(), emptyList())
+        return Watch(FREE.map { (label, film, tv) -> Link(label, "", if (ep != null) tv.replace("\$id", tt).replace("\$s", "$s").replace("\$e", ep[3]) else film.replace("\$id", tt), true) }, emptyList())
+    }
 
     // EgyDead (behind Cloudflare's check, passed in its page when it asks): its watch page is laid out like ArabSeed's.
     // It hops domains: egydead.space sends on to the current one, where its links point

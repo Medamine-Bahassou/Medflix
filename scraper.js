@@ -352,7 +352,7 @@ async function load(kind, url, force = false, keep = false) {
   if (!keep) viewed.set(url, kind);
   if (kind === 'slayerSeries' && cache[url] && cache[url].parser !== 2 &&
       (!cache[url].data?.title || !cache[url].data?.postId || Slayer.blockedTitle(cache[url].data.title))) delete cache[url];
-  if (kind === 'edList' && cache[url] && cache[url].parser !== 1) delete cache[url]; // old cards included software downloads
+  if (kind === 'edList' && cache[url] && (cache[url].parser !== 1 || /type=series/.test(url) && !cache[url].data.seasons)) delete cache[url]; // old cards included software downloads; old series searches, no seasons
   const hit = cache[url];
   if (!hit || force) {
     try { return fresh(await fetchPage(kind, url, keep && /^(oly|slayer|filler)/.test(kind))); }

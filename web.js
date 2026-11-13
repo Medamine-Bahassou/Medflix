@@ -178,7 +178,7 @@ if (!window.api) (() => {
   // the ad blocker: a page can't filter another site's frame, but a sandbox without allow-popups/allow-top-navigation stops its
   // popups, pop-unders and redirects. so every host plays in one, except those that refuse to play sandboxed (above; earnvids and
   // streamhg in mobile.js). ponytail: name match on the hostname, a host on a new domain that refuses one needs adding here
-  const UNSANDBOXABLE = /dood|d0+d|ds2play|share4max|megamax|leech|earnvid|streamhg|vidara|voe|byse/i; // vidara, voe, byse: "sandbox not allowed"
+  const UNSANDBOXABLE = /dood|d0+d|ds2play|share4max|megamax|leech|earnvid|streamhg|vidara|voe|byse|vidfast|2embed|vidsrc/i; // vidara, voe, byse, and the free players (cinema.js FREE): "sandbox not allowed"
   // and those the user turned it off for (the player's ⋮): a host that says "sandbox not allowed" can't be told apart from outside
   let adsAllowed = new Set();
   kv('readonly', s => s.get('adsAllowed')).then(l => adsAllowed = new Set(l || [])).catch(() => {});
