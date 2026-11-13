@@ -339,23 +339,20 @@ async function mangaSeries(id, force) {
       <div class="ep-tools"><input id="epf" placeholder="${t('jumpCh')}" type="number"><button class="btn ghost small" id="rev" aria-label="${t('reverse')}" title="${t('reverse')}">${ICON.sort}</button>
         ${selBtn('btn ghost small')}</div></h2>
       ${selBar()}
-      <div class="eps" id="eps"></div>
-      <div class="ep-pagination"><span id="ep-count" aria-live="polite"></span><button type="button" class="btn ghost" id="ep-more" aria-controls="eps">${t('moreChapters')}${ICON.caretDown}</button></div></div>
+      <div class="eps ch-scroll" id="eps"></div></div>
     <section class="section" id="title-cast" hidden></section></div>`;
   wireDetTabs();
-  let rev = false, limit = 24; // a long series stays short until asked: "show more" adds 24
+  let rev = false; // every chapter, in a box that scrolls on its own: a long series doesn't stretch the page
   const matching = (f = $('#epf').value) => (rev ? [...chs].reverse() : chs).filter(c => !f || parseFloat(c.n) === +f); // the number itself: 1 is chapter 1, not 10-19
-  const shown = () => matching().slice(0, limit);
+  const shown = () => matching();
   const drawChs = () => {
-    const copies = savedChs(ids), total = matching().length;
-    $('#ep-more').style.visibility = total > limit ? '' : 'hidden'; $('#ep-count').textContent = t('chaptersShown', Math.min(limit, total), total);
+    const copies = savedChs(ids);
     $('#eps').innerHTML = shown().map(c => { const own = copies.get(String(c.n)); return `<a class="ep ${store.mangaSeen[c.id] || store.mangaSeen[own] ? 'seen' : ''}
       ${r?.chapterId === c.id || (own && String(r?.chapterId) === own) ? 'last' : ''} ${own ? 'dld' : ''} ${picks?.has(String(c.id)) ? 'sel' : ''}"
       data-pick="${c.id}" href="#/manga/read/${own || c.id}">${t('chShort')} ${esc(c.n)}</a>`; }).join('');
   };
   drawChs();
-  $('#epf').oninput = () => { limit = 24; drawChs(); };
-  $('#ep-more').onclick = () => { limit += 24; drawChs(); };
+  $('#epf').oninput = drawChs;
   $('#rev').onclick = () => { rev = !rev; drawChs(); };
   $('#fav').onclick = e => { const on = toggleList({ path, title: s.title, poster: s.poster, type: 'manga' }); e.currentTarget.innerHTML = on ? ICON.check + ' ' + t('inList') : ICON.plus + ' ' + t('myList'); };
   CastInfo.mount($('#title-cast'), [s.title, ...(s.alt || '').split(/[,،]/)], 'manga');

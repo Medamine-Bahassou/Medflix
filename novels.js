@@ -86,7 +86,7 @@ async function novelsBrowse(force = false) {
 }
 async function novelDetails(id) {
   const hash = location.hash;
-  const [j, chapters] = await Promise.all([nvLoad(`/novels/${encodeURIComponent(id)}/view`), nvLoad(`/novels/${encodeURIComponent(id)}/chapters/published`, { limit: 30, sort: 'asc' }).catch(() => ({ data: [], meta: { hasMore: true } }))]); // 30: the page shows 24, and fewer to fetch is faster. a chapter list that fails leaves the page up, its button asks again
+  const [j, chapters] = await Promise.all([nvLoad(`/novels/${encodeURIComponent(id)}/view`), nvLoad(`/novels/${encodeURIComponent(id)}/chapters/published`, { limit: 30, sort: 'asc' }).catch(() => ({ data: [], meta: { hasMore: true } }))]); // 30: fewer to fetch is faster. a chapter list that fails leaves the page up, and the list asks again
   if (location.hash !== hash) return;
   const d = j.data, n = d.novel, c = nvCard(n), saved = store.novels[id], first = chapters.data[0];
   const start = saved?.slug ? nvReadHash(id, saved.slug) : first ? nvReadHash(id, first.slug) : '';
@@ -96,16 +96,16 @@ async function novelDetails(id) {
       chips: [...(n.genres || []).map(nvGenre), ...(d.author ? [`${t('nvAuthor')}: ${d.author.displayName || d.author.username || ''}`] : [])],
       play: start && { href: start, label: t(saved?.slug?'resumeCh':'read',saved?.n), icon: ICON.novel },
       actions: `<button class="btn ghost" id="nv-list">${inList(c.path)?ICON.check:ICON.plus} ${t(inList(c.path)?'inList':'myList')}</button>` })}
-    <div class="section" data-pane="eps"><h2>${t('chapters')} <small>${esc(count)}</small><div class="ep-tools"><input id="nv-jump" placeholder="${t('jumpCh')}" aria-label="${t('jumpCh')}" type="number"><button class="btn ghost small" id="nv-reverse" aria-label="${t('reverse')}" title="${t('reverse')}">${ICON.sort}</button>${selBtn('btn ghost small')}</div></h2>${selBar()}<div class="eps nv-chapters"></div><button class="btn ghost nv-more" id="nv-ch-more">${t('more')}</button></div>
+    <div class="section" data-pane="eps"><h2>${t('chapters')} <small>${esc(count)}</small><div class="ep-tools"><input id="nv-jump" placeholder="${t('jumpCh')}" aria-label="${t('jumpCh')}" type="number"><button class="btn ghost small" id="nv-reverse" aria-label="${t('reverse')}" title="${t('reverse')}">${ICON.sort}</button>${selBtn('btn ghost small')}</div></h2>${selBar()}<div class="eps nv-chapters ch-scroll"></div></div>
     <div class="rows">${row('nvSimilar',(d.similar || []).map(nvCard))}</div></div>`;
   wireDetTabs();
-  let reversed = false, limit = 24, hasMore = !!chapters.meta?.hasMore; // the list stays short until asked
+  let reversed = false, hasMore = !!chapters.meta?.hasMore; // every loaded chapter, in a box that scrolls on its own; its end asks for the next 100
   const allChapters = [...chapters.data];
   const filtered = () => { const filter=$('#nv-jump').value;return (reversed?[...allChapters].reverse():allChapters).filter(c=>!filter || +c.order===+filter); };
-  const shown = () => filtered().slice(0,limit);
-  const drawChapters = () => { if(location.hash!==hash)return;$('#nv-ch-more').hidden=!hasMore&&shown().length>=filtered().length;$('.nv-chapters').innerHTML=shown().map(c=>nvChapterLink(id,c)).join('') || `<p class="hint">${t('nothing')}</p>`; };
-  drawChapters();
-  $('#nv-jump').oninput = () => { limit = 24; drawChapters(); };
+  const shown = filtered, list = $('.nv-chapters');
+  const nearEnd = () => list.clientHeight && list.scrollHeight - list.scrollTop - list.clientHeight < 200; // 0 high: its tab is hidden, nothing to load for
+  const drawChapters = () => { if(location.hash!==hash)return;list.innerHTML=shown().map(c=>nvChapterLink(id,c)).join('') || `<p class="hint">${t('nothing')}</p>`; if(nearEnd())loadMore(); }; // too few to scroll (or a jump to one not loaded yet): the next ones now
+  $('#nv-jump').oninput = drawChapters;
   $('#nv-reverse').onclick = () => { reversed=!reversed;drawChapters(); };
   $('#nv-list').onclick = e => { const on=toggleList(c); e.currentTarget.innerHTML=(on?ICON.check:ICON.plus)+' '+t(on?'inList':'myList'); };
   const picked = ids => allChapters.filter(c=>ids.includes(String(c.id)));
@@ -127,15 +127,19 @@ async function novelDetails(id) {
   pagePress=['.nv-chapter',el=>pickSheet(t('chapter')+' '+picked([el.dataset.pick])[0]?.order,acts([el.dataset.pick],true),'',v=>run(v,[el.dataset.pick]))];
   let cursor = chapters.meta?.nextCursor;
   const seen = new Set(chapters.data.map(x=>x.id));
-  $('#nv-ch-more').onclick = async e => {
-    if(filtered().length>limit){limit+=24;return drawChapters();} // still loaded rows to reveal; else ask the site for the next 100
-    const b=e.currentTarget;b.disabled=true;
+  let loading = false, wait = 0;
+  async function loadMore() {
+    if(loading||!hasMore||Date.now()<wait)return;
+    loading=true;
     try {
       const next=await nvLoad(`/novels/${encodeURIComponent(id)}/chapters/published`,{limit:100,sort:'asc',cursor});
-      if(location.hash!==hash || !b.isConnected)return;
-      allChapters.push(...next.data.filter(x=>!seen.has(x.id)&&seen.add(x.id)));limit+=24;cursor=next.meta?.nextCursor;hasMore=!!next.meta?.hasMore&&!!cursor;drawChapters();
-    } catch { toast(t('unreachable'),true); } finally { b.disabled=false; }
-  };
+      if(location.hash!==hash || !list.isConnected)return;
+      allChapters.push(...next.data.filter(x=>!seen.has(x.id)&&seen.add(x.id)));cursor=next.meta?.nextCursor;hasMore=!!next.meta?.hasMore&&!!cursor;
+    } catch { wait=Date.now()+5e3;return toast(t('unreachable'),true); } finally { loading=false; } // a failure waits a little: scrolling would ask again at once
+    drawChapters();
+  }
+  list.onscroll = () => nearEnd() && loadMore();
+  drawChapters();
 }
 async function novelRead(id, slug) {
   const hash=location.hash;
