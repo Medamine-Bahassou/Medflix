@@ -175,7 +175,7 @@ if (window.api?.web) (() => {
       const ep = key.slice(1), guess = ep.replace(/-ep-[\d-]+$/, '');
       const sure = load('shPage', `${SH}/episodes/${encodeURIComponent(ep)}/`, force, complete).then(p => p.seasonUrl ? slugOf(p.seasonUrl) : Promise.reject(new Error('season not found')));
       sure.catch(() => {}); // not waited for when the guess is right
-      const quick = guess !== ep && await shDetails('/anime/s:' + guess, force, complete).catch(() => null);
+      const quick = guess !== ep ? await shDetails('/anime/s:' + guess, force, complete).catch(() => null) : null; // a slug without "-ep-N" has no guess
       return quick?.episodes.length ? quick : shDetails('/anime/s:' + await sure, force, complete);
     }
     if (key[0] === '+') { // a series is only its seasons: its first one's page
