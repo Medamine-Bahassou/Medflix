@@ -636,6 +636,7 @@ html, body { overscroll-behavior-y: none; } /* no WebView stretch / glow (or bro
   .sheet .sheet-foot { margin-block-start: auto; } /* its buttons at the bottom of the drawer */
   .sheet.eg-sheet { width: min(760px, 92vw); } /* wider: the seasons sit side by side */
   /* a card's play-or-details menu: a preview, big poster over its title, the actions stacked under it like the title page's */
+  .ask-sheet { justify-content: safe center; } /* the preview in the middle of the drawer's height, not stuck at its top */
   .ask-head { flex-direction: column; gap: 16px; padding: 28px 4px 24px; text-align: center; }
   .ask-head img { width: 200px; border-radius: 10px; box-shadow: 0 16px 40px #000c; }
   .ask-head b { font-size: 22px; }
