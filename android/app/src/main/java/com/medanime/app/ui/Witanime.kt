@@ -314,6 +314,8 @@ object Witanime {
     private val ORD = listOf("first", "second", "third", "fourth", "fifth", "sixth")
     // witanime's "3rd Season Cour 2" is their "3rd Season Part 2"
     fun courName(s: String) = s.replace(Regex("\\s*cour 1$", RegexOption.IGNORE_CASE), "").replace(Regex("cour (\\d+)$", RegexOption.IGNORE_CASE), "part $1")
+    // a word that names a later season or part ("2nd", "season", "ii"): "1st" doesn't
+    private fun later(w: String) = Regex("season|part|cour|final|ii|iii|iv").matches(w) || (Regex("\\d+(st|nd|rd|th)?").matches(w) && !Regex("1(st)?").matches(w))
     /** an episode's opening in seconds, or null: AniSkip has it by MyAnimeList id, which AniList has under the title's names (scraper.js intro) */
     suspend fun intro(title: String, alt: String, ep: String): Pair<Double, Double>? {
         val n = ep.toIntOrNull() ?: return null // a film's "ep" is its label
@@ -323,11 +325,16 @@ object Witanime {
             names.firstNotNullOfOrNull { name ->
                 val query = "{Page(perPage:10){media(search:${JSONObject.quote(name)},type:ANIME){idMal title{romaji english} synonyms}}}"
                 val rows = JSONObject(Pages.load("https://graphql.anilist.co", body = JSONObject().put("query", query).toString(), every = Pages.DAY, interactive = false)).getJSONObject("data").getJSONObject("Page").getJSONArray("media")
-                // an exact name only: a near one is often another season, with another opening
-                (0 until rows.length()).map(rows::getJSONObject).firstOrNull { m ->
+                // an exact name, else the one whose words hold all of ours and add no season or part (a near one is often another season,
+                // with another opening): "STEEL BALL RUN JoJo no Kimyou na Bouken" is their "JoJo no Kimyou na Bouken: Steel Ball Run - 1st STAGE"
+                val named = (0 until rows.length()).map(rows::getJSONObject).map { m ->
                     val t = m.getJSONObject("title"); val syn = m.getJSONArray("synonyms")
-                    (listOf(t.optString("romaji"), t.optString("english")) + (0 until syn.length()).map(syn::getString)).any { Manga.norm(it) in want }
-                }?.optInt("idMal")?.takeIf { it > 0 }
+                    m to (listOf(t.optString("romaji"), t.optString("english")) + (0 until syn.length()).map(syn::getString)).map(Manga::norm)
+                }
+                val words = Manga.norm(name).split(" ")
+                val near = named.filter { (_, ns) -> ns.any { n -> val have = n.split(" "); have.containsAll(words) && have.none { it !in words && later(it) } } }
+                (named.firstOrNull { (_, ns) -> ns.any { it in want } }?.first ?: near.singleOrNull()?.first) // two near ones: can't tell which
+                    ?.optInt("idMal")?.takeIf { it > 0 }
             }?.let { id ->
                 val i = JSONObject(Pages.load("https://api.aniskip.com/v2/skip-times/$id/$n?types%5B%5D=op&types%5B%5D=mixed-op&episodeLength=0", every = Pages.DAY, interactive = false)).getJSONArray("results").getJSONObject(0).getJSONObject("interval")
                 i.getDouble("startTime") to i.getDouble("endTime")

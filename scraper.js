@@ -397,7 +397,11 @@ async function remember(key, task) {
 }
 
 // an episode's opening as [from, to] seconds, or null: AniSkip has it by MyAnimeList id, which AniList has under the title's
-// names. An exact name only (a near one is often another season, with another opening). background: no check windows
+// names. An exact name, else the one whose words hold all of ours and add no season or part (a near one is often another
+// season, with another opening): "STEEL BALL RUN JoJo no Kimyou na Bouken" is their "JoJo no Kimyou na Bouken: Steel Ball Run - 1st STAGE".
+// background: no check windows
+const later = w => /^(season|part|cour|final|ii|iii|iv)$/.test(w) || (/^\d+(st|nd|rd|th)?$/.test(w) && !/^1(st)?$/.test(w));
+const holds = (n, want) => { const have = norm(n).split(' '); return want.every(w => have.includes(w)) && !have.some(w => !want.includes(w) && later(w)); };
 const intro = async (title, alt, ep) => {
   if (!/^\d+$/.test(ep)) return null; // a film's "ep" is its label
   const names = [title, alt].map(s => (s || '').replace(/\s*cour 1$/i, '').replace(/cour (\d+)$/i, 'part $1')).filter(s => norm(s)); // witanime's "3rd Season Cour 2" is their "3rd Season Part 2"
@@ -405,7 +409,9 @@ const intro = async (title, alt, ep) => {
   for (const name of names) {
     const query = `{Page(perPage:10){media(search:${JSON.stringify(name)},type:ANIME){idMal title{romaji english} synonyms}}}`;
     const rows = JSON.parse(await api.fetch('https://graphql.anilist.co', { query }, false, true)).data.Page.media;
-    const id = rows.find(m => [m.title.romaji, m.title.english, ...m.synonyms].some(n => want.has(norm(n))))?.idMal;
+    const named = m => [m.title.romaji, m.title.english, ...m.synonyms];
+    const near = rows.filter(m => named(m).some(n => holds(n, norm(name).split(' '))));
+    const id = rows.find(m => named(m).some(n => want.has(norm(n))))?.idMal || (near.length === 1 ? near[0].idMal : null); // two near ones: can't tell which
     if (!id) continue;
     const i = JSON.parse(await api.fetch(`https://api.aniskip.com/v2/skip-times/${id}/${ep}?types%5B%5D=op&types%5B%5D=mixed-op&episodeLength=0`, null, false, true)).results[0]?.interval;
     return i ? [i.startTime, i.endTime] : null;
