@@ -1066,9 +1066,12 @@ function lazyGrid(box, pages, next) {
   const io = new IntersectionObserver(async ([e]) => {
     if (!e.isIntersecting) return;
     io.disconnect();
+    const g = box.querySelector('.grid'), at = g?.children.length;
+    g?.insertAdjacentHTML('beforeend', skel(12)); // the next page's place, shimmering while it comes
     const d = await next(++page).catch(() => null);
+    if (g) [...g.children].slice(at).forEach(c => c.remove());
     if (!d || !end.isConnected) return; // offline, or the user left the page
-    box.querySelector('.grid')?.insertAdjacentHTML('beforeend', d.items.map(card).join(''));
+    g?.insertAdjacentHTML('beforeend', d.items.map(card).join(''));
     if (d.pages > page) io.observe(end); else end.remove();
   }, { rootMargin: '600px' });
   io.observe(end);

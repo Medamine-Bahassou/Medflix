@@ -73,16 +73,23 @@ async function novelsBrowse(force = false) {
   pageRefresh = () => novelsBrowse(true);
   let cursor = j.meta?.nextCursor;
   const seen = new Set(j.data.map(o => o.id));
+  const g = $('#nv-results .grid');
   $('#nv-more').onclick = async e => {
-    const b = e.currentTarget; b.disabled = true;
+    const b = e.currentTarget, at = g?.children.length; b.disabled = true;
+    g?.insertAdjacentHTML('beforeend', skel(12)); // the next page's place, shimmering while it comes (as lazyGrid's)
     try {
       const next = await nvLoad('/novels', { ...params, cursor });
       if (location.hash !== hash || !b.isConnected) return;
       const items = next.data.filter(o => !seen.has(o.id) && seen.add(o.id));
-      $('#nv-results .grid')?.insertAdjacentHTML('beforeend', items.map(nvCard).map(card).join(''));
+      [...g.children].slice(at).forEach(c => c.remove());
+      g.insertAdjacentHTML('beforeend', items.map(nvCard).map(card).join(''));
       cursor = next.meta?.nextCursor; b.hidden = !next.meta?.hasMore || !cursor;
-    } catch { toast(t('unreachable'), true); } finally { b.disabled = false; }
+      io.unobserve(b); io.observe(b); // observed again: still in sight, it loads on (not after a failure: the button's for that)
+    } catch { toast(t('unreachable'), true); } finally { b.disabled = false; if (g) [...g.children].slice(at).filter(c => c.matches('.skel')).forEach(c => c.remove()); }
   };
+  // the next page comes on its own near the end, as the other grids' (lazyGrid); the button stays for a failed one
+  const io = new IntersectionObserver(([e]) => e.isIntersecting && !e.target.disabled && !e.target.hidden && e.target.click(), { rootMargin: '600px' });
+  io.observe($('#nv-more'));
 }
 async function novelDetails(id) {
   const hash = location.hash;
