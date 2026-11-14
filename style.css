@@ -381,6 +381,8 @@ input:focus-visible, select:focus-visible { outline: none; }
 .dd-item .tag svg { width: 12px; height: 12px; vertical-align: -1px; }
 .dd-item.on { background: #e509141a; color: #fff; font-weight: 700; }
 .dd-item.on .ck { visibility: visible; }
+/* a click on the video goes to the host's page, which this one never hears of: with a menu open it lands here instead, and closes it */
+.player:has(.dd.open) .mplayer { pointer-events: none; }
 /* the video is hidden while the menu is open; don't reveal the loading spinner behind it */
 .player:has(.dd.open) .stage[style*=url] .spin { display: none; }
 .dd-btn:focus { outline: none; }

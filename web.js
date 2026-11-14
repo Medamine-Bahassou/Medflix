@@ -174,7 +174,7 @@ if (!window.api) (() => {
   // on (videa first: 1080p from the start, where ok.ru stayed at 240p); ok.ru and vk open none. share4max/megamax's script takes every
   // click until its popup opens, so in a sandbox the video never starts; dood looks for a sandbox too (see mobile.js). Those can't be
   // stopped from here: the last choice, never the default
-  const SERVER_RANK = { videa: 0, ok: 1, vk: 1, vkvideo: 1, mp4upload: 1, share4max: 3, megamax: 3, leech: 3, dood: 3, doodstream: 3 };
+  const SERVER_RANK = { videa: 0, ok: 1, vk: 1, vkvideo: 1, mp4upload: 1, share4max: 3, megamax: 3, leech: 3, dood: 3, doodstream: 3 }; // share4max/megamax: see spread
   // the ad blocker: a page can't filter another site's frame, but a sandbox without allow-popups/allow-top-navigation stops its
   // popups, pop-unders and redirects. so every host plays in one, except those that refuse to play sandboxed (above; earnvids and
   // streamhg in mobile.js). ponytail: name match on the hostname, a host on a new domain that refuses one needs adding here
@@ -184,6 +184,20 @@ if (!window.api) (() => {
   kv('readonly', s => s.get('adsAllowed')).then(l => adsAllowed = new Set(l || [])).catch(() => {});
   const frameHost = () => { const f = frame(); return f && !f.hasAttribute('srcdoc') && f.dataset.src ? new URL(f.dataset.src).hostname : null; };
   const unblocked = host => UNSANDBOXABLE.test(host) || adsAllowed.has(host);
+  // a host's stream played in our own player (no host page, so no ads), for those that give it away (hostStream)
+  const ownPlayer = async url => { const s = await hostStream(url).catch(e => console.error(e)); if (s) { streamPages.set(s, url); return { url: s, referrer: '', native: true }; } };
+  // share4max/megamax: a page of other hosts. its ad script holds the video till its popup opens, so no sandbox stops it, and Brave's way
+  // (blocking that script) is out of a page's reach: its frame is another site's, with no CORS for a cleaned copy. its hosts go in the menu
+  // too, under their own names: those that play ad-free here (our own player, or a sandbox). the page itself stays, last (rank 3)
+  const WRAPS = /^https:\/\/(share4max\.com|megamax\.me)\/iframe\/\w+$/;
+  const adFree = h => /^(voe\.sx|vidara\.to)$|byse/.test(h) || !UNSANDBOXABLE.test(h);
+  const spread = async list => (await Promise.all(list.map(async s => {
+    const url = s.token?.startsWith('ra:') && s.token.slice(3);
+    if (!WRAPS.test(url)) return [s];
+    const st = await window.api.mirrors(url).catch(e => console.error(e));
+    return [...(st?.data || []).flatMap(q => q.mirrors).map(m => ({ label: m.driver.toLowerCase(), quality: s.quality, token: 'ra:https:' + m.link.replace(/^https?:/, '') }))
+      .filter(m => adFree(new URL(m.token.slice(3)).hostname)), s]; // its own names for them: byse's domains change (byseraguci.com...)
+  }))).flat();
   // those can still send the tab to an ad: the browser asks before leaving instead
   addEventListener('beforeunload', e => { if (frame()?.dataset.guard) e.preventDefault(); });
 
@@ -208,7 +222,7 @@ if (!window.api) (() => {
     },
 
     awSources: (title, alt, ep) => aw.sources(title, alt, ep),
-    sources: epPath => Risto.sources(epPath),
+    sources: async epPath => spread(await Risto.sources(epPath)),
     async mirrors(url) { // egydead's MegaMax player: the hosts it wraps (see main.js)
       if (!/^https:\/\/[^/]+\/iframe\/[A-Za-z0-9]+$/.test(url)) throw new Error('bad url');
       const page = JSON.parse((await http(url)).data.match(/<script data-page="app" type="application\/json">([\s\S]*?)<\/script>/)[1]);
@@ -218,7 +232,7 @@ if (!window.api) (() => {
     },
     downloadLinks: epPath => Risto.downloads(epPath),
     async stream(token) {
-      if (token.startsWith('ra:')) return { url: token.slice(3), referrer: '' }; // RistoAnime's: the host's embed itself
+      if (token.startsWith('ra:')) return await ownPlayer(token.slice(3)) || { url: token.slice(3), referrer: '' }; // RistoAnime's and Shahiid's: the host's embed itself
       if (!token.startsWith('aw:')) throw new Error('bad token');
       const page = token.slice(3);
       return { url: MediaHosts.host(page) ? await MediaHosts.resolve(page, hostRequest) : page, referrer: '', native: true };
@@ -226,8 +240,8 @@ if (!window.api) (() => {
     // animerco's /player/ pages refuse to be framed by other sites; most just wrap the host's own embed, so use that
     // vidara's, voe's and byse's: the stream itself, played in our own player (no host page, so no ads). none: its own page plays it
     async unwrap(url) {
-      const s = await hostStream(url).catch(e => console.error(e));
-      if (s) { streamPages.set(s, url); return { url: s, referrer: '', native: true }; }
+      const own = await ownPlayer(url);
+      if (own) return own;
       if (!url.startsWith(AR + '/player/')) return url;
       const inner = (await http(url)).data.match(/<iframe[^>]+src=["']([^"']+)["']/i)?.[1];
       if (!inner) throw new Error('not embeddable');
