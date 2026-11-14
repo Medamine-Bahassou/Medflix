@@ -6,6 +6,7 @@
   <meta name="referrer" content="no-referrer">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com; img-src 'self' https: blob: data: medimg: file:; style-src 'self' 'unsafe-inline'; frame-src 'self' https: about:; media-src 'self' https: file: blob:; connect-src 'self' https:">
+  <meta name="theme-color" content="#000000"> <!-- the phone browser's own bar, black like the page -->
   <title>Medflix</title>
   <link rel="icon" type="image/png" href="assets/icon.png">
   <link rel="apple-touch-icon" href="assets/icon.png"> <!-- a phone's home-screen shortcut -->
@@ -14,7 +15,7 @@
 <body>
   <nav id="nav">
     <button type="button" class="nav-menu" id="dockMore" data-icon="menu" data-ta="more"></button>
-    <a href="#/" class="logo" data-icon="logo"><span class="logo-word" aria-hidden="true">edflix</span></a>
+    <a href="#/" class="logo" data-icon="logo" aria-label="Medflix"><span class="logo-word" aria-hidden="true">edflix</span></a>
     <div class="links" id="links"></div>
     <form id="search" class="search" data-icon="search">
       <input name="q" type="search" enterkeyhint="search" data-tp="searchPh" placeholder=" " autocomplete="off">

@@ -538,7 +538,7 @@ function autoScroll() {
     btn.classList.toggle('on', !!run);
     btn.innerHTML = run ? ICON.pause : ICON.play;
     $('#rspd').hidden = !open;
-    range.value = speed();
+    range.value = speed(); rangeFill(range);
     $('#rspdN').textContent = speed() + 'x';
   };
   const stop = () => { cancelAnimationFrame(run); run = 0; if (btn.isConnected) draw(); }; // a tap's own bar toggle brings the bars back
